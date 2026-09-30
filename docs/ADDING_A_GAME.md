@@ -1,15 +1,15 @@
 # Adding a game
 
-GameRecorder's core (engine, recording, timeline, storage, UI) knows nothing about any
+Clairvoyance's core (engine, recording, timeline, storage, UI) knows nothing about any
 specific game. Each game is a small Rust crate under `games/` that implements one trait,
-`GameIntegration` (in `crates/gr-core/src/game.rs`). League (`games/league`) and
+`GameIntegration` (in `crates/cv-core/src/game.rs`). League (`games/league`) and
 Counter-Strike 2 (`games/cs2`) are the two reference implementations.
 
 ## 1. Create the crate
 
 ```
 games/mygame/
-  Cargo.toml     # depends on gr-core (+ whatever you need to read the game's API)
+  Cargo.toml     # depends on cv-core (+ whatever you need to read the game's API)
   src/lib.rs     # pub struct MyGameIntegration; impl GameIntegration for it
 ```
 
@@ -49,9 +49,9 @@ In `app/src/games.rs`:
 ```rust
 pub fn all() -> Vec<Box<dyn GameIntegration>> {
     vec![
-        Box::new(gr_game_league::LeagueIntegration::new()),
-        Box::new(gr_game_cs2::Cs2Integration::new()),
-        Box::new(gr_game_mygame::MyGameIntegration::new()),
+        Box::new(cv_game_league::LeagueIntegration::new()),
+        Box::new(cv_game_cs2::Cs2Integration::new()),
+        Box::new(cv_game_mygame::MyGameIntegration::new()),
     ]
 }
 ```
@@ -63,13 +63,13 @@ it up automatically.
 
 - Unit-test the translation from the game's data to `GameEvent`s with recorded JSON
   (see `games/league/src/events.rs` and `games/cs2/src/tests.rs`).
-- `crates/gr-core/src/engine/tests.rs` shows how to run the whole engine against a fake
+- `crates/cv-core/src/engine/tests.rs` shows how to run the whole engine against a fake
   game and a fake recorder.
 
 ## Notes on specific games
 
 - **Counter-Strike 2** (done): official Game State Integration. The module writes
-  `gamestate_integration_gamerecorder.cfg` into CS2's cfg folder (found through Steam);
+  `gamestate_integration_clairvoyance.cfg` into CS2's cfg folder (found through Steam);
   restart CS2 once after the first install. Captures the whole monitor (its exclusive-fullscreen window
   can come out black with window capture).
 - **Valorant**: no official live event API, and Vanguard forbids reading game data. Add it

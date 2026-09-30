@@ -175,7 +175,7 @@ mod tests {
 
     #[test]
     fn retention_by_age_keeps_favorites() {
-        let root = std::env::temp_dir().join(format!("gr-lib-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("cv-lib-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         make(&root, "old", 40, false, 10);
         make(&root, "oldfav", 40, true, 10);

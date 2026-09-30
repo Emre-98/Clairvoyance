@@ -230,7 +230,7 @@ mod tests {
 
     #[test]
     fn roundtrip() {
-        let dir = std::env::temp_dir().join(format!("gr-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("cv-test-{}", std::process::id()));
         let s = GameSession::new("abc".into(), "league", "League of Legends", Local::now());
         s.save(&dir).unwrap();
         let l = GameSession::load(&dir).unwrap();

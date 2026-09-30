@@ -42,7 +42,7 @@
     {#if step === 0}
       <div class="hero">
         <img src="/logo.svg" alt="" width="84" height="84" />
-        <h1>Welcome to GameRecorder</h1>
+        <h1>Welcome to Clairvoyance</h1>
         <p>Your games, recorded automatically, with every kill, death and objective on the timeline.</p>
         <ul>
           <li><Icon name="rec" size={16} /> Starts recording by itself when a League match begins</li>
@@ -53,7 +53,7 @@
       <div class="foot"><div class="spacer"></div><button class="btn primary" onclick={() => (step = 1)}>Get started</button></div>
     {:else if step === 1}
       <h2>Recording</h2>
-      <p class="lead">GameRecorder records on its own, using your graphics card. Try it: it records 5 seconds of your screen.</p>
+      <p class="lead">Clairvoyance records on its own, using your graphics card. Try it: it records 5 seconds of your screen.</p>
       <BuiltinRecorder />
       <div class="foot">
         <button class="btn ghost" onclick={() => (step = 0)}>Back</button>
@@ -84,14 +84,14 @@
       <div class="hero">
         <div class="donecheck"><Icon name="check" size={34} stroke={2.6} /></div>
         <h1>You're all set</h1>
-        <p>Start a League game and GameRecorder does the rest. In game:</p>
+        <p>Start a League game and Clairvoyance does the rest. In game:</p>
         <div class="keys">
           <div><kbd>{app.settings?.hotkey_clip}</kbd><span>Save the last {app.settings?.video.replay_buffer_secs} seconds as a clip</span></div>
           <div><kbd>{app.settings?.hotkey_marker}</kbd><span>Add a marker to find a moment later</span></div>
         </div>
-        <p class="muted small">Closing the window keeps GameRecorder running in the tray. Want to see it work first? Settings > Advanced > Simulate a League game.</p>
+        <p class="muted small">Closing the window keeps Clairvoyance running in the tray. Want to see it work first? Settings > Advanced > Simulate a League game.</p>
       </div>
-      <div class="foot"><div class="spacer"></div><button class="btn primary" onclick={finish}>Open GameRecorder</button></div>
+      <div class="foot"><div class="spacer"></div><button class="btn primary" onclick={finish}>Open Clairvoyance</button></div>
     {/if}
   </div>
 </div>

@@ -1,23 +1,22 @@
 #!/usr/bin/env bash
-# Builds the Windows app from Linux (this is how Claude builds it):
-#   dist/GameRecorder-Setup-<version>.exe      installer (per-user, no admin)
-#   dist/GameRecorder-<version>-portable.zip   unzip-and-run version
+# Cross-builds a Windows test build from Linux (this is how Claude builds and tests it):
+#   dist/Clairvoyance-<version>-portable.zip   Clairvoyance.exe + WebView2Loader.dll, unzip and run
 #   dist/tools/recorder-selftest.exe           built-in recorder self-test (console)
-# On Windows you can instead run:  cd ui && npm ci && npm run build && cd .. && cargo build --release -p gamerecorder
+# Real releases (installer + auto-update files) are built by GitHub Actions: see RELEASING.md.
+# One-time toolchain setup on a fresh Ubuntu machine: scripts/setup-cross-linux.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 VERSION=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
 (cd ui && npm run build)
 export RUSTC=/usr/bin/rustc-1.91 RUSTDOC=/usr/bin/rustdoc-1.91 RUSTC_BOOTSTRAP=1
 export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc CARGO_TARGET_X86_64_PC_WINDOWS_GNU_AR=x86_64-w64-mingw32-ar
-cargo-1.91 build --release --target x86_64-pc-windows-gnu -Zbuild-std=std,panic_abort -p gamerecorder
-cargo-1.91 build --release --target x86_64-pc-windows-gnu -Zbuild-std=std,panic_abort -p gr-capture --bin recorder-selftest
-OUT=target/x86_64-pc-windows-gnu/release
-rm -rf dist && mkdir -p dist/app
-cp "$OUT/gamerecorder.exe" dist/app/GameRecorder.exe
+cargo-1.91 build --release --target x86_64-pc-windows-gnu -Zbuild-std=std,panic_abort -p clairvoyance
+cargo-1.91 build --release --target x86_64-pc-windows-gnu -Zbuild-std=std,panic_abort -p cv-capture --bin recorder-selftest
+OUT=${CARGO_TARGET_DIR:-target}/x86_64-pc-windows-gnu/release
+rm -rf dist && mkdir -p dist/app dist/tools
+cp "$OUT/clairvoyance.exe" dist/app/Clairvoyance.exe
 cp "$OUT/WebView2Loader.dll" dist/app/
 cp LICENSE dist/app/
-(cd installer && makensis -V2 -DVERSION="$VERSION" -DSRC=../dist/app -DOUTDIR=../dist GameRecorder.nsi)
-mkdir -p dist/tools && cp "$OUT/recorder-selftest.exe" dist/tools/
-(cd dist/app && zip -q -r "../GameRecorder-$VERSION-portable.zip" .)
+cp "$OUT/recorder-selftest.exe" dist/tools/
+(cd dist/app && zip -q -r "../Clairvoyance-$VERSION-portable.zip" .)
 ls -la dist

@@ -273,12 +273,12 @@
       <div class="card box form">
         <label class="check wide"><input type="checkbox" bind:checked={draft.start_with_windows} />Start with Windows</label>
         <label class="check wide"><input type="checkbox" bind:checked={draft.start_minimized} />Start minimized to the tray</label>
-        <label class="check wide"><input type="checkbox" bind:checked={draft.keep_ui_loaded} />Keep GameRecorder ready in the background <small>(opens instantly; while hidden in the tray it's paused and uses no CPU, but keeps some memory)</small></label>
+        <label class="check wide"><input type="checkbox" bind:checked={draft.keep_ui_loaded} />Keep Clairvoyance ready in the background <small>(opens instantly; while hidden in the tray it's paused and uses no CPU, but keeps some memory)</small></label>
         <label class="check wide"><input type="checkbox" bind:checked={draft.close_ui_in_game} />Close this window when a game starts <small>(off: stays open so you can alt-tab to it during the loading screen)</small></label>
-        <label class="check wide"><input type="checkbox" bind:checked={draft.show_perf} />Show GameRecorder's CPU/RAM use in the sidebar</label>
+        <label class="check wide"><input type="checkbox" bind:checked={draft.show_perf} />Show Clairvoyance's CPU/RAM use in the sidebar</label>
       </div>
-      <p class="muted small">Closing the window keeps GameRecorder in the tray (bottom-right, next to the clock). Use Quit there to exit.</p>
-      <button class="btn danger" onclick={() => api.quit()}>Quit GameRecorder</button>
+      <p class="muted small">Closing the window keeps Clairvoyance in the tray (bottom-right, next to the clock). Use Quit there to exit.</p>
+      <button class="btn danger" onclick={() => api.quit()}>Quit Clairvoyance</button>
     {:else if active === "performance"}
       <h2>Performance test</h2>
       <div class="card box"><PerfTest /></div>
@@ -303,7 +303,7 @@
         <div class="item"><div><strong>Log file</strong><span class="muted path">{app.info?.log_file}</span></div><button class="btn small" onclick={() => api.reveal(app.info?.log_file ?? "")}>Show</button></div>
         <div class="item"><div><strong>Settings file</strong><span class="muted path">{app.info?.config_file}</span></div><button class="btn small" onclick={() => api.reveal(app.info?.config_file ?? "")}>Show</button></div>
       </div>
-      <p class="muted small">GameRecorder {app.info?.version}. No accounts, no cloud, no telemetry.</p>
+      <p class="muted small">Clairvoyance {app.info?.version}. No accounts, no cloud, no telemetry.</p>
     {/if}
   </div>
 

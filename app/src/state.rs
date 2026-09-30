@@ -1,7 +1,7 @@
 use crate::ffmpeg::Ffmpeg;
 use crate::platform::WinPlatform;
-use gr_core::engine::{EngineCommand, LiveStatus};
-use gr_core::Settings;
+use cv_core::engine::{EngineCommand, LiveStatus};
+use cv_core::Settings;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 use tokio::sync::mpsc::UnboundedSender;
@@ -27,7 +27,7 @@ pub struct AppState {
     pub cmd: UnboundedSender<EngineCommand>,
     pub live: Mutex<LiveStatus>,
     /// The built-in recorder (the engine records with it; the performance test drives it too).
-    pub recorder: Arc<gr_capture::NativeRecorder>,
+    pub recorder: Arc<cv_capture::NativeRecorder>,
     pub ffmpeg: Arc<Ffmpeg>,
     pub platform: Arc<WinPlatform>,
     pub gpu: Option<GpuInfo>,

@@ -1,13 +1,13 @@
 //! Plays a scripted match against the fake Live Client API over real HTTP.
 
-use gr_core::game::{GameIntegration, GameResult, MatchPhase};
-use gr_core::EventKind;
-use gr_game_league::LeagueIntegration;
+use cv_core::game::{GameIntegration, GameResult, MatchPhase};
+use cv_core::EventKind;
+use cv_game_league::LeagueIntegration;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn full_mock_match() {
-    let opts = gr_mock_league::MockOptions { port: 29981, speed: 120.0, length: 600.0, loading_secs: 1.0, linger_secs: 2.0, ..Default::default() };
-    let mock = gr_mock_league::spawn(opts).unwrap();
+    let opts = cv_mock_league::MockOptions { port: 29981, speed: 120.0, length: 600.0, loading_secs: 1.0, linger_secs: 2.0, ..Default::default() };
+    let mock = cv_mock_league::spawn(opts).unwrap();
     let mut lol = LeagueIntegration::new();
     lol.configure(&serde_json::json!({ "api_base": mock.base_url, "riot_id": "" }));
     lol.start().await.unwrap();

@@ -1,4 +1,4 @@
-//! Tiny file logger: `%LOCALAPPDATA%\GameRecorder\logs\gamerecorder.log`, rotated at 2 MB.
+//! Tiny file logger: `%LOCALAPPDATA%\Clairvoyance\logs\clairvoyance.log`, rotated at 2 MB.
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -11,7 +11,7 @@ struct FileLogger {
 
 impl log::Log for FileLogger {
     fn enabled(&self, m: &log::Metadata) -> bool {
-        m.level() <= log::Level::Info || (m.level() <= log::Level::Debug && m.target().starts_with("gr"))
+        m.level() <= log::Level::Info || (m.level() <= log::Level::Debug && m.target().starts_with("cv"))
     }
 
     fn log(&self, r: &log::Record) {
@@ -43,7 +43,7 @@ impl log::Log for FileLogger {
 
 pub fn init(dir: PathBuf) -> PathBuf {
     let _ = std::fs::create_dir_all(&dir);
-    let path = dir.join("gamerecorder.log");
+    let path = dir.join("clairvoyance.log");
     let logger = FileLogger { path: path.clone(), file: Mutex::new(None) };
     if log::set_boxed_logger(Box::new(logger)).is_ok() {
         log::set_max_level(log::LevelFilter::Debug);

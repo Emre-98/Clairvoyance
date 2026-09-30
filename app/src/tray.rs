@@ -1,7 +1,7 @@
 //! Tray icon: shows idle / game detected / recording, and a small menu.
 
 use crate::state::AppState;
-use gr_core::engine::{EngineCommand, EngineState, LiveStatus};
+use cv_core::engine::{EngineCommand, EngineState, LiveStatus};
 use std::sync::{Arc, Mutex};
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
@@ -21,7 +21,7 @@ pub struct Tray {
 }
 
 pub fn create(app: &AppHandle) -> tauri::Result<Arc<Tray>> {
-    let open = MenuItem::with_id(app, "open", "Open GameRecorder", true, None::<&str>)?;
+    let open = MenuItem::with_id(app, "open", "Open Clairvoyance", true, None::<&str>)?;
     let status_item = MenuItem::with_id(app, "status", "Waiting for a game", false, None::<&str>)?;
     let clip_item = MenuItem::with_id(app, "clip", "Save clip", false, None::<&str>)?;
     let marker = MenuItem::with_id(app, "marker", "Add marker", true, None::<&str>)?;
@@ -33,7 +33,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<Arc<Tray>> {
 
     let icon = TrayIconBuilder::with_id("main")
         .icon(Image::from_bytes(ICON_IDLE)?)
-        .tooltip("GameRecorder: waiting for a game")
+        .tooltip("Clairvoyance: waiting for a game")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, ev| {
@@ -83,7 +83,7 @@ impl Tray {
         if let Ok(img) = Image::from_bytes(bytes) {
             let _ = self.icon.set_icon(Some(img));
         }
-        let _ = self.icon.set_tooltip(Some(format!("GameRecorder: {text}")));
+        let _ = self.icon.set_tooltip(Some(format!("Clairvoyance: {text}")));
         let _ = self.status_item.set_text(&text);
         let _ = self.clip_item.set_enabled(s.state == EngineState::Recording);
         let _ = self.stop_item.set_enabled(s.state != EngineState::Idle);

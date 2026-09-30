@@ -5,7 +5,7 @@
 <header class="titlebar" data-tauri-drag-region>
   <div class="brand" data-tauri-drag-region>
     <img src="/logo.svg" alt="" width="18" height="18" data-tauri-drag-region />
-    <span data-tauri-drag-region>GameRecorder</span>
+    <span data-tauri-drag-region>Clairvoyance</span>
   </div>
   <div class="controls">
     <button aria-label="Minimize" onclick={() => windowAction("minimize")}>

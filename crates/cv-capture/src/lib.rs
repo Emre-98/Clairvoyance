@@ -1,6 +1,6 @@
 //! Built-in game recorder: Windows Graphics Capture + hardware H.264 (NVENC / AMF / Quick Sync
 //! through Media Foundation) + per-process WASAPI loopback audio, written as crash-safe
-//! fragmented MP4, with an in-memory replay buffer. Implements `gr_core::Recorder`.
+//! fragmented MP4, with an in-memory replay buffer. Implements `cv_core::Recorder`.
 //!
 //! `mp4` and `replay` are portable (tested anywhere); everything touching Windows lives in `win`.
 
@@ -35,11 +35,11 @@ impl Default for NativeRecorder {
 
 #[cfg(not(windows))]
 #[async_trait::async_trait]
-impl gr_core::Recorder for NativeRecorder {
+impl cv_core::Recorder for NativeRecorder {
     async fn ensure_connected(&self) -> anyhow::Result<()> {
         anyhow::bail!("the built-in recorder only works on Windows")
     }
-    async fn prepare(&self, _: &gr_core::game::CaptureTarget, _: &gr_core::recorder::RecordOptions) -> anyhow::Result<()> {
+    async fn prepare(&self, _: &cv_core::game::CaptureTarget, _: &cv_core::recorder::RecordOptions) -> anyhow::Result<()> {
         Ok(())
     }
     async fn start_recording(&self) -> anyhow::Result<()> {
@@ -60,7 +60,7 @@ impl gr_core::Recorder for NativeRecorder {
     async fn finish(&self) -> anyhow::Result<()> {
         Ok(())
     }
-    async fn status(&self) -> gr_core::recorder::RecorderStatus {
-        gr_core::recorder::RecorderStatus::default()
+    async fn status(&self) -> cv_core::recorder::RecorderStatus {
+        cv_core::recorder::RecorderStatus::default()
     }
 }

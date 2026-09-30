@@ -234,7 +234,7 @@
     <div class="foot">
       {#if s.perf.samples > 0}
         <div class="pill" title="Measured every 5 seconds while the game ran">
-          <Icon name="cpu" size={13} />GameRecorder during this game: {s.perf.cpu_avg.toFixed(2)}% CPU avg ({s.perf.cpu_max.toFixed(1)}% max), {Math.round(s.perf.ram_avg_mb)} MB RAM ({Math.round(s.perf.ram_max_mb)} max)
+          <Icon name="cpu" size={13} />Clairvoyance during this game: {s.perf.cpu_avg.toFixed(2)}% CPU avg ({s.perf.cpu_max.toFixed(1)}% max), {Math.round(s.perf.ram_avg_mb)} MB RAM ({Math.round(s.perf.ram_max_mb)} max)
         </div>
       {/if}
       <div class="pill" title="Video position when the game clock was 0:00">Video offset {offset.toFixed(2)} s</div>

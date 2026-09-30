@@ -505,6 +505,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "clairvoyance"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "cv-capture",
+ "cv-core",
+ "cv-game-cs2",
+ "cv-game-league",
+ "cv-mock-league",
+ "log",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
+ "tauri-plugin-single-instance",
+ "tokio",
+ "webview2-com",
+ "windows 0.61.3",
+ "windows-core 0.62.2",
+ "zip",
+]
+
+[[package]]
 name = "combine"
 version = "4.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -653,6 +681,70 @@ name = "ctor"
 version = "1.0.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "914a755b7c2d4af2bdcff7ce1739e2db9a1b81a9b07123d8015786ae03c0980d"
+
+[[package]]
+name = "cv-capture"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "cv-core",
+ "log",
+ "serde",
+ "tokio",
+ "windows 0.61.3",
+ "windows-core 0.61.2",
+ "windows-future 0.2.1",
+]
+
+[[package]]
+name = "cv-core"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "log",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "cv-game-cs2"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "cv-core",
+ "log",
+ "serde_json",
+ "tokio",
+ "windows 0.61.3",
+]
+
+[[package]]
+name = "cv-game-league"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "cv-core",
+ "cv-mock-league",
+ "log",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "cv-mock-league"
+version = "0.2.0"
+dependencies = [
+ "serde_json",
+]
 
 [[package]]
 name = "darling"
@@ -1168,34 +1260,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gamerecorder"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "gr-capture",
- "gr-core",
- "gr-game-cs2",
- "gr-game-league",
- "gr-mock-league",
- "log",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-opener",
- "tauri-plugin-single-instance",
- "tokio",
- "webview2-com",
- "windows 0.61.3",
- "windows-core 0.62.2",
- "zip",
-]
-
-[[package]]
 name = "gdk"
 version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1437,70 +1501,6 @@ dependencies = [
  "glib-sys",
  "libc",
  "system-deps",
-]
-
-[[package]]
-name = "gr-capture"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "gr-core",
- "log",
- "serde",
- "tokio",
- "windows 0.61.3",
- "windows-core 0.61.2",
- "windows-future 0.2.1",
-]
-
-[[package]]
-name = "gr-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "log",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "gr-game-cs2"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "gr-core",
- "log",
- "serde_json",
- "tokio",
- "windows 0.61.3",
-]
-
-[[package]]
-name = "gr-game-league"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "gr-core",
- "gr-mock-league",
- "log",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "gr-mock-league"
-version = "0.1.0"
-dependencies = [
- "serde_json",
 ]
 
 [[package]]

@@ -1,5 +1,5 @@
 [package]
-name = "gr-mock-league"
+name = "cv-mock-league"
 description = "A fake League of Legends Live Client Data API that plays a scripted match. For testing without playing."
 version.workspace = true
 edition.workspace = true

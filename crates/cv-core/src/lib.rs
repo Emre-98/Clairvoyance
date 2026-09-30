@@ -1,4 +1,4 @@
-//! GameRecorder core. Game-agnostic: no game-specific code may live in this crate.
+//! Clairvoyance core. Game-agnostic: no game-specific code may live in this crate.
 
 pub mod engine;
 pub mod events;

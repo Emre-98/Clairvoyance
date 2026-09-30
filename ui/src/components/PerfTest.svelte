@@ -91,7 +91,7 @@
       <div class="muted small">{r.started_at} · {r.gpu} · {r.encoder || "encoder n/a"} · FPS from {r.fps_source}</div>
       <table>
         <thead>
-          <tr><th>Phase</th><th>Avg FPS</th><th>1% low</th><th>League CPU</th><th>PC CPU</th><th>GameRecorder</th><th>GPU 3D</th><th>GPU encode</th></tr>
+          <tr><th>Phase</th><th>Avg FPS</th><th>1% low</th><th>League CPU</th><th>PC CPU</th><th>Clairvoyance</th><th>GPU 3D</th><th>GPU encode</th></tr>
         </thead>
         <tbody>
           {#each r.phases as p}

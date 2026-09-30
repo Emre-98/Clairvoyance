@@ -1,5 +1,5 @@
 [package]
-name = "gr-core"
+name = "cv-core"
 description = "Game-agnostic core: events, sessions, the recording engine, settings and the library. No game-specific code lives here."
 version.workspace = true
 edition.workspace = true

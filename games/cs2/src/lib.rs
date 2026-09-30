@@ -10,15 +10,15 @@
 mod gsi;
 
 use async_trait::async_trait;
-use gr_core::game::{CaptureTarget, ConfigField, GameIntegration, GameResult, MatchPhase, PlayerInfo, PlayerStats, PollUpdate};
-use gr_core::{EventKind, GameEvent};
+use cv_core::game::{CaptureTarget, ConfigField, GameIntegration, GameResult, MatchPhase, PlayerInfo, PlayerStats, PollUpdate};
+use cv_core::{EventKind, GameEvent};
 use serde_json::Value;
 use std::time::{Duration, Instant};
 
 pub use gsi::{cfg_contents, find_cfg_dirs, CFG_NAME};
 
 pub const DEFAULT_PORT: u16 = 3380;
-pub const TOKEN: &str = "gamerecorder-gsi";
+pub const TOKEN: &str = "clairvoyance-gsi";
 
 /// What we remember between two GSI snapshots to turn counters into events.
 #[derive(Debug, Default, Clone)]
@@ -225,7 +225,7 @@ impl GameIntegration for Cs2Integration {
                 key: "cfg_folder",
                 label: "CS2 cfg folder",
                 kind: "text",
-                help: "Found automatically through Steam. GameRecorder puts its Game State Integration file there; restart CS2 once after the first install.",
+                help: "Found automatically through Steam. Clairvoyance puts its Game State Integration file there; restart CS2 once after the first install.",
             },
             ConfigField { key: "gsi_port", label: "Local port", kind: "text", help: "Port CS2 sends its game state to (default 3380)." },
         ]

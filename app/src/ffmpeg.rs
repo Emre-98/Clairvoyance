@@ -2,7 +2,7 @@
 //! zero CPU); precise mode re-encodes on the GPU. ffmpeg is downloaded on demand.
 
 use async_trait::async_trait;
-use gr_core::engine::ClipCutter;
+use cv_core::engine::ClipCutter;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 

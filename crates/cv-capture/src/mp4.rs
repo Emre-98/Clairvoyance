@@ -236,7 +236,7 @@ fn avc1(v: &VideoConfig) -> Vec<u8> {
     let mut b = B::new();
     b.zeros(6).u16(1).zeros(16).u16(v.width as u16).u16(v.height as u16).u32(0x0048_0000).u32(0x0048_0000).u32(0).u16(1);
     let mut name = [0u8; 32];
-    let n = b"GameRecorder";
+    let n = b"Clairvoyance";
     name[0] = n.len() as u8;
     name[1..1 + n.len()].copy_from_slice(n);
     b.bytes(&name).u16(0x18).u16(0xFFFF).bytes(&avcc);

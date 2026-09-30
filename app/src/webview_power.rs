@@ -1,4 +1,4 @@
-//! Makes the hidden window (nearly) free: while GameRecorder sits in the tray with its UI
+//! Makes the hidden window (nearly) free: while Clairvoyance sits in the tray with its UI
 //! kept loaded for instant reopening, the WebView is marked invisible, its page is suspended
 //! (no scripts, timers or rendering) and Chromium is asked to trim its memory.
 

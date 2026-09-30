@@ -107,7 +107,7 @@ impl GameIntegration for ClockGame {
 
 #[tokio::test(start_paused = true)]
 async fn full_session_lifecycle() {
-    let root = std::env::temp_dir().join(format!("gr-engine-{}", std::process::id()));
+    let root = std::env::temp_dir().join(format!("cv-engine-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     let clock = Arc::new(Mutex::new(0.0));
     let game = ClockGame { inner: FakeGame { polls: 0, end_after: 12 }, clock: clock.clone() };
@@ -219,7 +219,7 @@ impl GameIntegration for MatchGame {
 
 #[tokio::test(start_paused = true)]
 async fn match_only_games_record_per_match() {
-    let root = std::env::temp_dir().join(format!("gr-engine-mo-{}", std::process::id()));
+    let root = std::env::temp_dir().join(format!("cv-engine-mo-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     let phase = Arc::new(Mutex::new(MatchPhase::Waiting));
     let recorder = Arc::new(FakeRecorder::default());

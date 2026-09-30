@@ -239,6 +239,8 @@ export interface AppInfo {
   save_dir: string;
   gpu?: GpuInfo | null;
   games: GameMeta[];
+  /** The old app (GameRecorder, before the rename) is still installed. */
+  legacy_install: boolean;
 }
 
 export interface StorageInfo {

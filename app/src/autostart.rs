@@ -5,7 +5,7 @@ pub fn set(enabled: bool) -> anyhow::Result<()> {
     use windows::core::w;
     use windows::Win32::System::Registry::{RegDeleteKeyValueW, RegSetKeyValueW, HKEY_CURRENT_USER, REG_SZ};
     let key = w!("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
-    let name = w!("GameRecorder");
+    let name = w!("Clairvoyance");
     unsafe {
         if enabled {
             let exe = std::env::current_exe()?;
@@ -18,6 +18,8 @@ pub fn set(enabled: bool) -> anyhow::Result<()> {
         } else {
             let _ = RegDeleteKeyValueW(HKEY_CURRENT_USER, key, name);
         }
+        // The app used to be called GameRecorder: never leave its entry behind.
+        let _ = RegDeleteKeyValueW(HKEY_CURRENT_USER, key, w!("GameRecorder"));
     }
     Ok(())
 }

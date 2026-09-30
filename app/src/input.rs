@@ -4,7 +4,7 @@
 //! block them, so it can't add input lag. It doesn't touch the game process at all
 //! (Vanguard-safe). It's only registered while a game is running.
 
-use gr_core::engine::InputEvent;
+use cv_core::engine::InputEvent;
 use std::sync::atomic::{AtomicIsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
@@ -63,7 +63,7 @@ pub fn start(tx: UnboundedSender<InputEvent>) -> InputControl {
 #[cfg(windows)]
 mod win {
     use super::*;
-    use gr_core::game::KeyPress;
+    use cv_core::game::KeyPress;
     use std::cell::RefCell;
     use std::collections::HashSet;
     use std::sync::OnceLock;
@@ -174,7 +174,7 @@ mod win {
         let _ = SENDER.set(tx);
         unsafe {
             let Ok(hinst) = GetModuleHandleW(None) else { return };
-            let class = w!("GameRecorderRawInput");
+            let class = w!("ClairvoyanceRawInput");
             let wc = WNDCLASSW { lpfnWndProc: Some(wndproc), hInstance: hinst.into(), lpszClassName: class, ..Default::default() };
             RegisterClassW(&wc);
             let hwnd = match CreateWindowExW(WINDOW_EX_STYLE(0), class, w!(""), WINDOW_STYLE(0), 0, 0, 0, 0, Some(HWND_MESSAGE), None, Some(hinst.into()), None) {

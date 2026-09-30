@@ -91,6 +91,7 @@ export const api = {
   finishFirstRun: () => call<void>("finish_first_run"),
   simulateGame: (speed: number, length: number) => call<void>("simulate_game", { speed, length }),
   quit: () => call<void>("quit_app"),
+  removeLegacyApp: () => call<void>("remove_legacy_app"),
   builtinEncoders: () => call<{ gpu: string; encoders: string[] }>("builtin_encoders"),
   recorderSelftest: (secs: number) => call<SelfTestResult>("recorder_selftest", { secs }),
   perfTestStart: (phaseSecs: number) => call<void>("perf_test_start", { phaseSecs }),
@@ -112,7 +113,7 @@ export async function pickFile(filters?: { name: string; extensions: string[] }[
   return typeof r === "string" ? r : null;
 }
 
-export async function confirmDialog(message: string, title = "GameRecorder"): Promise<boolean> {
+export async function confirmDialog(message: string, title = "Clairvoyance"): Promise<boolean> {
   if (!isTauri) return window.confirm(message);
   const { ask } = await import("@tauri-apps/plugin-dialog");
   return ask(message, { title, kind: "warning" });

@@ -63,7 +63,7 @@ function makeSummary(i: number): SessionSummary {
   const win = i % 3 !== 1;
   return {
     id: `s${i}`,
-    dir: `C:\\Users\\you\\Videos\\GameRecorder\\s${i}`,
+    dir: `C:\\Users\\you\\Videos\\Clairvoyance\\s${i}`,
     game_id: "league",
     game_name: "League of Legends",
     started_at: d.toISOString(),
@@ -158,6 +158,8 @@ const clips: ClipEntry[] = sessions.slice(0, 5).flatMap((s, i) => [
   { session_id: s.id, game_name: s.game_name, character: s.player?.character, character_id: s.player?.character_id, path: "/dev-assets/sample.webm", title: i % 2 ? "Triple kill" : `Clip at ${10 + i}:2${i}`, created_at: s.started_at, size_bytes: 3.2e7 + i * 4e6, source: i % 2 ? "event" : "replay" },
 ]);
 
+let legacyRemoved = false;
+
 export async function invoke(cmd: string, args: any = {}): Promise<any> {
   await new Promise((r) => setTimeout(r, 60));
   switch (cmd) {
@@ -165,11 +167,12 @@ export async function invoke(cmd: string, args: any = {}): Promise<any> {
       return live;
     case "app_info":
       return {
-        version: "0.1.0",
-        log_file: "C:\\Users\\you\\AppData\\Local\\GameRecorder\\logs\\gamerecorder.log",
-        config_file: "C:\\Users\\you\\AppData\\Roaming\\GameRecorder\\settings.json",
-        default_save_dir: "C:\\Users\\you\\Videos\\GameRecorder",
-        save_dir: "C:\\Users\\you\\Videos\\GameRecorder",
+        version: "0.2.0",
+        legacy_install: q.get("legacy") === "1" && !legacyRemoved,
+        log_file: "C:\\Users\\you\\AppData\\Local\\Clairvoyance\\logs\\clairvoyance.log",
+        config_file: "C:\\Users\\you\\AppData\\Roaming\\Clairvoyance\\settings.json",
+        default_save_dir: "C:\\Users\\you\\Videos\\Clairvoyance",
+        save_dir: "C:\\Users\\you\\Videos\\Clairvoyance",
         gpu: { vendor: "NVIDIA", name: "NVIDIA GeForce RTX 5080", encoder: "nvenc" },
         games: [
           {
@@ -185,6 +188,10 @@ export async function invoke(cmd: string, args: any = {}): Promise<any> {
           },
         ],
       };
+    case "remove_legacy_app":
+      await new Promise((r) => setTimeout(r, 800));
+      legacyRemoved = true;
+      return;
     case "get_settings":
       return structuredClone(settings);
     case "save_settings":
@@ -198,7 +205,7 @@ export async function invoke(cmd: string, args: any = {}): Promise<any> {
     case "get_session":
       return {
         session: session(args.id),
-        dir: "C:\\Users\\you\\Videos\\GameRecorder\\" + args.id,
+        dir: "C:\\Users\\you\\Videos\\Clairvoyance\\" + args.id,
         video_path: "/dev-assets/sample.webm",
         thumb_path: null,
         clips: session(args.id).clips.map((c) => ({ ...c, path: "/dev-assets/sample.webm", exists: true })),
@@ -208,7 +215,7 @@ export async function invoke(cmd: string, args: any = {}): Promise<any> {
     case "perf_now":
       return { cpu: 0.2, ram_mb: 38 };
     case "storage_info":
-      return { save_dir: "C:\\Users\\you\\Videos\\GameRecorder", used_bytes: 23.4e9, free_bytes: 812e9, games: sessions.length };
+      return { save_dir: "C:\\Users\\you\\Videos\\Clairvoyance", used_bytes: 23.4e9, free_bytes: 812e9, games: sessions.length };
     case "builtin_encoders":
       return { gpu: "NVIDIA GeForce RTX 5080", encoders: ["NVIDIA H.264 Encoder MFT (NVIDIA)"] };
     case "recorder_selftest":

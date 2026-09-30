@@ -1,4 +1,4 @@
-//! Recorder abstraction, implemented by the built-in recorder (`gr-capture`: Windows Graphics
+//! Recorder abstraction, implemented by the built-in recorder (`cv-capture`: Windows Graphics
 //! Capture + hardware H.264). Keeping it behind a trait lets the engine be tested with a fake.
 
 use crate::game::CaptureTarget;

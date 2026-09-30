@@ -67,7 +67,7 @@ impl Default for EventSettings {
 #[serde(default)]
 pub struct Settings {
     pub first_run_done: bool,
-    /// Where games are saved. Empty = `<Videos>\GameRecorder`.
+    /// Where games are saved. Empty = `<Videos>\Clairvoyance`.
     pub save_dir: String,
     /// Delete games older than this many days (0 = never). Favorites are kept.
     pub auto_delete_days: u32,
@@ -268,7 +268,7 @@ mod tests {
 
     #[test]
     fn old_obs_settings_are_dropped_and_the_file_is_tidied() {
-        let dir = std::env::temp_dir().join(format!("gr-settings-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("cv-settings-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("settings.json");
         std::fs::write(

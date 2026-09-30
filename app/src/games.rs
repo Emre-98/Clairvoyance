@@ -1,10 +1,10 @@
 //! The list of supported games. To add a game, add its module here (see docs/ADDING_A_GAME.md).
 
-use gr_core::game::{ConfigField, GameIntegration};
+use cv_core::game::{ConfigField, GameIntegration};
 use serde::Serialize;
 
 pub fn all() -> Vec<Box<dyn GameIntegration>> {
-    vec![Box::new(gr_game_league::LeagueIntegration::new()), Box::new(gr_game_cs2::Cs2Integration::new())]
+    vec![Box::new(cv_game_league::LeagueIntegration::new()), Box::new(cv_game_cs2::Cs2Integration::new())]
 }
 
 #[derive(Serialize)]

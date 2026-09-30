@@ -1,5 +1,5 @@
 [package]
-name = "gr-capture"
+name = "cv-capture"
 description = "Built-in recorder: Windows Graphics Capture + hardware H.264 + WASAPI audio -> fragmented MP4."
 version.workspace = true
 edition.workspace = true
@@ -7,7 +7,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
-gr-core.workspace = true
+cv-core.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 tokio.workspace = true

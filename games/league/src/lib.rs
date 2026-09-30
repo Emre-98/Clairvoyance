@@ -9,10 +9,10 @@ pub mod events;
 
 use async_trait::async_trait;
 use events::{translate, Ctx, EventList};
-use gr_core::game::{
+use cv_core::game::{
     CaptureTarget, ConfigField, GameIntegration, GameResult, KeyPress, MatchPhase, PlayerInfo, PlayerStats, PollUpdate,
 };
-use gr_core::{EventKind, GameEvent};
+use cv_core::{EventKind, GameEvent};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
@@ -285,7 +285,7 @@ impl GameIntegration for LeagueIntegration {
     }
     fn configure(&mut self, config: &serde_json::Value) {
         self.riot_id = config["riot_id"].as_str().unwrap_or("").trim().to_string();
-        self.ult_key = gr_core::settings::normalize_key(config["ult_key"].as_str().unwrap_or("R"));
+        self.ult_key = cv_core::settings::normalize_key(config["ult_key"].as_str().unwrap_or("R"));
         if self.ult_key.is_empty() {
             self.ult_key = "R".into();
         }

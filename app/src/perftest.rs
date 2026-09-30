@@ -5,7 +5,7 @@
 //!   2. Built-in recorder recording.
 //! Measured per phase: League FPS and 1% lows (PresentMon, Intel's open-source frame-time tool,
 //! which reads Windows' present events: no game access), League CPU, whole-PC CPU,
-//! GameRecorder's CPU and RAM, GPU 3D load and the video-encode engine load.
+//! Clairvoyance's CPU and RAM, GPU 3D load and the video-encode engine load.
 
 use serde::{Deserialize, Serialize};
 
@@ -38,7 +38,7 @@ pub struct PerfReport {
 
 impl PerfReport {
     pub fn to_text(&self) -> String {
-        let mut s = format!("GameRecorder performance test, {}\nGPU: {}\nEncoder: {}\nFPS source: {}\n\n", self.started_at, self.gpu, self.encoder, self.fps_source);
+        let mut s = format!("Clairvoyance performance test, {}\nGPU: {}\nEncoder: {}\nFPS source: {}\n\n", self.started_at, self.gpu, self.encoder, self.fps_source);
         let f = |v: Option<f64>| v.map(|x| format!("{x:.1}")).unwrap_or("-".into());
         s.push_str("phase                 avg FPS  1% low  p99 ms  League CPU  PC CPU  app CPU  app RAM  GPU 3D  GPU encode\n");
         for p in &self.phases {
@@ -195,9 +195,9 @@ pub const GAME_EXE: &str = "League of Legends.exe";
 mod run {
     use super::*;
     use crate::state::AppState;
-    use gr_core::engine::{EngineCommand, Platform};
-    use gr_core::game::CaptureTarget;
-    use gr_core::recorder::{RecordOptions, Recorder};
+    use cv_core::engine::{EngineCommand, Platform};
+    use cv_core::game::CaptureTarget;
+    use cv_core::recorder::{RecordOptions, Recorder};
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
     use std::time::{Duration, Instant};
@@ -212,7 +212,7 @@ mod run {
             return Ok(exe);
         }
         std::fs::create_dir_all(dir)?;
-        let client = reqwest::Client::builder().user_agent("GameRecorder").build()?;
+        let client = reqwest::Client::builder().user_agent("Clairvoyance").build()?;
         let rel: serde_json::Value = client.get("https://api.github.com/repos/GameTechDev/PresentMon/releases/latest").send().await?.error_for_status()?.json().await?;
         let asset = rel["assets"]
             .as_array()
@@ -258,7 +258,7 @@ mod run {
 
     struct Acc {
         n: f64,
-        s: gr_capture::win::perf::PerfSnapshot,
+        s: cv_capture::win::perf::PerfSnapshot,
         app_cpu: f64,
         app_ram: f64,
     }
@@ -315,7 +315,7 @@ mod run {
                 anyhow::bail!("cancelled");
             }
             let l = st.live.lock().unwrap().clone();
-            if l.game_id.as_deref() == Some("league") && l.phase == gr_core::game::MatchPhase::InProgress {
+            if l.game_id.as_deref() == Some("league") && l.phase == cv_core::game::MatchPhase::InProgress {
                 break;
             }
             if wait_start.elapsed() > Duration::from_secs(30 * 60) {
@@ -362,9 +362,9 @@ mod run {
                 tokio::time::sleep(Duration::from_secs(3)).await; // let it settle
             }
             st.platform.speak(&format!("Test phase: {name}"), 70);
-            let pids = gr_capture::win::window::pids_for_exe(GAME_EXE);
+            let pids = cv_capture::win::window::pids_for_exe(GAME_EXE);
             let t0 = pm_started.map(|p| p.elapsed().as_secs_f64()).unwrap_or(0.0);
-            let mut pc = gr_capture::win::perf::PerfCounters::new();
+            let mut pc = cv_capture::win::perf::PerfCounters::new();
             let _ = st.platform.perf_sample();
             let mut acc = Acc { n: 0.0, s: Default::default(), app_cpu: 0.0, app_ram: 0.0 };
             let end = Instant::now() + Duration::from_secs(phase_secs);
@@ -386,7 +386,7 @@ mod run {
                 }
                 let in_game = {
                     let l = st.live.lock().unwrap();
-                    l.game_id.as_deref() == Some("league") && l.phase == gr_core::game::MatchPhase::InProgress
+                    l.game_id.as_deref() == Some("league") && l.phase == cv_core::game::MatchPhase::InProgress
                 };
                 if !in_game {
                     if let Some(r) = &rec {

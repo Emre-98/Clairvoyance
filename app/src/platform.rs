@@ -1,7 +1,7 @@
 //! Windows services for the engine: process list, focused window, TTS, perf stats,
 //! GPU vendor. On other OSes (dev builds only) these are harmless stubs.
 
-use gr_core::engine::Platform;
+use cv_core::engine::Platform;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Mutex};

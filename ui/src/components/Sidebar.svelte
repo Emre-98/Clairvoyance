@@ -72,7 +72,7 @@
   {/if}
 
   {#if app.settings?.show_perf && perf}
-    <div class="perf" title="CPU and memory used by GameRecorder itself (this window adds a little while it's open)">
+    <div class="perf" title="CPU and memory used by Clairvoyance itself (this window adds a little while it's open)">
       <Icon name="cpu" size={14} />
       <span>{perf.cpu.toFixed(1)}% CPU</span>
       <span>{Math.round(perf.ram_mb)} MB</span>

@@ -1,5 +1,5 @@
 [package]
-name = "gr-game-cs2"
+name = "cv-game-cs2"
 description = "Counter-Strike 2 module: Valve's official Game State Integration (the game sends its state to a local HTTP endpoint)."
 version.workspace = true
 edition.workspace = true
@@ -7,7 +7,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
-gr-core.workspace = true
+cv-core.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true

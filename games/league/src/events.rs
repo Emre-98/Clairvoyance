@@ -1,7 +1,7 @@
 //! Translates Live Client Data API events into shared timeline events.
 //! Pure functions, so they're unit-tested without a running game.
 
-use gr_core::{EventKind, GameEvent};
+use cv_core::{EventKind, GameEvent};
 use serde::Deserialize;
 use std::collections::HashMap;
 

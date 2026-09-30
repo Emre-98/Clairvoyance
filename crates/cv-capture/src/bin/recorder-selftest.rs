@@ -7,7 +7,7 @@
 
 #[cfg(windows)]
 fn main() {
-    use gr_capture::win::{d3d, perf::PerfCounters, NativeRecorder};
+    use cv_capture::win::{d3d, perf::PerfCounters, NativeRecorder};
     use std::time::{Duration, Instant};
     let args: Vec<String> = std::env::args().skip(1).collect();
     let secs: u64 = args.iter().find_map(|a| a.parse().ok()).unwrap_or(10);
@@ -22,11 +22,11 @@ fn main() {
         let _ = log::set_boxed_logger(Box::new(StepLog(std::sync::Mutex::new(f))));
         log::set_max_level(log::LevelFilter::Info);
     }
-    gr_capture::win::install_crash_logging();
+    cv_capture::win::install_crash_logging();
     let mut report = String::new();
     macro_rules! say { ($($t:tt)*) => {{ let l = format!($($t)*); println!("{l}"); report.push_str(&l); report.push('\n'); }} }
 
-    say!("GameRecorder recorder self-test");
+    say!("Clairvoyance recorder self-test");
     match NativeRecorder::available_encoders() {
         Ok((gpu, encs)) => {
             say!("GPU: {gpu}");
@@ -60,7 +60,7 @@ fn main() {
         (samples, t0.elapsed())
     });
     let t = Instant::now();
-    let r = gr_capture::win::self_test(&out, secs, exe.as_deref(), mic);
+    let r = cv_capture::win::self_test(&out, secs, exe.as_deref(), mic);
     stop.store(true, std::sync::atomic::Ordering::SeqCst);
     let (samples, _) = sampler.join().unwrap();
     match r {
@@ -76,7 +76,7 @@ fn main() {
     }
     if !samples.is_empty() {
         let n = samples.len() as f64;
-        let avg = |f: &dyn Fn(&(gr_capture::win::perf::PerfSnapshot, f64)) -> f64| samples.iter().map(f).sum::<f64>() / n;
+        let avg = |f: &dyn Fn(&(cv_capture::win::perf::PerfSnapshot, f64)) -> f64| samples.iter().map(f).sum::<f64>() / n;
         say!("Average over the test: this program {:.2}% CPU, GPU video-encode engine {:.1}%, GPU 3D {:.1}%, this program's GPU use {:.1}%, whole PC CPU {:.1}%",
             avg(&|s| s.1), avg(&|s| s.0.gpu_encode), avg(&|s| s.0.gpu_3d), avg(&|s| s.0.app_gpu), avg(&|s| s.0.cpu_total));
     }

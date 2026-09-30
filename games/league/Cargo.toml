@@ -1,5 +1,5 @@
 [package]
-name = "gr-game-league"
+name = "cv-game-league"
 description = "League of Legends module: Riot's official Live Client Data API (no memory reading, Vanguard-safe)."
 version.workspace = true
 edition.workspace = true
@@ -7,7 +7,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
-gr-core.workspace = true
+cv-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
@@ -17,4 +17,4 @@ log.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
-gr-mock-league = { path = "../../crates/gr-mock-league" }
+cv-mock-league = { path = "../../crates/cv-mock-league" }

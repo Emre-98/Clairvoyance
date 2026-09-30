@@ -1,7 +1,7 @@
 //! Muxes real H.264/AAC (made by ffmpeg) and checks the files with ffprobe/ffmpeg.
 //! Skipped when ffmpeg isn't installed.
 
-use gr_capture::mp4::*;
+use cv_capture::mp4::*;
 use std::process::Command;
 
 fn have_ffmpeg() -> bool {
@@ -137,7 +137,7 @@ fn fragmented_recording_and_clip() {
 
     // Replay-buffer clip: the last ~3 s, as a normal MP4.
     let clip = tmp("clip.mp4");
-    let mut rb = gr_capture::replay::ReplayBuffer::new(3, usize::MAX);
+    let mut rb = cv_capture::replay::ReplayBuffer::new(3, usize::MAX);
     for p in all.iter().cloned() {
         rb.push(p);
     }

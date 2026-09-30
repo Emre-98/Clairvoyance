@@ -1,4 +1,4 @@
-//! GameRecorder desktop app.
+//! Clairvoyance desktop app.
 //!
 //! Process layout while you play: this app (Rust, below-normal priority) records on the GPU.
 //! The UI (WebView2) stays loaded so it opens instantly and you can alt-tab to it during a
@@ -13,14 +13,15 @@ mod ffmpeg;
 mod games;
 mod input;
 mod logger;
+mod migrate;
 mod perftest;
 mod platform;
 mod state;
 mod tray;
 mod webview_power;
 
-use gr_core::engine::{Engine, EngineCommand, EngineEvent};
-use gr_core::Settings;
+use cv_core::engine::{Engine, EngineCommand, EngineEvent};
+use cv_core::Settings;
 use state::{AppState, GpuInfo, Paths};
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
@@ -34,22 +35,47 @@ fn env_dir(var: &str) -> Option<PathBuf> {
     std::env::var_os(var).map(PathBuf::from)
 }
 
+pub const APP_NAME: &str = "Clairvoyance";
+
+struct Roots {
+    roaming: PathBuf,
+    local: PathBuf,
+    videos: PathBuf,
+}
+
+fn roots() -> Roots {
+    Roots {
+        roaming: env_dir("APPDATA").or_else(|| env_dir("HOME").map(|h| h.join(".config"))).unwrap_or_else(|| ".".into()),
+        local: env_dir("LOCALAPPDATA").or_else(|| env_dir("HOME").map(|h| h.join(".local/share"))).unwrap_or_else(|| ".".into()),
+        videos: env_dir("USERPROFILE").or_else(|| env_dir("HOME")).map(|h| h.join("Videos")).unwrap_or_else(|| ".".into()),
+    }
+}
+
+/// Settings: `%APPDATA%\Clairvoyance\settings.json`. App data (logs, thumbnails, library
+/// cache, downloaded tools): `%LOCALAPPDATA%\Clairvoyance`. Recordings: `Videos\Clairvoyance`.
 fn paths() -> Paths {
-    let roaming = env_dir("APPDATA").or_else(|| env_dir("HOME").map(|h| h.join(".config"))).unwrap_or_else(|| ".".into());
-    let local = env_dir("LOCALAPPDATA").or_else(|| env_dir("HOME").map(|h| h.join(".local/share"))).unwrap_or_else(|| ".".into());
-    let videos = env_dir("USERPROFILE").or_else(|| env_dir("HOME")).map(|h| h.join("Videos")).unwrap_or_else(|| ".".into());
-    let data_dir = local.join("GameRecorder");
+    let r = roots();
+    let data_dir = r.local.join(APP_NAME);
     Paths {
-        config_file: roaming.join("GameRecorder").join("settings.json"),
-        log_file: data_dir.join("logs").join("gamerecorder.log"),
+        config_file: r.roaming.join(APP_NAME).join("settings.json"),
+        log_file: data_dir.join("logs").join("clairvoyance.log"),
         data_dir,
-        default_save_dir: videos.join("GameRecorder"),
+        default_save_dir: r.videos.join(APP_NAME),
+    }
+}
+
+fn old_paths() -> migrate::OldPaths {
+    let r = roots();
+    migrate::OldPaths {
+        config_file: r.roaming.join(migrate::OLD_NAME).join("settings.json"),
+        data_dir: r.local.join(migrate::OLD_NAME),
+        default_save_dir: r.videos.join(migrate::OLD_NAME),
     }
 }
 
 fn build_main_window(app: &AppHandle, visible: bool) -> Option<tauri::WebviewWindow> {
     let built = WebviewWindowBuilder::new(app, MAIN, WebviewUrl::App("index.html".into()))
-        .title("GameRecorder")
+        .title("Clairvoyance")
         .inner_size(1320.0, 820.0)
         .min_inner_size(980.0, 620.0)
         .decorations(false)
@@ -167,10 +193,16 @@ fn handle_engine_event(app: &AppHandle, tray: &tray::Tray, ev: EngineEvent) {
 fn main() {
     let start_hidden = std::env::args().any(|a| a == "--minimized");
     let paths = paths();
+    // First start after the rename from GameRecorder: bring the old settings, recordings and
+    // tools over (before the logger opens its file inside the data folder).
+    let migration = migrate::run(&paths, &old_paths());
     let log_file = logger::init(paths.log_file.parent().unwrap().to_path_buf());
     #[cfg(windows)]
-    gr_capture::win::install_crash_logging();
-    log::info!("GameRecorder {} starting", env!("CARGO_PKG_VERSION"));
+    cv_capture::win::install_crash_logging();
+    log::info!("Clairvoyance {} starting", env!("CARGO_PKG_VERSION"));
+    for line in &migration {
+        log::info!("migration: {line}");
+    }
     platform::lower_priority();
 
     let settings = Settings::load(&paths.config_file);
@@ -219,7 +251,7 @@ fn main() {
                 paths.data_dir.join("ffmpeg"),
                 gpu.as_ref().map(|g| g.encoder.clone()).unwrap_or_default(),
             ));
-            let recorder = Arc::new(gr_capture::NativeRecorder::new());
+            let recorder = Arc::new(cv_capture::NativeRecorder::new());
             let engine = Engine::new(
                 games::all(),
                 recorder.clone(),
@@ -282,7 +314,7 @@ fn main() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("error while building GameRecorder");
+        .expect("error while building Clairvoyance");
 
     app.run(|_app, event| {
         if let RunEvent::ExitRequested { api, code, .. } = event {

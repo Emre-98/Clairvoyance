@@ -75,7 +75,9 @@ async fn gsi_server_and_poll() {
 fn cfg_install() {
     let dir = std::env::temp_dir().join(format!("cs2cfg-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("gamestate_integration_gamerecorder.cfg"), "old").unwrap();
     assert!(gsi::install_cfg(&dir, 3380, TOKEN).unwrap());
+    assert!(!dir.join("gamestate_integration_gamerecorder.cfg").exists(), "the old app's file is removed");
     assert!(!gsi::install_cfg(&dir, 3380, TOKEN).unwrap(), "unchanged the second time");
     let text = std::fs::read_to_string(dir.join(CFG_NAME)).unwrap();
     assert!(text.contains("http://127.0.0.1:3380/") && text.contains(TOKEN));

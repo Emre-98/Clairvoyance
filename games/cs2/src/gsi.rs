@@ -8,7 +8,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-pub const CFG_NAME: &str = "gamestate_integration_gamerecorder.cfg";
+pub const CFG_NAME: &str = "gamestate_integration_clairvoyance.cfg";
+/// Files written by older versions (the app used to be called GameRecorder).
+const LEGACY_CFG_NAMES: &[&str] = &["gamestate_integration_gamerecorder.cfg"];
 
 type Latest = Arc<Mutex<Option<(Value, Instant)>>>;
 
@@ -97,7 +99,7 @@ fn handle(stream: TcpStream, latest: &Latest, token: &str) {
 
 pub fn cfg_contents(port: u16, token: &str) -> String {
     format!(
-        r#""GameRecorder"
+        r#""Clairvoyance"
 {{
     "uri"       "http://127.0.0.1:{port}/"
     "timeout"   "5.0"
@@ -126,6 +128,12 @@ pub fn cfg_contents(port: u16, token: &str) -> String {
 pub fn install_cfg(dir: &Path, port: u16, token: &str) -> std::io::Result<bool> {
     if !dir.is_dir() {
         return Ok(false);
+    }
+    for old in LEGACY_CFG_NAMES {
+        let p = dir.join(old);
+        if p.exists() && std::fs::remove_file(&p).is_ok() {
+            log::info!("removed old CS2 GSI config {}", p.display());
+        }
     }
     let path = dir.join(CFG_NAME);
     let want = cfg_contents(port, token);

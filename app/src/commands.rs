@@ -1,11 +1,11 @@
 //! Commands the UI can call (`invoke("name", {...})`).
 
 use crate::state::{AppState, GpuInfo};
-use gr_core::engine::{EngineCommand, LiveStatus};
-use gr_core::library::{self, ClipEntry, SessionSummary};
-use gr_core::session::{ClipInfo, GameSession, CLIPS_DIR, THUMB_FILE};
-use gr_core::Settings;
-use gr_core::engine::ClipCutter;
+use cv_core::engine::{EngineCommand, LiveStatus};
+use cv_core::library::{self, ClipEntry, SessionSummary};
+use cv_core::session::{ClipInfo, GameSession, CLIPS_DIR, THUMB_FILE};
+use cv_core::Settings;
+use cv_core::engine::ClipCutter;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -23,7 +23,7 @@ fn session_dir(st: &AppState, id: &str) -> R<PathBuf> {
         return Err("invalid game id".into());
     }
     let d = st.save_dir().join(id);
-    if !d.join(gr_core::session::SESSION_FILE).exists() {
+    if !d.join(cv_core::session::SESSION_FILE).exists() {
         return Err("That game no longer exists.".into());
     }
     Ok(d)
@@ -43,6 +43,8 @@ pub struct AppInfo {
     save_dir: String,
     gpu: Option<GpuInfo>,
     games: Vec<crate::games::GameMeta>,
+    /// The old app (GameRecorder, before the rename) is still installed.
+    legacy_install: bool,
 }
 
 #[tauri::command]
@@ -55,7 +57,14 @@ pub fn app_info(st: St) -> AppInfo {
         save_dir: st.save_dir().to_string_lossy().into(),
         gpu: st.gpu.clone(),
         games: crate::games::meta(),
+        legacy_install: crate::migrate::legacy_uninstaller().is_some(),
     }
+}
+
+/// Uninstalls the old GameRecorder app (recordings and settings are kept).
+#[tauri::command]
+pub async fn remove_legacy_app() -> R<()> {
+    tauri::async_runtime::spawn_blocking(crate::migrate::remove_legacy_install).await.map_err(err)?
 }
 
 #[tauri::command]
@@ -180,9 +189,9 @@ pub async fn export_clip(app: AppHandle, st: St<'_>, id: String, start: f64, end
     }
     let clips = dir.join(CLIPS_DIR);
     std::fs::create_dir_all(&clips).map_err(err)?;
-    let title = if title.trim().is_empty() { format!("Clip {}", gr_core::events::fmt_clock(start - s.video_offset)) } else { title.trim().to_string() };
-    let name = format!("{}.mp4", gr_core::session::sanitize(&title));
-    let out = gr_core::session::unique_path(&clips, &name);
+    let title = if title.trim().is_empty() { format!("Clip {}", cv_core::events::fmt_clock(start - s.video_offset)) } else { title.trim().to_string() };
+    let name = format!("{}.mp4", cv_core::session::sanitize(&title));
+    let out = cv_core::session::unique_path(&clips, &name);
     st.ffmpeg.cut(&video, start, end, &out, precise).await.map_err(|e| format!("{e:#}"))?;
     let mut s = GameSession::load(&dir).map_err(err)?;
     s.clips.push(ClipInfo {
@@ -232,8 +241,8 @@ pub async fn open_path(path: String) -> R<()> {
 }
 
 #[tauri::command]
-pub async fn recorder_status(st: St<'_>) -> R<gr_core::recorder::RecorderStatus> {
-    use gr_core::Recorder;
+pub async fn recorder_status(st: St<'_>) -> R<cv_core::recorder::RecorderStatus> {
+    use cv_core::Recorder;
     Ok(st.recorder.status().await)
 }
 
@@ -270,7 +279,7 @@ pub struct PerfNow {
 
 #[tauri::command]
 pub fn perf_now(st: St) -> Option<PerfNow> {
-    use gr_core::engine::Platform;
+    use cv_core::engine::Platform;
     st.platform.perf_sample().map(|(cpu, ram_mb)| PerfNow { cpu, ram_mb })
 }
 
@@ -324,11 +333,11 @@ pub fn start_simulation(st: Arc<AppState>, speed: f64, length: f64) -> R<()> {
     if st.live.lock().unwrap().session_id.is_some() {
         return Err("A game is already running.".into());
     }
-    let mut opts = gr_mock_league::MockOptions { speed: speed.clamp(1.0, 60.0), length: length.clamp(60.0, 3600.0), ..Default::default() };
+    let mut opts = cv_mock_league::MockOptions { speed: speed.clamp(1.0, 60.0), length: length.clamp(60.0, 3600.0), ..Default::default() };
     let mock = (2998..3010)
         .find_map(|port| {
             opts.port = port;
-            gr_mock_league::spawn(opts.clone()).ok()
+            cv_mock_league::spawn(opts.clone()).ok()
         })
         .ok_or("Couldn't start the simulator (ports 2998-3009 busy).")?;
     let real = st.settings();
@@ -369,7 +378,7 @@ pub struct EncoderList {
 /// Hardware encoders the built-in recorder can use on this PC.
 #[tauri::command]
 pub async fn builtin_encoders() -> R<EncoderList> {
-    tauri::async_runtime::spawn_blocking(|| gr_capture::NativeRecorder::available_encoders())
+    tauri::async_runtime::spawn_blocking(|| cv_capture::NativeRecorder::available_encoders())
         .await
         .map_err(err)?
         .map(|(gpu, encoders)| EncoderList { gpu, encoders })
@@ -396,7 +405,7 @@ pub async fn recorder_selftest(st: St<'_>, secs: u64) -> R<SelfTest> {
     let platform = st.platform.clone();
     let secs = secs.clamp(3, 30);
     tauri::async_runtime::spawn_blocking(move || -> R<SelfTest> {
-        use gr_core::engine::Platform;
+        use cv_core::engine::Platform;
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).map_err(err)?;
         let _ = platform.perf_sample();
@@ -410,7 +419,7 @@ pub async fn recorder_selftest(st: St<'_>, secs: u64) -> R<SelfTest> {
 
 #[cfg(windows)]
 fn run_selftest(dir: &std::path::Path, secs: u64) -> R<(PathBuf, u64, u64)> {
-    gr_capture::win::self_test(dir, secs, None, false).map_err(|e| format!("{e:#}"))
+    cv_capture::win::self_test(dir, secs, None, false).map_err(|e| format!("{e:#}"))
 }
 
 #[cfg(not(windows))]
@@ -479,5 +488,6 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static 
         perf_test_status,
         perf_test_cancel,
         quit_app,
+        remove_legacy_app,
     ]
 }

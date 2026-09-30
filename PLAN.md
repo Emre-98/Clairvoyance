@@ -106,7 +106,7 @@ Rules:
 - Clip editor: trim and export. Tray icon with status (idle / recording / game detected).
 
 ## Other games
-- Each game is its own crate under `games/` implementing `GameIntegration` (in `crates/gr-core/src/game.rs`).
+- Each game is its own crate under `games/` implementing `GameIntegration` (in `crates/cv-core/src/game.rs`).
 - The core (recording, timeline, UI, storage) must contain NO game-specific code.
 - Games without an event API: recording + manual hotkey clips + manual markers.
 - The README must explain how to add a game module. Suggested next games: CS2 (official
@@ -136,15 +136,15 @@ Compared:
   (Practical bonus: it can be cross-built and tested end to end on Claude's Linux build machine.)
 
 ### Architecture (ideas kept from the C# skeleton)
-- `crates/gr-core`: game-agnostic core. `GameIntegration` trait (one module per game),
+- `crates/cv-core`: game-agnostic core. `GameIntegration` trait (one module per game),
   `Recorder` trait, `GameEvent`/`EventKind`, `GameSession` (with `video_offset`), settings,
   library/retention, and the **engine** (state machine: idle → game detected → recording → saved).
   No game-specific code.
 - `games/league`, `games/cs2`: one crate per game. `app/src/games.rs` registers them.
 - `app`: Tauri shell (tray, windows, commands for the UI, Win32 bits). `ui`: Svelte front end.
 
-### Built-in recorder (crate `gr-capture`, default)
-- Implements the `Recorder` trait from `gr-core`, so the engine can be tested with a fake.
+### Built-in recorder (crate `cv-capture`, default)
+- Implements the `Recorder` trait from `cv-core`, so the engine can be tested with a fake.
 - **Capture: Windows Graphics Capture** of the game window (free-threaded frame pool, no yellow
   border, cursor on), with monitor capture as fallback (setting, window not found in 8 s, or no
   frames for 6 s). No hooks, no DLLs, nothing in the game process. Frames are capped at the target

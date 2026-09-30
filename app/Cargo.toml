@@ -1,21 +1,21 @@
 [package]
-name = "gamerecorder"
-description = "GameRecorder desktop app (Tauri)"
+name = "clairvoyance"
+description = "Clairvoyance desktop app (Tauri)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-default-run = "gamerecorder"
+default-run = "clairvoyance"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-gr-core.workspace = true
-gr-capture = { path = "../crates/gr-capture" }
-gr-game-league.workspace = true
-gr-game-cs2 = { path = "../games/cs2" }
-gr-mock-league = { path = "../crates/gr-mock-league" }
+cv-core.workspace = true
+cv-capture = { path = "../crates/cv-capture" }
+cv-game-league.workspace = true
+cv-game-cs2 = { path = "../games/cs2" }
+cv-mock-league = { path = "../crates/cv-mock-league" }
 serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
