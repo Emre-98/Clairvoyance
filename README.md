@@ -47,6 +47,16 @@ games, clips and downloaded tools over; the Home page then offers to uninstall t
   export downloads ffmpeg (about 100 MB, once).
 - Files: `Videos\Clairvoyance\<date>_<time>_League\` holds the video
   (`2026-09-30_League_Ahri_Win.mp4`), `session.json` (the timeline) and `clips\`.
+  Thumbnails are kept separately in `%LOCALAPPDATA%\Clairvoyance\Thumbnails\` (made after
+  each game, never while you play).
+- **Storage** (Settings > Storage): recordings are kept under a size limit (100 GB by default).
+  When they grow past it, the oldest are deleted first, with their clips, timeline and
+  thumbnail. Star a game (favorite) or pin a clip ("keep") and it's never deleted
+  automatically. The page shows what was removed; automatic clean-up can be turned off.
+- **Look**: Settings > Appearance: Dark, Light or Match Windows (follows your Windows setting).
+- **Updates**: when a new version is out, a card "Update available" appears in the sidebar with
+  what's new; click **Update now** and Clairvoyance updates and restarts. It never checks or
+  installs during a game. Settings > General & updates has "Check now" and an off switch.
 
 ### Try it without playing
 

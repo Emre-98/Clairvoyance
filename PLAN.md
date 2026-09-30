@@ -1,43 +1,25 @@
-# GameRecorder: Project Plan
+# Clairvoyance (formerly GameRecorder): Project Plan
 
 > **For Claude:** read this whole file at the start of every session. After finishing a
 > milestone, tick it off below, add any decisions to "Decisions made", and update "Current status".
 
 ## Current status
-- **Stack chosen: Tauri 2 (Rust + Svelte web UI).** The C#/WPF skeleton is replaced (see Decisions).
-- **The built-in recorder is the only recorder** (OBS support was removed on 2026-09-30, see Decisions):
-  Windows Graphics Capture + the GPU's hardware H.264 encoder (NVENC / AMF / Quick Sync) +
-  per-process game audio + an optional mic track, written as crash-safe fragmented MP4, with an
-  in-memory replay buffer for clips.
-- Milestones 1–13 are code-complete. Tested on Claude's build machine: unit tests, the engine
-  end-to-end against a fake League API, the MP4 muxer
-  (decoded with ffmpeg, including a file cut off mid-write), and the UI in a browser.
-  The built-in recorder's Windows code compiles but **has not run on real Windows hardware yet**.
-- The Windows installer, the portable zip and `dist\tools\recorder-selftest.exe` are in `dist\`.
-- **First owner test (2026-09-30):** the built-in recorder crashed the app as soon as it started
-  (self-test, in-app test and a Practice Tool game). Cause: game-audio setup freed memory it
-  didn't own (a PROPVARIANT pointing at stack data was dropped → heap corruption). Fixed; crashes
-  and panics are now written to the log, and the self-test writes a step-by-step log.
-- **Second owner test (2026-09-30):** the self-test works: 1080p60 from a 4K screen, 600/600 frames,
-  0 dropped, NVENC, game-only audio, 0.4% CPU, the file and the replay clip decode cleanly. The
-  performance test got a baseline only (League ~141 FPS, capped) because the game was left after
-  the first phase. Fixed from it: FPS windows were misaligned with PresentMon's clock; the test
-  now stops with a clear message if you leave the game; Riot's `playerlist` `items` can be an
-  object (it broke KDA/CS/gold parsing), now accepted.
-- **Third owner test (2026-09-30), Practice Tool, 2 × 2 min, RTX 5080 / i9-9900K, 4K → 1080p60:**
-  recording worked (game window, game-only audio, 0 dropped frames, NVENC). GameRecorder: 0.48%
-  CPU, 182 MB RAM while recording (76 MB idle; the 30 s replay buffer is most of the difference),
-  GPU encode engine 7%. FPS (analysed by hand from PresentMon; the app missed it, see below):
-  steady play 140.7 → 140.3 avg (−0.3%), 1% low 102.5 → 100.2, p99 frame time 8.8 → 9.0 ms.
-  League is CPU-bound (GPU busy < 1 ms/frame); its FPS dips to ~70 during heavy moments happened
-  in both phases, i.e. gameplay, not recording.
-  Fixed from it: PresentMon only writes its file when it exits, so the app now waits for you to
-  leave the game before analysing (the report had "no FPS"); CSV BOM handled; the recorder
-  captured ~51 fps instead of 60 (frame pacing aliasing 141 fps down) — now a fixed 60 fps grid.
-- **Waiting for the owner**: (1) run `dist\tools\recorder-selftest.exe`; (2) run
-  Settings > Performance test in a real League game (Practice Tool is fine) and share the report.
-- Old C# files (`src\`, `GameRecorder.sln`) are no longer used and can be deleted.
-- Next: fix whatever the owner's tests show, then nice-to-haves (auto-update, Dota 2 module).
+- **Renamed to Clairvoyance (2026-10-01)** and published on GitHub:
+  https://github.com/Emre-98/Clairvoyance (public). Releases are built by GitHub Actions and
+  installed copies **update themselves** (see "Updates and releases"). First release: v1.0.0.
+- **Stack: Tauri 2 (Rust + Svelte 5 web UI).** The built-in recorder is the only recorder
+  (Windows Graphics Capture + hardware H.264 via Media Foundation + per-process game audio,
+  crash-safe fragmented MP4, in-memory replay buffer). OBS support was removed.
+- Done on 2026-10-01 (owner's list): OBS removed; rename + one-time data migration; Dark /
+  Light / Match Windows themes; storage limit with automatic clean-up (favorites and kept clips
+  protected); thumbnails in their own folder, made after the game; performance work (library
+  cache, virtualized grids, lazy thumbnails, 1 s keyframes, skeletons, transitions);
+  auto-updater + release workflow + RELEASING.md.
+- Owner tests so far (2026-09-30, RTX 5080 / i9-9900K, 4K → 1080p60): self-test and a Practice
+  Tool game recorded fine: 0 dropped frames, NVENC, game-only audio, ~0.5% CPU, ~180 MB RAM while
+  recording, League FPS 140.7 → 140.3 average (−0.3%), 1% low 102.5 → 100.2.
+- **Waiting for the owner**: play a real League game with v1.0.x and check the timeline,
+  thumbnail and Settings > Advanced > Responsiveness numbers (see "Known issues").
 
 ## What we're building
 A lightweight, Ascent/Outplayed-style game recorder for Windows. It starts with League of Legends,
@@ -172,7 +154,7 @@ Compared:
   keyframes from `MF_MT_MPEG_SEQUENCE_HEADER`.
 - Crash logging: a panic hook and an unhandled-exception filter write the thread and exception
   code to the log before the process dies (release builds use panic=abort).
-- Screenshots (thumbnail at 1:30) are the next captured frame saved as JPEG through WIC.
+- Thumbnails are no longer taken during the game (see "Thumbnails" below).
 - `recorder-selftest.exe` (dist\tools) records a few seconds and writes a report; the UI has the
   same 5 s test in Settings > Recorder.
 
@@ -215,13 +197,13 @@ Compared:
 - Text-to-speech callouts via Windows SAPI (off by default), per event kind.
 
 ### Storage
-- `Videos\GameRecorder\<date>_<time>_<Game>\` per game: video
-  (`2026-09-30_League_Ahri_Win.mp4`, renamed after the match), `session.json`, `thumb.jpg`
-  (screenshot at 1:30 game time), `clips\`.
-- Settings: `%APPDATA%\GameRecorder\settings.json`. Logs: `%LOCALAPPDATA%\GameRecorder\logs\`.
-  ffmpeg (downloaded on demand): `%LOCALAPPDATA%\GameRecorder\ffmpeg\`.
-- Retention: delete games older than X days and/or keep under X GB, oldest first; favorites
-  and the game being recorded are never deleted.
+- `Videos\Clairvoyance\<date>_<time>_<Game>\` per game: video
+  (`2026-09-30_League_Ahri_Win.mp4`, renamed after the match), `session.json`, `clips\`.
+  The folder name is the recording id.
+- Settings: `%APPDATA%\Clairvoyance\settings.json`. App data `%LOCALAPPDATA%\Clairvoyance\`:
+  `logs\`, `Thumbnails\`, `library-cache.json`, `cleanup-log.json`, `ffmpeg\`, `tools\`
+  (the per-user installer also puts `Clairvoyance.exe` there; its uninstaller keeps the data).
+- Retention: see "Storage limit and clean-up" below.
 
 ### UI
 - Frameless dark window with custom title bar; sidebar (Home, Games, Clips, Settings) with a
@@ -243,11 +225,85 @@ Compared:
   recording cleanly first.
 
 ### Packaging
-- Built by cross-compiling from Linux (`scripts/build-windows.sh`): distro rustc 1.91 with
-  `-Zbuild-std` for `x86_64-pc-windows-gnu`. The exe needs `WebView2Loader.dll` next to it,
-  so the "portable" build is a zip of the exe + dll. Main download: the NSIS installer
-  (per-user, no admin, Start menu + desktop shortcut, uninstaller that keeps recordings).
-- Dev tools: `GameRecorder.exe --simulate` / Settings > Advanced plays a fake League match.
+- Releases: GitHub Actions (MSVC build on windows-latest, Tauri's NSIS bundler, signed updater
+  artifacts). See "Updates and releases".
+- Test builds by Claude: cross-compiled from Linux (`scripts/build-windows.sh`, distro rustc 1.91
+  with `-Zbuild-std` for `x86_64-pc-windows-gnu`; the gnu exe needs `WebView2Loader.dll` next to
+  it). The Tauri CLI can also bundle the NSIS installer from Linux (with a `rustup` shim, see
+  `scripts/setup-cross-linux.sh`).
+- Dev tools: `Clairvoyance.exe --simulate` / Settings > Advanced plays a fake League match.
+
+### Rename to Clairvoyance (2026-10-01)
+- Product/exe/window/tray/installer name Clairvoyance, Tauri identifier `app.clairvoyance.desktop`,
+  crates `cv-*` (were `gr-*`), app package `clairvoyance`, UI package `clairvoyance-ui`.
+- `app/src/migrate.rs`, first start only (when the new settings file doesn't exist and the old
+  one does): copies `%APPDATA%\GameRecorder\settings.json`; renames `Videos\GameRecorder` to
+  `Videos\Clairvoyance` when the default folder was used (if the rename fails, e.g. a file is
+  open, the settings point at the old folder instead: nothing is ever lost; custom save folders
+  are kept as is); moves or copies `%LOCALAPPDATA%\GameRecorder` (ffmpeg, PresentMon, logs);
+  re-registers "Start with Windows" (the old Run value is removed). CS2's old GSI cfg is replaced.
+- The old install is detected (HKCU uninstall key) and Home shows a banner to uninstall it
+  (runs its uninstaller silently; it never touches recordings or settings).
+- The project folder on the owner's PC is still called `GameRecorder`; renaming it to
+  `Clairvoyance` is harmless (nothing depends on the folder name) and can be done any time.
+
+### Themes (2026-10-01)
+- Setting `theme`: "system" (default, follows Windows live), "dark", "light".
+- All colours are CSS custom properties in `ui/src/app.css`, written with `light-dark()` so one
+  `data-theme` attribute + `color-scheme` switches everything in one frame. Components contain
+  no hardcoded colours (media overlays on thumbnails/video use their own always-dark tokens).
+- No flash: Rust injects `window.__CV_THEME__` as an initialization script, `public/theme-boot.js`
+  applies it before first paint, and the native window background matches the theme.
+
+### Storage limit and clean-up (2026-10-01)
+- `max_disk_gb` (default 100; old files with "no limit" get 100 once), `auto_cleanup` (on),
+  optional `auto_delete_days`. `library::plan_cleanup` deletes oldest first; favorites are never
+  touched; a game with clips marked "keep" (`ClipInfo.keep`) only loses its full video
+  (`video_removed_at`), keeping timeline + clips. If only protected games are left and it's
+  still over the limit, a warning is shown instead.
+- Runs in `app/src/maintenance.rs`: 20 s after start-up, after each game once its auto clips are
+  cut (`EngineEvent::PostProcessed`), after storage settings change, and "Clean up now". Never
+  while a game runs/records (checked before and between steps) and on a background-priority
+  thread. Toast + `cleanup-log.json` (shown in Settings > Storage).
+
+### Thumbnails (2026-10-01)
+- `%LOCALAPPDATA%\Clairvoyance\Thumbnails\<recording id>.jpg`, clips `<id>@<clip>.jpg`, 480 px
+  JPEG (WIC has no WebP encoder). Made after the game by decoding one frame (~90 s into the match)
+  of the finished file with Media Foundation's source reader (`cv-capture/src/win/thumb.rs`),
+  ffmpeg as a fallback. The in-game screenshot was removed (no work during the game).
+- Missing thumbnails are regenerated by the maintenance pass; old `thumb.jpg` files move into the
+  folder; deleting a game/clip (by hand or by the clean-up) deletes its thumbnails; orphans are
+  removed.
+
+### Responsiveness (2026-10-01)
+- `LibraryIndex` (cv-core): summaries + clips in memory and in `library-cache.json`; the first
+  list after start-up answers from the cache and refreshes in the background; later refreshes
+  only re-read folders whose `session.json` / folder / `clips` folder changed. No scan during a
+  game (a dirty flag defers it).
+- UI: virtualized grids (`VirtualGrid.svelte`), lazy `<img>` thumbnails with skeletons, clip
+  previews only for the hovered card, cached Intl formatters, page transitions and press
+  feedback with transform/opacity only (150-250 ms), skeleton loaders.
+- Keyframe every 1 s (was 2 s) so seeking decodes less.
+- Settings > Advanced shows measured startup, page-switch and timeline-jump times from the real
+  window; the app logs "startup: window content painted N ms after launch".
+- Measured (Chromium, 500 games, same mock data, before → after): Games page switch
+  234 → 26 ms (4x CPU throttle: 1186 → 112 ms); DOM nodes on the Games page 8,581 → ~650;
+  scrolling at 4x throttle 28 → 50 fps (unthrottled 60 fps both); timeline jump (seek to
+  painted frame) median 17-45 ms → 33-50 ms, always < 100 ms. Window-open numbers on the
+  owner's PC: see "Known issues" / owner test.
+
+### Updates and releases (2026-10-01)
+- `tauri-plugin-updater`, endpoint `https://github.com/Emre-98/Clairvoyance/releases/latest/download/latest.json`,
+  public key in `app/tauri.conf.json`, NSIS passive install + restart. Checks 60 s after start
+  and every 4 h, never while busy; `auto_update_check` setting; nothing downloads until "Update now".
+- Releases: `scripts/release.ps1 <version>` bumps versions + CHANGELOG, tags and pushes;
+  `.github/workflows/release.yml` (windows-latest, tauri-action) builds, signs with the
+  `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)` secrets and publishes installer + .sig + latest.json.
+  `ci.yml` runs tests + UI checks on pushes. See RELEASING.md.
+- Private key backup on the owner's PC: `Documents\Clairvoyance-signing-key\` (never in the repo).
+- Packaging moved from the hand-written NSIS script to Tauri's bundler (per-user install,
+  WebView2 bootstrapper, Start menu entry). `scripts/build-windows.sh` is still the Linux
+  cross-build for test builds; `scripts/setup-cross-linux.sh` prepares that toolchain.
 
 ## Milestones
 - [x] 0. Project setup: solution, projects, core interfaces, this plan
@@ -267,8 +323,27 @@ Compared:
 - [x] 12. Recorder self-test (`recorder-selftest.exe` + in-app 5 s test), first-run setup
       without OBS
 - [x] 13. Performance test in a real game: FPS (PresentMon), CPU and GPU, not recording vs recording
-- [ ] Owner's test on Windows: self-test + performance test in a real League game (see README)
-- [ ] Nice-to-have: auto-update via GitHub Releases
+- [x] Owner's test on Windows: self-test + performance test in a real League game
+- [x] 14. Remove OBS completely (code, deps, settings, UI, docs)
+- [x] 15. Rename to Clairvoyance + one-time migration of settings, recordings and tools
+- [x] 16. Themes: Dark / Light / Match Windows, CSS variables only, no flash
+- [x] 17. Storage limit with automatic clean-up, favorites + kept clips protected, log
+- [x] 18. Thumbnails in their own folder, made after the game, regenerated when missing
+- [x] 19. Responsiveness: library cache, virtualization, lazy thumbnails, 1 s keyframes, measured
+- [x] 20. GitHub repo + auto-updater + release workflow (v1.0.0)
+
+## Known issues
+- The Windows-only parts added on 2026-10-01 (Media Foundation thumbnails, updater install,
+  migration on a real old install) compile and were checked on the owner's PC where noted in
+  "Current status"; watch the log for "thumbnail for ... failed" (then ffmpeg is used if present).
+- Scrolling the library is smooth at 60 fps; on a much slower CPU (4x throttled) it's ~50 fps.
+- Windows SmartScreen may warn about the installer (it isn't code-signed with a certificate;
+  updates are still signature-checked by the updater).
+
+## Next steps
+- Owner: play a real game on v1.0.x (timeline, thumbnail after the game, storage page).
+- Nice-to-haves: Dota 2 module (GSI, like CS2); code-signing certificate for the installer;
+  optional WebP thumbnails if a WebP encoder is added.
 
 After each milestone: explain how to test it and how to measure its performance impact.
 
