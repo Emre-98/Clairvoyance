@@ -11,7 +11,7 @@ pub mod capture;
 pub mod d3d;
 pub mod mux;
 pub mod perf;
-pub mod snapshot;
+pub mod thumb;
 pub mod video_enc;
 pub mod window;
 
@@ -342,17 +342,6 @@ impl NativeRecorder {
         rx.recv_timeout(Duration::from_secs(30)).map_err(|_| anyhow!("saving the clip timed out"))?
     }
 
-    fn screenshot_blocking(&self, path: &Path, width: u32) -> Result<()> {
-        com();
-        let (tx, rx) = channel();
-        {
-            let a = self.inner.active.lock().unwrap();
-            let a = a.as_ref().context("not recording")?;
-            let c = a.capture.lock().unwrap();
-            c.as_ref().context("no capture")?.request_screenshot(capture::Screenshot { path: path.to_path_buf(), width, reply: tx });
-        }
-        rx.recv_timeout(Duration::from_secs(5)).map_err(|_| anyhow!("no new frame for the thumbnail"))?
-    }
 }
 
 #[async_trait]
@@ -394,12 +383,6 @@ impl Recorder for NativeRecorder {
         tokio::task::spawn_blocking(move || me.save_replay_blocking()).await?
     }
 
-    async fn screenshot(&self, path: &Path, width: u32) -> Result<()> {
-        let me = NativeRecorder { inner: self.inner.clone() };
-        let p = path.to_path_buf();
-        tokio::task::spawn_blocking(move || me.screenshot_blocking(&p, width)).await?
-    }
-
     async fn finish(&self) -> Result<()> {
         Ok(())
     }
@@ -428,9 +411,12 @@ pub fn self_test(out_dir: &Path, secs: u64, exe: Option<&str>, mic: bool) -> Res
     rec.start_blocking()?;
     std::thread::sleep(Duration::from_secs(secs));
     let frames = rec.inner.active.lock().unwrap().as_ref().and_then(|a| a.capture.lock().unwrap().as_ref().map(|c| (c.stats.frames.load(std::sync::atomic::Ordering::Relaxed), c.stats.dropped.load(std::sync::atomic::Ordering::Relaxed))));
-    let _ = rec.screenshot_blocking(&out_dir.join("selftest.jpg"), 480);
     let _ = rec.save_replay_blocking();
     let path = rec.stop_blocking()?;
+    // The same thumbnail path the app uses after a game (decode a frame from the file).
+    if let Err(e) = thumb::video_thumbnail(&path, secs as f64 / 2.0, &out_dir.join("selftest.jpg"), 480) {
+        log::warn!("self-test thumbnail: {e:#}");
+    }
     let (f, d) = frames.unwrap_or((0, 0));
     Ok((path, f, d))
 }

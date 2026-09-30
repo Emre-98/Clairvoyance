@@ -54,9 +54,6 @@ impl cv_core::Recorder for NativeRecorder {
     async fn save_replay(&self) -> anyhow::Result<std::path::PathBuf> {
         anyhow::bail!("not recording")
     }
-    async fn screenshot(&self, _: &std::path::Path, _: u32) -> anyhow::Result<()> {
-        anyhow::bail!("not recording")
-    }
     async fn finish(&self) -> anyhow::Result<()> {
         Ok(())
     }

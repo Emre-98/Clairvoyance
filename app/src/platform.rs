@@ -295,3 +295,18 @@ pub fn windows_prefers_dark() -> bool {
 pub fn windows_prefers_dark() -> bool {
     true
 }
+
+/// Runs `f` with this thread in Windows' background mode (lowest CPU and disk I/O priority), so
+/// thumbnails and clean-up never compete with anything else.
+pub fn in_background_mode<T>(f: impl FnOnce() -> T) -> T {
+    #[cfg(windows)]
+    unsafe {
+        use windows::Win32::System::Threading::{GetCurrentThread, SetThreadPriority, THREAD_MODE_BACKGROUND_BEGIN, THREAD_MODE_BACKGROUND_END};
+        let _ = SetThreadPriority(GetCurrentThread(), THREAD_MODE_BACKGROUND_BEGIN);
+        let r = f();
+        let _ = SetThreadPriority(GetCurrentThread(), THREAD_MODE_BACKGROUND_END);
+        r
+    }
+    #[cfg(not(windows))]
+    f()
+}

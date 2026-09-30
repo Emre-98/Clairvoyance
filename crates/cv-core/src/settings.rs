@@ -71,8 +71,11 @@ pub struct Settings {
     pub save_dir: String,
     /// Delete games older than this many days (0 = never). Favorites are kept.
     pub auto_delete_days: u32,
-    /// Keep total size under this many GB (0 = no limit). Oldest non-favorites go first.
+    /// "Max storage for recordings" in GB. Over it, the oldest games are deleted first
+    /// (favorites and clips marked "keep" never are). Default 100.
     pub max_disk_gb: u32,
+    /// Automatic clean-up on (after each game and at start-up, never during a game).
+    pub auto_cleanup: bool,
     pub hotkey_clip: String,
     pub hotkey_marker: String,
     pub auto_record: bool,
@@ -107,7 +110,8 @@ impl Default for Settings {
             first_run_done: false,
             save_dir: String::new(),
             auto_delete_days: 0,
-            max_disk_gb: 0,
+            max_disk_gb: 100,
+            auto_cleanup: true,
             hotkey_clip: "F8".into(),
             hotkey_marker: "F9".into(),
             auto_record: true,
@@ -127,7 +131,7 @@ impl Default for Settings {
     }
 }
 
-pub const SETTINGS_VERSION: u32 = 2;
+pub const SETTINGS_VERSION: u32 = 3;
 
 impl Settings {
     /// The theme setting, normalized to "system", "dark" or "light".
@@ -177,6 +181,11 @@ impl Settings {
             // and reopens instantly.
             self.close_ui_in_game = false;
             self.keep_ui_loaded = true;
+        }
+        if self.settings_version < 3 && self.max_disk_gb == 0 {
+            // v3: storage limit with automatic clean-up, 100 GB by default (was "no limit").
+            self.max_disk_gb = 100;
+            self.auto_cleanup = true;
         }
         self.settings_version = SETTINGS_VERSION;
     }
@@ -305,9 +314,20 @@ mod tests {
         assert!(!old.close_ui_in_game && old.keep_ui_loaded);
         assert_eq!(old.settings_version, SETTINGS_VERSION);
         // After that, the user's own choice sticks.
-        let mut chosen: Settings = serde_json::from_str(r#"{"close_ui_in_game":true,"keep_ui_loaded":false,"settings_version":2}"#).unwrap();
+        let mut chosen: Settings = serde_json::from_str(r#"{"close_ui_in_game":true,"keep_ui_loaded":false,"settings_version":3}"#).unwrap();
         chosen.migrate();
         assert!(chosen.close_ui_in_game && !chosen.keep_ui_loaded);
+    }
+
+    #[test]
+    fn storage_limit_defaults_to_100_gb_once() {
+        let mut old: Settings = serde_json::from_str(r#"{"max_disk_gb":0,"settings_version":2}"#).unwrap();
+        old.migrate();
+        assert_eq!(old.max_disk_gb, 100);
+        assert!(old.auto_cleanup);
+        let mut own: Settings = serde_json::from_str(r#"{"max_disk_gb":250,"auto_cleanup":false,"settings_version":2}"#).unwrap();
+        own.migrate();
+        assert_eq!((own.max_disk_gb, own.auto_cleanup), (250, false));
     }
 
     #[test]

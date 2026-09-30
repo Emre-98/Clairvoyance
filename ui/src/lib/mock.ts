@@ -71,23 +71,29 @@ function makeSummary(i: number): SessionSummary {
     stats: { kills: (i * 7) % 13, deaths: (i * 3) % 8, assists: (i * 5) % 17, cs: 150 + i * 13, gold: 11000 + i * 700, level: 16, vision_score: 20 + i, extra: [] },
     result: win ? "win" : "loss",
     video_path: "/dev-assets/sample.webm",
-    thumb_path: null,
+    thumb_path: q.get("nothumbs") === "1" ? null : `/dev-assets/thumb${i % 12}.jpg`,
     duration: 1500 + i * 97,
     favorite: i === 2,
+    kept_clips: i === 4 ? 1 : 0,
+    video_removed: false,
     size_bytes: 2.1e9 + i * 1.3e8,
+    video_bytes: 2.0e9 + i * 1.3e8,
     event_count: 18 + i,
     clip_count: i % 4,
+    thumb_at: 110,
   };
 }
 
-const sessions: SessionSummary[] = Array.from({ length: 9 }, (_, i) => makeSummary(i));
+// ?n=500 fills the library for performance tests.
+const sessions: SessionSummary[] = Array.from({ length: Number(q.get("n") ?? 9) }, (_, i) => makeSummary(i));
 sessions[0].duration = 130;
 
 const settings: Settings = {
   first_run_done: q.get("setup") !== "1",
   save_dir: "",
   auto_delete_days: 30,
-  max_disk_gb: 200,
+  max_disk_gb: 100,
+  auto_cleanup: true,
   hotkey_clip: "F8",
   hotkey_marker: "F9",
   auto_record: true,
@@ -145,8 +151,8 @@ function session(id: string): GameSession {
     result: "win",
     events: detailEvents,
     clips: [
-      { file: "clip_1-46.mp4", title: "Clip at 1:46", video_start: 96, video_end: 126, created_at: s.started_at, source: "replay" },
-      { file: "Triple-kill_1-20.mp4", title: "Killed Lux + Triple kill", video_start: 88, video_end: 104, created_at: s.started_at, source: "event" },
+      { file: "clip_1-46.mp4", title: "Clip at 1:46", video_start: 96, video_end: 126, created_at: s.started_at, source: "replay", keep: true },
+      { file: "Triple-kill_1-20.mp4", title: "Killed Lux + Triple kill", video_start: 88, video_end: 104, created_at: s.started_at, source: "event", keep: false },
     ],
     timeline,
     perf: { samples: 312, cpu_avg: 0.18, cpu_max: 0.9, ram_avg_mb: 41, ram_max_mb: 47 },
@@ -155,8 +161,22 @@ function session(id: string): GameSession {
   };
 }
 
-const clips: ClipEntry[] = sessions.slice(0, 5).flatMap((s, i) => [
-  { session_id: s.id, game_name: s.game_name, character: s.player?.character, character_id: s.player?.character_id, path: "/dev-assets/sample.webm", title: i % 2 ? "Triple kill" : `Clip at ${10 + i}:2${i}`, created_at: s.started_at, size_bytes: 3.2e7 + i * 4e6, source: i % 2 ? "event" : "replay" },
+const clips: ClipEntry[] = sessions.slice(0, Math.max(5, Math.floor(sessions.length / 2))).flatMap((s, i) => [
+  {
+    session_id: s.id,
+    game_name: s.game_name,
+    character: s.player?.character,
+    character_id: s.player?.character_id,
+    path: "/dev-assets/sample.webm",
+    file: `clip${i}.mp4`,
+    title: i % 2 ? "Triple kill" : `Clip at ${10 + (i % 20)}:2${i % 10}`,
+    created_at: s.started_at,
+    size_bytes: 3.2e7 + i * 4e6,
+    source: i % 2 ? "event" : "replay",
+    keep: i === 0,
+    thumb_path: q.get("nothumbs") === "1" ? null : `/dev-assets/thumb${(i + 5) % 12}.jpg`,
+    duration: 30,
+  },
 ]);
 
 let legacyRemoved = false;
@@ -219,7 +239,36 @@ export async function invoke(cmd: string, args: any = {}): Promise<any> {
     case "perf_now":
       return { cpu: 0.2, ram_mb: 38 };
     case "storage_info":
-      return { save_dir: "C:\\Users\\you\\Videos\\Clairvoyance", used_bytes: 23.4e9, free_bytes: 812e9, games: sessions.length };
+      return {
+        save_dir: "C:\\Users\\you\\Videos\\Clairvoyance",
+        used_bytes: sessions.reduce((a, s) => a + s.size_bytes, 0),
+        limit_bytes: settings.max_disk_gb * 1024 ** 3,
+        auto_cleanup: settings.auto_cleanup,
+        free_bytes: 812e9,
+        games: sessions.length,
+        protected_bytes: 2.4e9,
+        stuck_over_limit: q.get("stuck") === "1",
+        recent_cleanups: [
+          { at: new Date(Date.now() - 3600e3).toISOString(), id: "old1", title: "League of Legends · Zed · 2 Sep 2026 21:14", action: "delete_game", bytes: 2.3e9, reason: "storage limit" },
+          { at: new Date(Date.now() - 3600e3).toISOString(), id: "old2", title: "League of Legends · Lux · 1 Sep 2026 19:02", action: "delete_video", bytes: 1.9e9, reason: "storage limit" },
+        ],
+        thumbnails_dir: "C:\\Users\\you\\AppData\\Local\\Clairvoyance\\Thumbnails",
+      };
+    case "cleanup_now":
+      await new Promise((r) => setTimeout(r, 700));
+      return { thumbs_made: 0, removed: [], freed_bytes: 0, still_over: false, skipped_busy: false };
+    case "set_clip_keep": {
+      const c = clips.find((c) => c.session_id === args.id && c.file === args.file);
+      if (c) c.keep = args.keep;
+      emit("library-changed", null);
+      return;
+    }
+    case "set_favorite": {
+      const g = sessions.find((s) => s.id === args.id);
+      if (g) g.favorite = args.favorite;
+      emit("library-changed", null);
+      return;
+    }
     case "builtin_encoders":
       return { gpu: "NVIDIA GeForce RTX 5080", encoders: ["NVIDIA H.264 Encoder MFT (NVIDIA)"] };
     case "recorder_selftest":
@@ -245,12 +294,6 @@ export async function invoke(cmd: string, args: any = {}): Promise<any> {
         : { state: "idle" };
     case "ffmpeg_status":
       return { available: false };
-    case "set_favorite": {
-      const s = sessions.find((x) => x.id === args.id);
-      if (s) s.favorite = args.favorite;
-      emit("library-changed", null);
-      return;
-    }
     default:
       return null;
   }

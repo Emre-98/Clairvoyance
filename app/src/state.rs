@@ -37,6 +37,14 @@ pub struct AppState {
     /// The window is shown (possibly minimized). While hidden, the UI is paused and gets
     /// no live events; it catches up ("resync") when shown again.
     pub ui_visible: std::sync::atomic::AtomicBool,
+    /// Summaries of every game (cached on disk, refreshed incrementally).
+    pub library: Arc<cv_core::library::LibraryIndex>,
+    /// Something on disk changed while it wasn't a good moment to re-read it (in game, window
+    /// hidden): refresh when the window is shown or the game ends.
+    pub library_dirty: std::sync::atomic::AtomicBool,
+    /// The background refresh after start-up has been started.
+    pub library_first_refresh: std::sync::atomic::AtomicBool,
+    pub maintenance: crate::maintenance::Maintenance,
 }
 
 impl AppState {

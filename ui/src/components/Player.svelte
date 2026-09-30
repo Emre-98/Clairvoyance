@@ -15,6 +15,7 @@
     range = $bindable(null),
     current = $bindable(0),
     startAt = 0,
+    removed = false,
   }: {
     src: string | null;
     events: GameEvent[];
@@ -25,6 +26,8 @@
     range?: [number, number] | null;
     current?: number;
     startAt?: number;
+    /** The storage clean-up removed the full video (its kept clips remain). */
+    removed?: boolean;
   } = $props();
 
   let video = $state<HTMLVideoElement>();
@@ -160,8 +163,13 @@
     {:else}
       <div class="novideo">
         <Icon name="clips" size={40} stroke={1.4} />
-        <strong>No video for this game</strong>
-        <span>The timeline is still available below.</span>
+        {#if removed}
+          <strong>Full recording removed by the storage clean-up</strong>
+          <span>The clips you marked "keep" and the timeline are still here.</span>
+        {:else}
+          <strong>No video for this game</strong>
+          <span>The timeline is still available below.</span>
+        {/if}
       </div>
     {/if}
   </div>

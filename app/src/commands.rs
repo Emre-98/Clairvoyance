@@ -2,8 +2,8 @@
 
 use crate::state::{AppState, GpuInfo};
 use cv_core::engine::{EngineCommand, LiveStatus};
-use cv_core::library::{self, ClipEntry, SessionSummary};
-use cv_core::session::{ClipInfo, GameSession, CLIPS_DIR, THUMB_FILE};
+use cv_core::library::{ClipEntry, SessionSummary};
+use cv_core::session::{ClipInfo, GameSession, CLIPS_DIR};
 use cv_core::Settings;
 use cv_core::engine::ClipCutter;
 use serde::Serialize;
@@ -85,6 +85,12 @@ pub async fn save_settings(app: AppHandle, st: St<'_>, settings: Settings) -> R<
     st.ffmpeg.set_configured(settings.ffmpeg_path.clone());
     let _ = app.asset_protocol_scope().allow_directory(st.save_dir(), true);
     let _ = st.cmd.send(EngineCommand::ReloadSettings(Box::new(st.engine_settings(&settings))));
+    if old.save_dir != settings.save_dir {
+        st.library_dirty.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+    if (old.max_disk_gb, old.auto_cleanup, old.auto_delete_days, &old.save_dir) != (settings.max_disk_gb, settings.auto_cleanup, settings.auto_delete_days, &settings.save_dir) {
+        st.maintenance.kick();
+    }
     let _ = app.emit("library-changed", ());
     Ok(())
 }
@@ -115,10 +121,39 @@ pub fn set_theme(app: AppHandle, st: St, theme: String, dark_now: bool) -> R<()>
     Ok(())
 }
 
+/// Makes sure the library index is loaded and current. The first call after start-up answers
+/// from the cache file at once and refreshes in the background (then tells the UI if anything
+/// changed); later calls only re-read folders that changed.
+fn library_ready(app: &AppHandle, st: &Arc<AppState>) {
+    use std::sync::atomic::Ordering;
+    let root = st.save_dir();
+    let lib = st.library.clone();
+    lib.ensure_loaded(&root);
+    if lib.needs_first_refresh() && !lib.summaries().is_empty() {
+        if !st.library_first_refresh.swap(true, Ordering::SeqCst) {
+            let (app, lib) = (app.clone(), lib.clone());
+            std::thread::spawn(move || {
+                if crate::platform::in_background_mode(|| lib.refresh(&root)) {
+                    let _ = app.emit("library-changed", ());
+                }
+            });
+        }
+        return;
+    }
+    if lib.needs_first_refresh() || st.library_dirty.swap(false, Ordering::SeqCst) {
+        lib.refresh(&root);
+    }
+}
+
 #[tauri::command]
-pub async fn list_sessions(st: St<'_>) -> R<Vec<SessionSummary>> {
-    let dir = st.save_dir();
-    tauri::async_runtime::spawn_blocking(move || library::list_summaries(&dir)).await.map_err(err)
+pub async fn list_sessions(app: AppHandle, st: St<'_>) -> R<Vec<SessionSummary>> {
+    let st = st.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        library_ready(&app, &st);
+        st.library.summaries()
+    })
+    .await
+    .map_err(err)
 }
 
 #[derive(Serialize)]
@@ -127,6 +162,7 @@ pub struct ClipView {
     info: ClipInfo,
     path: String,
     exists: bool,
+    thumb_path: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -143,13 +179,14 @@ pub async fn get_session(st: St<'_>, id: String) -> R<SessionView> {
     let dir = session_dir(&st, &id)?;
     let s = GameSession::load(&dir).map_err(err)?;
     let video_path = s.video_file.as_ref().map(|f| dir.join(f)).filter(|p| p.exists()).map(|p| p.to_string_lossy().to_string());
-    let thumb = dir.join(THUMB_FILE);
+    let thumb = st.library.thumbs().session(&id);
     let clips = s
         .clips
         .iter()
         .map(|c| {
             let p = dir.join(CLIPS_DIR).join(&c.file);
-            ClipView { info: c.clone(), exists: p.exists(), path: p.to_string_lossy().to_string() }
+            let t = st.library.thumbs().clip(&id, &c.file);
+            ClipView { info: c.clone(), exists: p.exists(), path: p.to_string_lossy().to_string(), thumb_path: t.exists().then(|| t.to_string_lossy().to_string()) }
         })
         .collect();
     Ok(SessionView {
@@ -167,8 +204,26 @@ pub async fn set_favorite(app: AppHandle, st: St<'_>, id: String, favorite: bool
     let mut s = GameSession::load(&dir).map_err(err)?;
     s.favorite = favorite;
     s.save(&dir).map_err(err)?;
-    let _ = app.emit("library-changed", ());
+    changed(&app, &st);
     Ok(())
+}
+
+/// Marks a clip "keep" (never removed by the storage clean-up) or not.
+#[tauri::command]
+pub async fn set_clip_keep(app: AppHandle, st: St<'_>, id: String, file: String, keep: bool) -> R<()> {
+    let dir = session_dir(&st, &id)?;
+    let mut s = GameSession::load(&dir).map_err(err)?;
+    let c = s.clips.iter_mut().find(|c| c.file == file).ok_or("That clip no longer exists.")?;
+    c.keep = keep;
+    s.save(&dir).map_err(err)?;
+    changed(&app, &st);
+    Ok(())
+}
+
+/// Something on disk changed because of the UI: re-read it on the next request and tell the UI.
+fn changed(app: &AppHandle, st: &AppState) {
+    st.library_dirty.store(true, std::sync::atomic::Ordering::SeqCst);
+    let _ = app.emit("library-changed", ());
 }
 
 #[tauri::command]
@@ -178,14 +233,21 @@ pub async fn delete_session(app: AppHandle, st: St<'_>, id: String) -> R<()> {
     }
     let dir = session_dir(&st, &id)?;
     std::fs::remove_dir_all(&dir).map_err(|e| format!("Couldn't delete (is the video open somewhere?): {e}"))?;
-    let _ = app.emit("library-changed", ());
+    st.library.thumbs().remove_session(&id);
+    st.library.remove(&id);
+    changed(&app, &st);
     Ok(())
 }
 
 #[tauri::command]
-pub async fn list_clips(st: St<'_>) -> R<Vec<ClipEntry>> {
-    let dir = st.save_dir();
-    tauri::async_runtime::spawn_blocking(move || library::list_clips(&dir)).await.map_err(err)
+pub async fn list_clips(app: AppHandle, st: St<'_>) -> R<Vec<ClipEntry>> {
+    let st = st.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        library_ready(&app, &st);
+        st.library.clips()
+    })
+    .await
+    .map_err(err)
 }
 
 #[tauri::command]
@@ -201,7 +263,8 @@ pub async fn delete_clip(app: AppHandle, st: St<'_>, id: String, file: String) -
         std::fs::remove_file(&p).map_err(err)?;
     }
     s.save(&dir).map_err(err)?;
-    let _ = app.emit("library-changed", ());
+    st.library.thumbs().remove_clip(&id, &file);
+    changed(&app, &st);
     Ok(())
 }
 
@@ -227,9 +290,12 @@ pub async fn export_clip(app: AppHandle, st: St<'_>, id: String, start: f64, end
         video_end: Some(end),
         created_at: chrono::Local::now(),
         source: "editor".into(),
+        keep: false,
     });
     s.save(&dir).map_err(err)?;
-    let _ = app.emit("library-changed", ());
+    changed(&app, &st);
+    // Its thumbnail is made by the next maintenance pass.
+    st.maintenance.kick();
     Ok(out.to_string_lossy().to_string())
 }
 
@@ -313,29 +379,66 @@ pub fn perf_now(st: St) -> Option<PerfNow> {
 pub struct StorageInfo {
     save_dir: String,
     used_bytes: u64,
+    limit_bytes: u64,
+    auto_cleanup: bool,
     free_bytes: Option<u64>,
     games: usize,
+    /// Size of favorites (and kept clips), which the clean-up never removes.
+    protected_bytes: u64,
+    /// Over the limit and only protected games would be left.
+    stuck_over_limit: bool,
+    /// What the clean-up removed recently (newest first).
+    recent_cleanups: Vec<cv_core::library::CleanupDone>,
+    thumbnails_dir: String,
 }
 
 #[tauri::command]
-pub async fn storage_info(st: St<'_>) -> R<StorageInfo> {
-    let dir = st.save_dir();
+pub async fn storage_info(app: AppHandle, st: St<'_>) -> R<StorageInfo> {
+    let st = st.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let used = library::dir_size(&dir);
-        let games = library::scan(&dir).len();
-        StorageInfo { save_dir: dir.to_string_lossy().to_string(), used_bytes: used, free_bytes: crate::platform::free_space(&dir), games }
+        library_ready(&app, &st);
+        let s = st.settings();
+        let dir = st.save_dir();
+        let games = st.library.summaries();
+        let limit = s.max_disk_gb as u64 * 1024 * 1024 * 1024;
+        let protect = st.live.lock().unwrap().session_id.clone();
+        let plan = cv_core::library::plan_cleanup(&games, limit, 0, chrono::Local::now(), protect.as_deref());
+        let protected_bytes = games
+            .iter()
+            .map(|g| if g.favorite { g.size_bytes } else if g.kept_clips > 0 { g.size_bytes.saturating_sub(g.video_bytes) } else { 0 })
+            .sum();
+        let mut recent = crate::maintenance::read_log(&st.paths.data_dir.join("cleanup-log.json"));
+        recent.reverse();
+        recent.truncate(20);
+        StorageInfo {
+            save_dir: dir.to_string_lossy().to_string(),
+            used_bytes: games.iter().map(|g| g.size_bytes).sum(),
+            limit_bytes: limit,
+            auto_cleanup: s.auto_cleanup,
+            free_bytes: crate::platform::free_space(&dir),
+            games: games.len(),
+            protected_bytes,
+            stuck_over_limit: plan.still_over,
+            recent_cleanups: recent,
+            thumbnails_dir: st.library.thumbs().dir.to_string_lossy().to_string(),
+        }
     })
     .await
     .map_err(err)
 }
 
+/// "Clean up now" (Settings > Storage): applies the storage limit right away, even if automatic
+/// clean-up is off. Refuses while a game is running.
 #[tauri::command]
-pub async fn apply_retention_now(app: AppHandle, st: St<'_>) -> R<Vec<String>> {
-    let s = st.settings();
-    let protect = st.live.lock().unwrap().session_id.clone();
-    let removed = library::apply_retention(&st.save_dir(), s.auto_delete_days, s.max_disk_gb, chrono::Local::now(), protect.as_deref());
-    let _ = app.emit("library-changed", ());
-    Ok(removed)
+pub async fn cleanup_now(app: AppHandle, st: St<'_>) -> R<crate::maintenance::RunReport> {
+    if crate::maintenance::busy(&st) {
+        return Err("A game is running. The clean-up waits until it's over.".into());
+    }
+    let r = crate::maintenance::run(&app, true).await;
+    if r.skipped_busy {
+        return Err("A game is running. The clean-up waits until it's over.".into());
+    }
+    Ok(r)
 }
 
 #[tauri::command]
@@ -505,7 +608,8 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static 
         ffmpeg_download,
         perf_now,
         storage_info,
-        apply_retention_now,
+        cleanup_now,
+        set_clip_keep,
         finish_first_run,
         simulate_game,
         builtin_encoders,

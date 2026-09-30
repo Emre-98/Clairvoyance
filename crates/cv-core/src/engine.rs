@@ -8,7 +8,7 @@
 use crate::events::{fmt_clock, EventKind, GameEvent};
 use crate::game::{GameIntegration, KeyPress, MatchPhase, PlayerInfo, PlayerStats};
 use crate::recorder::{RecordOptions, Recorder, RecorderStatus};
-use crate::session::{self, ClipInfo, GameSession, StatSample, CLIPS_DIR, THUMB_FILE};
+use crate::session::{self, ClipInfo, GameSession, StatSample, CLIPS_DIR};
 use crate::settings::{Hotkey, Settings};
 use async_trait::async_trait;
 use chrono::Local;
@@ -89,8 +89,11 @@ pub enum EngineEvent {
     GameEvent { session_id: String, event: GameEvent },
     GameStarted { game_name: String },
     GameEnded { session_id: String },
-    /// Session file changed (saved, clips added, retention ran).
+    /// Session file changed (saved, clips added).
     LibraryChanged,
+    /// A finished game's after-work (auto clips) is done: a good moment for thumbnails and the
+    /// storage clean-up, which never run while a game is recording.
+    PostProcessed { session_id: String },
     Notice { level: String, text: String },
 }
 
@@ -109,7 +112,6 @@ struct Active {
     ended_at: Option<tokio::time::Instant>,
     last_save: Instant,
     next_stat_sample: f64,
-    thumb_done: bool,
     missing_checks: u32,
     last_perf: Instant,
     last_event: Option<GameEvent>,
@@ -379,7 +381,6 @@ impl Engine {
             ended_at: None,
             last_save: Instant::now(),
             next_stat_sample: 0.0,
-            thumb_done: false,
             missing_checks: 0,
             last_perf: Instant::now(),
             last_event: None,
@@ -492,19 +493,6 @@ impl Engine {
         }
         for ev in new_events {
             self.push_event(ev);
-        }
-
-        // Thumbnail ~90 s into the match.
-        let (want_thumb, dir) = {
-            let a = self.active.as_ref().unwrap();
-            let gt = self.game_time_at(Instant::now());
-            (a.recording && !a.thumb_done && gt >= 90.0, a.dir.clone())
-        };
-        if want_thumb {
-            if let Err(e) = self.recorder.screenshot(&dir.join(THUMB_FILE), 480).await {
-                log::warn!("thumbnail: {e:#}");
-            }
-            self.active.as_mut().unwrap().thumb_done = true;
         }
 
         // Performance debug stat every 5 s.
@@ -639,6 +627,7 @@ impl Engine {
                     video_end,
                     created_at: Local::now(),
                     source: "replay".into(),
+                    keep: false,
                 });
                 let id = format!("clip-{}", a.session.clips.len());
                 let ev = GameEvent::new(id, EventKind::Clip, gt, format!("Clip saved at {}", fmt_clock(gt)));
@@ -656,10 +645,6 @@ impl Engine {
         self.platform.set_input_enabled(false);
         let idx = a.game;
         let short = self.games[idx].short_name();
-        if a.recording && !a.thumb_done {
-            // Short game: grab the thumbnail now.
-            let _ = self.recorder.screenshot(&a.dir.join(THUMB_FILE), 480).await;
-        }
         if a.recording {
             let elapsed = a.rec_started.map(|r| r.elapsed().as_secs_f64());
             match self.recorder.stop_recording().await {
@@ -712,12 +697,11 @@ impl Engine {
         self.emit_status();
     }
 
-    /// After a game: cut automatic event clips (stream copy, low priority) and apply retention.
+    /// After a game: cut automatic event clips (stream copy, low priority). Thumbnails and the
+    /// storage clean-up follow in the app once this reports `PostProcessed`.
     fn spawn_post_process(&self, dir: PathBuf, sid: String) {
         let cutter = self.cutter.clone();
         let ev = self.settings.events.clone();
-        let root = self.save_dir();
-        let (days, gb) = (self.settings.auto_delete_days, self.settings.max_disk_gb);
         let tx = self.tx.clone();
         tokio::spawn(async move {
             if let (Some(cutter), false) = (cutter, ev.clip_kinds.is_empty()) {
@@ -726,11 +710,8 @@ impl Engine {
                     let _ = tx.send(EngineEvent::Notice { level: "warn".into(), text: format!("Event clips weren't created: {e:#}") });
                 }
             }
-            let removed = crate::library::apply_retention(&root, days, gb, Local::now(), Some(&sid));
-            if !removed.is_empty() {
-                log::info!("retention removed {removed:?}");
-            }
             let _ = tx.send(EngineEvent::LibraryChanged);
+            let _ = tx.send(EngineEvent::PostProcessed { session_id: sid });
         });
     }
 }
@@ -761,6 +742,7 @@ pub async fn auto_clips(cutter: &dyn ClipCutter, dir: &Path, ev: &crate::setting
             video_end: Some(end),
             created_at: Local::now(),
             source: "event".into(),
+            keep: false,
         });
     }
     // Reload in case the UI changed the session meanwhile (e.g. favorite).

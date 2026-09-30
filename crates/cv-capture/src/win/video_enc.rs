@@ -169,7 +169,8 @@ unsafe fn codec_settings(mft: &IMFTransform, p: &EncodeParams) {
         unsafe {
             let _ = codec.SetValue(&CODECAPI_AVEncCommonRateControlMode, &var_u32(eAVEncCommonRateControlMode_UnconstrainedVBR.0 as u32));
             let _ = codec.SetValue(&CODECAPI_AVEncCommonMeanBitRate, &var_u32(p.bitrate));
-            let _ = codec.SetValue(&CODECAPI_AVEncMPVGOPSize, &var_u32(p.fps * 2));
+            // A keyframe every second: seeking (timeline markers) only decodes <1 s of video.
+            let _ = codec.SetValue(&CODECAPI_AVEncMPVGOPSize, &var_u32(p.fps.max(1)));
             let _ = codec.SetValue(&CODECAPI_AVEncMPVDefaultBPictureCount, &var_u32(0));
             let _ = codec.SetValue(&CODECAPI_AVLowLatencyMode, &var_bool(true));
         }

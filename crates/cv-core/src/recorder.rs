@@ -4,7 +4,7 @@
 use crate::game::CaptureTarget;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -51,8 +51,6 @@ pub trait Recorder: Send + Sync {
     async fn record_elapsed(&self) -> anyhow::Result<Option<Duration>>;
     /// Saves the replay buffer and returns the saved file.
     async fn save_replay(&self) -> anyhow::Result<PathBuf>;
-    /// Saves a still frame of the current output (used for thumbnails).
-    async fn screenshot(&self, path: &Path, width: u32) -> anyhow::Result<()>;
     /// Called after a game so the recorder can restore the user's own setup.
     async fn finish(&self) -> anyhow::Result<()>;
     async fn status(&self) -> RecorderStatus;

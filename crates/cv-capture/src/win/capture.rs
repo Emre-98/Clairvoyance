@@ -5,9 +5,8 @@
 use super::d3d::Gpu;
 use super::video_enc::EncIn;
 use anyhow::{Context, Result};
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use std::sync::mpsc::{Sender, SyncSender, TrySendError};
+use std::sync::mpsc::{SyncSender, TrySendError};
 use std::sync::{Arc, Mutex};
 use windows::core::{Interface, IInspectable};
 use windows::Foundation::{TimeSpan, TypedEventHandler};
@@ -123,12 +122,6 @@ impl Converter {
     }
 }
 
-pub struct Screenshot {
-    pub path: PathBuf,
-    pub width: u32,
-    pub reply: Sender<Result<()>>,
-}
-
 struct State {
     gpu: Arc<Gpu>,
     d3d: IDirect3DDevice,
@@ -147,7 +140,6 @@ struct State {
     rec_start: i64,
     enc: SyncSender<EncIn>,
     in_flight: Arc<AtomicUsize>,
-    screenshot: Option<Screenshot>,
 }
 unsafe impl Send for State {}
 
@@ -161,17 +153,14 @@ pub struct Stats {
 pub struct Capture {
     session: GraphicsCaptureSession,
     pool: Direct3D11CaptureFramePool,
-    state: Arc<Mutex<State>>,
+    /// Kept alive for as long as the capture runs (the frame callback shares it).
+    _state: Arc<Mutex<State>>,
     pub stats: Arc<Stats>,
     pub out_w: u32,
     pub out_h: u32,
 }
 
 impl Capture {
-    pub fn request_screenshot(&self, s: Screenshot) {
-        self.state.lock().unwrap().screenshot = Some(s);
-    }
-
     pub fn stop(self) {
         let _ = self.session.Close();
         let _ = self.pool.Close();
@@ -206,11 +195,6 @@ impl State {
             let bx = D3D11_BOX { left: 0, top: 0, front: 0, right: w, bottom: h, back: 1 };
             self.gpu.context.CopySubresourceRegion(copy, 0, 0, 0, 0, &src, 0, Some(&bx));
             drop(src);
-
-            if let Some(s) = self.screenshot.take() {
-                let r = super::snapshot::save_jpeg(&self.gpu, copy, w, h, &s.path, s.width);
-                let _ = s.reply.send(r);
-            }
 
             if self.in_flight.load(Ordering::SeqCst) >= MAX_IN_FLIGHT {
                 stats.dropped.fetch_add(1, Ordering::Relaxed);
@@ -294,7 +278,6 @@ pub fn start(gpu: Arc<Gpu>, p: CaptureParams, out_w: u32, out_h: u32, enc: SyncS
             rec_start: p.rec_start,
             enc,
             in_flight,
-            screenshot: None,
         }));
         let stats = Arc::new(Stats::default());
         let (st, stt) = (state.clone(), stats.clone());
@@ -309,6 +292,6 @@ pub fn start(gpu: Arc<Gpu>, p: CaptureParams, out_w: u32, out_h: u32, enc: SyncS
             Ok(())
         }))?;
         session.StartCapture()?;
-        Ok(Capture { session, pool, state, stats, out_w, out_h })
+        Ok(Capture { session, pool, _state: state, stats, out_w, out_h })
     }
 }

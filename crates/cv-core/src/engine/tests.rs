@@ -66,7 +66,6 @@ impl Recorder for FakeRecorder {
         Ok(Some(Duration::from_secs_f64(polls + 25.0)))
     }
     async fn save_replay(&self) -> anyhow::Result<PathBuf> { anyhow::bail!("no") }
-    async fn screenshot(&self, _p: &Path, _w: u32) -> anyhow::Result<()> { Ok(()) }
     async fn finish(&self) -> anyhow::Result<()> { Ok(()) }
     async fn status(&self) -> RecorderStatus { RecorderStatus { connected: true, ..Default::default() } }
 }

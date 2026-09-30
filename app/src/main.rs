@@ -13,6 +13,7 @@ mod ffmpeg;
 mod games;
 mod input;
 mod logger;
+mod maintenance;
 mod migrate;
 mod perftest;
 mod platform;
@@ -202,7 +203,14 @@ fn handle_engine_event(app: &AppHandle, tray: &tray::Tray, ev: EngineEvent) {
             }
         }
         EngineEvent::Notice { level, text } => log::info!("notice [{level}] {text}"),
+        // The game is over and its clips are cut: thumbnails + storage clean-up now.
+        EngineEvent::PostProcessed { .. } => st.maintenance.kick(),
         _ => {}
+    }
+    if matches!(ev, EngineEvent::LibraryChanged | EngineEvent::GameEnded { .. }) {
+        // Re-read lazily: the next list request (now if the window is open, else when it's
+        // shown) refreshes only what changed. Nothing is scanned during a game.
+        st.library_dirty.store(true, Ordering::SeqCst);
     }
     // Only while the window is shown; a hidden (paused) UI catches up when it's shown.
     if st.ui_visible.load(Ordering::SeqCst) && app.get_webview_window(MAIN).is_some() {
@@ -299,12 +307,23 @@ fn main() {
                 perf: Mutex::new(Default::default()),
                 perf_cancel: Default::default(),
                 ui_visible: Default::default(),
+                library: Arc::new(cv_core::library::LibraryIndex::new(
+                    paths.data_dir.join("library-cache.json"),
+                    cv_core::library::ThumbStore::new(paths.data_dir.join("Thumbnails")),
+                )),
+                library_dirty: Default::default(),
+                library_first_refresh: Default::default(),
+                maintenance: Default::default(),
             });
             let save_dir = st.save_dir();
             let _ = std::fs::create_dir_all(&save_dir);
             let _ = app.asset_protocol_scope().allow_directory(&save_dir, true);
+            let thumbs_dir = st.library.thumbs().dir.clone();
+            let _ = std::fs::create_dir_all(&thumbs_dir);
+            let _ = app.asset_protocol_scope().allow_directory(&thumbs_dir, false);
             app.manage(st);
 
+            maintenance::spawn(handle.clone());
             let tray = tray::create(&handle)?;
             let h = handle.clone();
             tauri::async_runtime::spawn(async move {

@@ -9,6 +9,7 @@ import type {
   Settings,
   StorageInfo,
   PerfTestStatus,
+  CleanupReport,
   SelfTestResult,
 } from "./types";
 
@@ -87,7 +88,8 @@ export const api = {
   ffmpegDownload: () => call<string>("ffmpeg_download"),
   perfNow: () => call<{ cpu: number; ram_mb: number } | null>("perf_now"),
   storageInfo: () => call<StorageInfo>("storage_info"),
-  applyRetentionNow: () => call<string[]>("apply_retention_now"),
+  cleanupNow: () => call<CleanupReport>("cleanup_now"),
+  setClipKeep: (id: string, file: string, keep: boolean) => call<void>("set_clip_keep", { id, file, keep }),
   finishFirstRun: () => call<void>("finish_first_run"),
   simulateGame: (speed: number, length: number) => call<void>("simulate_game", { speed, length }),
   quit: () => call<void>("quit_app"),

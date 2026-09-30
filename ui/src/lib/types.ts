@@ -97,9 +97,15 @@ export interface SessionSummary {
   thumb_path?: string | null;
   duration?: number | null;
   favorite: boolean;
+  /** Clips marked "keep" (never auto-deleted). */
+  kept_clips: number;
+  /** The storage clean-up removed the full video (clips kept). */
+  video_removed: boolean;
   size_bytes: number;
+  video_bytes: number;
   event_count: number;
   clip_count: number;
+  thumb_at: number;
 }
 
 export interface ClipInfo {
@@ -109,6 +115,7 @@ export interface ClipInfo {
   video_end?: number | null;
   created_at: string;
   source: string;
+  keep?: boolean;
 }
 
 export interface StatSample {
@@ -147,6 +154,7 @@ export interface GameSession {
   timeline: StatSample[];
   perf: PerfStats;
   favorite: boolean;
+  video_removed_at?: string | null;
   warnings: string[];
 }
 
@@ -155,7 +163,7 @@ export interface SessionView {
   dir: string;
   video_path?: string | null;
   thumb_path?: string | null;
-  clips: (ClipInfo & { path: string; exists: boolean })[];
+  clips: (ClipInfo & { path: string; exists: boolean; thumb_path?: string | null })[];
 }
 
 export interface ClipEntry {
@@ -164,10 +172,14 @@ export interface ClipEntry {
   character?: string | null;
   character_id?: string | null;
   path: string;
+  file: string;
   title: string;
   created_at: string;
   size_bytes: number;
   source: string;
+  keep: boolean;
+  thumb_path?: string | null;
+  duration?: number | null;
 }
 
 export interface VideoSettings {
@@ -194,6 +206,7 @@ export interface Settings {
   save_dir: string;
   auto_delete_days: number;
   max_disk_gb: number;
+  auto_cleanup: boolean;
   hotkey_clip: string;
   hotkey_marker: string;
   auto_record: boolean;
@@ -244,11 +257,34 @@ export interface AppInfo {
   legacy_install: boolean;
 }
 
+export interface CleanupDone {
+  at: string;
+  id: string;
+  title: string;
+  action: "delete_game" | "delete_video";
+  bytes: number;
+  reason: string;
+}
+
 export interface StorageInfo {
   save_dir: string;
   used_bytes: number;
+  limit_bytes: number;
+  auto_cleanup: boolean;
   free_bytes?: number | null;
   games: number;
+  protected_bytes: number;
+  stuck_over_limit: boolean;
+  recent_cleanups: CleanupDone[];
+  thumbnails_dir: string;
+}
+
+export interface CleanupReport {
+  thumbs_made: number;
+  removed: CleanupDone[];
+  freed_bytes: number;
+  still_over: boolean;
+  skipped_busy: boolean;
 }
 
 export interface PhaseResult {

@@ -92,6 +92,12 @@
     }
   }
 
+  async function toggleKeep(file: string, keep: boolean) {
+    const c = view?.clips.find((x) => x.file === file);
+    if (c) c.keep = keep; // instant feedback; the library refresh confirms it
+    await api.setClipKeep(id, file, keep).catch((e) => toast(String(e), "error"));
+  }
+
   async function delClip(file: string) {
     if (!(await confirmDialog("Delete this clip?"))) return;
     await api.deleteClip(id, file).catch((e) => toast(String(e), "error"));
@@ -114,7 +120,7 @@
         <div class="muted">{s.game_name}{s.player?.mode ? ` · ${s.player.mode}` : ""} · {relativeDate(s.started_at)} · {clock(gameLen)}</div>
       </div>
       <div class="spacer"></div>
-      <button class="btn" class:favon={s.favorite} onclick={toggleFav}><Icon name="star" size={15} fill={s.favorite} />{s.favorite ? "Favorite" : "Keep"}</button>
+      <button class="btn" class:favon={s.favorite} onclick={toggleFav} title="Favorites are never deleted by the storage clean-up" aria-pressed={s.favorite}><Icon name="star" size={15} fill={s.favorite} />{s.favorite ? "Favorite" : "Add to favorites"}</button>
       <button class="btn" onclick={startClip} disabled={!view.video_path}><Icon name="scissors" size={15} />Create clip</button>
       <button class="btn" onclick={() => api.reveal(view!.video_path ?? view!.dir)}><Icon name="folder" size={15} />Folder</button>
       <button class="btn ghost icon danger" onclick={del} title="Delete game"><Icon name="trash" size={16} /></button>
@@ -133,6 +139,7 @@
           bind:range
           bind:current
           startAt={t}
+          removed={!!s.video_removed_at}
         />
         {#if range}
           <ClipEditor sessionId={s.id} bind:range {current} {offset} duration={videoLen} onclose={() => (range = null)} onpreview={() => player?.seek(range![0], true)} />
@@ -223,6 +230,7 @@
               <span class="muted">{c.video_start != null ? `${clock(c.video_start - offset)} – ${clock((c.video_end ?? 0) - offset)}` : ""} · {c.source === "replay" ? "hotkey" : c.source === "event" ? "auto" : "edited"}{c.exists ? "" : " · file missing"}</span>
             </div>
             {#if c.video_start != null}<button class="btn small ghost" onclick={() => player?.seek(c.video_start!, true)}>Watch here</button>{/if}
+            <button class="btn small ghost keepbtn" class:on={c.keep} onclick={() => toggleKeep(c.file, !c.keep)} title={c.keep ? "Kept: never deleted by the storage clean-up" : "Keep this clip (never auto-deleted)"} aria-pressed={!!c.keep}><Icon name="pin" size={13} />{c.keep ? "Kept" : "Keep"}</button>
             <button class="btn small ghost" onclick={() => api.openPath(c.path)} disabled={!c.exists}><Icon name="external" size={13} />Open</button>
             <button class="btn small ghost" onclick={() => api.reveal(c.path)} disabled={!c.exists}><Icon name="folder" size={13} /></button>
             <button class="btn small ghost" onclick={() => delClip(c.file)}><Icon name="trash" size={13} /></button>
@@ -458,6 +466,9 @@
   }
   .chartcard h3 {
     margin-bottom: 14px;
+  }
+  .keepbtn.on {
+    color: var(--fav);
   }
   .cliplist {
     padding: 6px;

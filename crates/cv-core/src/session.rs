@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 pub const SESSION_FILE: &str = "session.json";
-pub const THUMB_FILE: &str = "thumb.jpg";
+/// Thumbnail file older versions kept inside the game folder (now in the thumbnail folder).
+pub const LEGACY_THUMB_FILE: &str = "thumb.jpg";
 pub const CLIPS_DIR: &str = "clips";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,6 +25,9 @@ pub struct ClipInfo {
     pub created_at: DateTime<Local>,
     /// "replay" (hotkey), "event" (auto clip) or "editor".
     pub source: String,
+    /// Marked "keep": never removed by the storage clean-up (even if its game's video is).
+    #[serde(default)]
+    pub keep: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -99,6 +103,10 @@ pub struct GameSession {
     pub perf: PerfStats,
     #[serde(default)]
     pub favorite: bool,
+    /// Set when the storage clean-up deleted the full video but kept the game because some of
+    /// its clips are marked "keep".
+    #[serde(default)]
+    pub video_removed_at: Option<DateTime<Local>>,
     /// Non-fatal problems during the game (shown on the detail page).
     #[serde(default)]
     pub warnings: Vec<String>,
@@ -125,6 +133,7 @@ impl GameSession {
             timeline: Vec::new(),
             perf: PerfStats::default(),
             favorite: false,
+            video_removed_at: None,
             warnings: Vec::new(),
         }
     }

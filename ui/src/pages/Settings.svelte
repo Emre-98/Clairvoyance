@@ -1,7 +1,7 @@
 <script lang="ts">
   import { app, saveSettings, toast } from "../lib/store.svelte";
   import { api, on, pickFolder } from "../lib/api";
-  import { bytes } from "../lib/format";
+  import { bytes, relativeDate } from "../lib/format";
   import { KIND, USER_KINDS } from "../lib/eventmeta";
   import type { EventKind, Settings, StorageInfo } from "../lib/types";
   import { setTheme, type Theme } from "../lib/theme";
@@ -76,7 +76,10 @@
   let storage = $state<StorageInfo | null>(null);
   let ff = $state<{ available: boolean; path?: string | null } | null>(null);
   $effect(() => {
-    if (active === "storage") api.storageInfo().then((s) => (storage = s));
+    if (active === "storage") {
+      app.libraryVersion;
+      api.storageInfo().then((s) => (storage = s));
+    }
     if (active === "events") api.ffmpegStatus().then((s) => (ff = s));
   });
 
@@ -101,12 +104,28 @@
     if (f) draft.save_dir = f;
   }
 
+  let cleaning = $state(false);
   async function cleanNow() {
-    if (dirty) await save();
-    const removed = await api.applyRetentionNow();
-    toast(removed.length ? `Deleted ${removed.length} old game${removed.length === 1 ? "" : "s"}` : "Nothing to delete", "ok");
-    storage = await api.storageInfo();
+    cleaning = true;
+    try {
+      if (dirty) await save();
+      const r = await api.cleanupNow();
+      if (r.removed.length) toast(`Removed ${r.removed.length} old recording${r.removed.length === 1 ? "" : "s"} (${bytes(r.freed_bytes)})`, "ok");
+      else if (r.still_over) toast("Still over the limit, but only favorites and kept clips are left.", "warn", 7000);
+      else toast("Nothing to remove: you're under the limit.", "ok");
+      storage = await api.storageInfo();
+    } catch (e) {
+      toast(String(e), "error");
+    } finally {
+      cleaning = false;
+    }
   }
+
+  // Storage limit slider: fine steps at the low end, coarse ones above.
+  const GB_STEPS = [10, 20, 30, 40, 50, 60, 75, 100, 125, 150, 200, 250, 300, 400, 500, 750, 1000, 1500, 2000];
+  const stepIndex = $derived(GB_STEPS.reduce((best, v, i) => (Math.abs(v - draft.max_disk_gb) < Math.abs(GB_STEPS[best] - draft.max_disk_gb) ? i : best), 0));
+  const usedPct = $derived(storage && draft.max_disk_gb > 0 ? Math.min(100, (storage.used_bytes / (draft.max_disk_gb * 1024 ** 3)) * 100) : 0);
+  const overLimit = $derived(!!storage && draft.max_disk_gb > 0 && storage.used_bytes > draft.max_disk_gb * 1024 ** 3);
 
   let simSpeed = $state(1);
   let simLength = $state(180);
@@ -253,35 +272,71 @@
       {/each}
     {:else if active === "storage"}
       <h2>Storage</h2>
+      <div class="card box">
+        <div class="limit-head">
+          <div>
+            <strong>Max storage for recordings</strong>
+            <div class="muted small">When your recordings take more than this, the oldest are deleted first (with their clips, timeline and thumbnail).</div>
+          </div>
+          <div class="gb-input">
+            <input class="input" type="number" min="5" max="10000" bind:value={draft.max_disk_gb} aria-label="Max storage in GB" />
+            <span>GB</span>
+          </div>
+        </div>
+        <input class="gb-slider" type="range" min="0" max={GB_STEPS.length - 1} step="1" value={stepIndex} oninput={(e) => (draft.max_disk_gb = GB_STEPS[Number((e.currentTarget as HTMLInputElement).value)])} aria-label="Max storage" />
+        <div class="usage" class:over={overLimit}>
+          <div class="usage-bar"><span style="transform:scaleX({usedPct / 100})"></span></div>
+          <div class="usage-txt">
+            {#if storage}
+              <span><strong>{bytes(storage.used_bytes)}</strong> used of {draft.max_disk_gb} GB · {storage.games} game{storage.games === 1 ? "" : "s"}</span>
+              <span class="muted">{bytes(storage.free_bytes)} free on this drive</span>
+            {:else}
+              <span class="skeleton-line" style="width:220px"></span>
+            {/if}
+          </div>
+        </div>
+        <label class="check toggle-row"><input type="checkbox" bind:checked={draft.auto_cleanup} />Automatically delete the oldest recordings to stay under the limit <small>(after each game and when Clairvoyance starts, never during a game)</small></label>
+        <div class="row cl-actions">
+          <label class="inline">Also delete games older than
+            <select class="input" bind:value={draft.auto_delete_days}>
+              <option value={0}>Never</option>
+              {#each [7, 14, 30, 60, 90, 180] as d}<option value={d}>{d} days</option>{/each}
+            </select>
+          </label>
+          <div class="spacer"></div>
+          <button class="btn" onclick={cleanNow} disabled={cleaning || app.status?.state !== "idle"}>{cleaning ? "Cleaning…" : "Clean up now"}</button>
+        </div>
+      </div>
+      {#if storage?.stuck_over_limit}
+        <div class="card box warnbox"><Icon name="warn" size={18} /><div><strong>Over the limit, but everything left is protected</strong><div class="muted small">Only favorites and games with clips marked "keep" remain ({bytes(storage.protected_bytes)}). Unstar some favorites, un-keep clips, or raise the limit.</div></div></div>
+      {/if}
+      <div class="card box protect">
+        <Icon name="star" size={16} fill />
+        <div><strong>Never deleted automatically</strong><div class="muted small">Games you star as favorite (★ on a game) and clips you mark "keep" (the pin on a clip). If an old game has kept clips, only its full video is removed and the clips stay.</div></div>
+      </div>
+      <h3 class="sub">Save folder</h3>
       <div class="card box form">
-        <label class="wide">Save folder
+        <label class="wide">
           <div class="row">
             <input class="input grow" bind:value={draft.save_dir} placeholder={app.info?.default_save_dir} />
             <button class="btn small" onclick={chooseFolder}>Browse</button>
             <button class="btn small ghost" onclick={() => api.reveal(storage?.save_dir ?? app.info?.save_dir ?? "")}>Open</button>
           </div>
-          <small>One folder per game: the video, its timeline (session.json), and its clips.</small>
-        </label>
-        <label>Delete games older than
-          <select class="input" bind:value={draft.auto_delete_days}>
-            <option value={0}>Never</option>
-            {#each [3, 7, 14, 30, 60, 90] as d}<option value={d}>{d} days</option>{/each}
-          </select>
-        </label>
-        <label>Maximum space
-          <select class="input" bind:value={draft.max_disk_gb}>
-            <option value={0}>No limit</option>
-            {#each [20, 50, 100, 200, 500, 1000] as g}<option value={g}>{g} GB</option>{/each}
-          </select>
-          <small>Oldest games go first. Favorites are never deleted.</small>
+          <small>One folder per game: the video, its timeline (session.json) and its clips. Thumbnails are kept separately in the app's data folder.</small>
         </label>
       </div>
-      {#if storage}
-        <div class="card box stor">
-          <div><span class="muted">Used by {storage.games} games</span><strong>{bytes(storage.used_bytes)}</strong></div>
-          <div><span class="muted">Free on this drive</span><strong>{bytes(storage.free_bytes)}</strong></div>
-          <button class="btn" onclick={cleanNow}>Apply clean-up now</button>
+      <h3 class="sub">Recently removed by the clean-up</h3>
+      {#if storage?.recent_cleanups.length}
+        <div class="card box list cleanlog">
+          {#each storage.recent_cleanups as c (c.at + c.id)}
+            <div class="item">
+              <div><strong>{c.title}</strong><span class="muted">{c.action === "delete_video" ? "Full video removed, kept clips stay" : "Recording, clips and timeline removed"} · {c.reason} · {relativeDate(c.at)}</span></div>
+              <span class="muted">{bytes(c.bytes)}</span>
+            </div>
+          {/each}
         </div>
+      {:else}
+        <p class="muted small">Nothing yet.</p>
       {/if}
     {:else if active === "appearance"}
       <h2>Appearance</h2>
@@ -529,22 +584,6 @@
   .gh {
     margin-bottom: 14px;
   }
-  .stor {
-    display: flex;
-    align-items: center;
-    gap: 30px;
-  }
-  .stor > div {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-  }
-  .stor strong {
-    font-size: 20px;
-  }
-  .stor .btn {
-    margin-left: auto;
-  }
   .small {
     font-size: 12.5px;
   }
@@ -665,6 +704,81 @@
   }
   .pv-dots .e {
     background: var(--ev-epic);
+  }
+  .limit-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+  }
+  .gb-input {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+  }
+  .gb-input input {
+    width: 96px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .gb-slider {
+    width: 100%;
+    margin: 18px 0 8px;
+  }
+  .usage-bar {
+    height: 8px;
+    border-radius: 4px;
+    background: var(--surface-3);
+    overflow: hidden;
+  }
+  .usage-bar span {
+    display: block;
+    height: 100%;
+    background: var(--accent-grad);
+    transform-origin: left;
+    transition: transform 0.25s var(--ease);
+  }
+  .usage.over .usage-bar span {
+    background: var(--danger);
+  }
+  .usage-txt {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 8px;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+  }
+  .toggle-row {
+    margin-top: 16px;
+  }
+  .cl-actions {
+    margin-top: 14px;
+  }
+  .warnbox,
+  .protect {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .warnbox {
+    border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+    background: color-mix(in srgb, var(--warn) 8%, var(--surface));
+    color: var(--warn);
+  }
+  .warnbox strong,
+  .protect strong {
+    color: var(--text);
+  }
+  .protect :global(svg) {
+    color: var(--fav);
+    flex: none;
+    margin-top: 2px;
+  }
+  .cleanlog .item > span {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
   .savebar {
     position: absolute;
