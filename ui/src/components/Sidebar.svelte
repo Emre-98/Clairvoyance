@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from "./Icon.svelte";
+  import UpdateNotice from "./UpdateNotice.svelte";
   import { app, go } from "../lib/store.svelte";
   import { api } from "../lib/api";
   import { clock } from "../lib/format";
@@ -44,6 +45,8 @@
   </nav>
 
   <div class="spacer"></div>
+
+  <UpdateNotice />
 
   {#if st}
     <div class="live" class:rec={st.state === "recording"} class:det={st.state === "detected"}>

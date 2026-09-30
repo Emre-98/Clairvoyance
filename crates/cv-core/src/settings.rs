@@ -94,6 +94,8 @@ pub struct Settings {
     pub show_perf: bool,
     /// "system" (follow Windows, the default), "dark" or "light".
     pub theme: String,
+    /// Look for new versions on GitHub at start-up and every few hours (never during a game).
+    pub auto_update_check: bool,
     pub video: VideoSettings,
     pub events: EventSettings,
     /// Per-game settings, keyed by game id (see `GameIntegration::config_fields`).
@@ -122,6 +124,7 @@ impl Default for Settings {
             start_minimized: false,
             show_perf: true,
             theme: "system".into(),
+            auto_update_check: true,
             video: VideoSettings::default(),
             events: EventSettings::default(),
             games: BTreeMap::new(),

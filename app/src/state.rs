@@ -48,6 +48,7 @@ pub struct AppState {
     /// (launch -> first content painted, page load -> first content painted), in ms, for the
     /// first window of this run.
     pub startup: std::sync::Mutex<(Option<f64>, Option<f64>)>,
+    pub updater: crate::updater::Updater,
 }
 
 impl AppState {

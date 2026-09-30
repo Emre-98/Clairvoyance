@@ -1,0 +1,91 @@
+# Builds, signs and publishes a release when a version tag (v1.2.3) is pushed.
+# Produces on GitHub Releases: the installer (Clairvoyance_<v>_x64-setup.exe), its updater
+# signature (.sig) and latest.json, which installed copies check for updates.
+# The signing key comes from the repository secrets TAURI_SIGNING_PRIVATE_KEY and
+# TAURI_SIGNING_PRIVATE_KEY_PASSWORD; it is never in the code. See RELEASING.md.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build, e.g. v1.0.0"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Check the tag matches the app version
+        shell: pwsh
+        run: |
+          $conf = Get-Content app/tauri.conf.json -Raw | ConvertFrom-Json
+          $want = "v$($conf.version)"
+          if ($env:TAG -ne $want) { throw "Tag $env:TAG doesn't match the version in app/tauri.conf.json ($want). Use scripts/release.ps1." }
+          $cargo = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+          if ("v$cargo" -ne $want) { throw "Cargo.toml has $cargo, tauri.conf.json has $($conf.version)." }
+
+      - name: Release notes from CHANGELOG.md
+        shell: pwsh
+        run: |
+          $v = $env:TAG.TrimStart('v')
+          $lines = Get-Content CHANGELOG.md
+          $out = @(); $in = $false
+          foreach ($l in $lines) {
+            if ($l -match '^## ') { if ($in) { break }; if ($l -match "^## \[?$([regex]::Escape($v))\]?") { $in = $true; continue } }
+            if ($in) { $out += $l }
+          }
+          $notes = ($out -join "`n").Trim()
+          if (-not $notes) { $notes = "Clairvoyance $env:TAG" }
+          $delim = "EOF_$([guid]::NewGuid().ToString('N'))"
+          "NOTES<<$delim`n$notes`n$delim" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - name: Install UI dependencies
+        run: npm ci --prefix ui
+
+      - name: Test
+        run: cargo test -p cv-core -p cv-game-league -p cv-game-cs2 -p cv-capture --release
+
+      - name: Build, sign and publish
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: app
+          tauriScript: npx --prefix ${{ github.workspace }}/ui tauri
+          tagName: ${{ env.TAG }}
+          releaseName: Clairvoyance ${{ env.TAG }}
+          releaseBody: ${{ env.NOTES }}
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true

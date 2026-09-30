@@ -3,6 +3,7 @@
 /target-*/
 /ui/node_modules/
 /ui/dist/
+/ui/dist-*/
 /ui/dev-assets/
 /app/gen/
 /dist/

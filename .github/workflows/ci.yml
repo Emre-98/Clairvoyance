@@ -1,0 +1,27 @@
+# Quick checks on every push to main and on pull requests (Linux: portable crates + UI).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Rust tests (core, games, recorder muxer)
+        run: cargo test -p cv-core -p cv-game-league -p cv-game-cs2 -p cv-capture
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: UI type check and build
+        run: |
+          npm ci --prefix ui
+          npm --prefix ui run check
+          npm --prefix ui run build

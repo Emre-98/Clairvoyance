@@ -579,6 +579,24 @@ pub fn perf_test_cancel(st: St) {
     st.perf_cancel.store(true, std::sync::atomic::Ordering::SeqCst);
 }
 
+#[tauri::command]
+pub fn update_status(st: St) -> crate::updater::UpdateStatus {
+    crate::updater::status(&st)
+}
+
+/// "Check now" (works even with automatic checks off).
+#[tauri::command]
+pub async fn update_check(app: AppHandle) -> R<crate::updater::UpdateStatus> {
+    crate::updater::check(&app).await?;
+    Ok(crate::updater::status(&app.state::<Arc<AppState>>()))
+}
+
+/// "Update now": download, install, restart.
+#[tauri::command]
+pub async fn update_install(app: AppHandle) -> R<()> {
+    crate::updater::install(&app).await
+}
+
 #[derive(Serialize)]
 pub struct UiTimings {
     startup_ms: Option<f64>,
@@ -637,6 +655,9 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static 
         set_clip_keep,
         ui_ready,
         ui_timings,
+        update_status,
+        update_check,
+        update_install,
         finish_first_run,
         simulate_game,
         builtin_encoders,

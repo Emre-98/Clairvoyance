@@ -7,32 +7,54 @@
   "build": {
     "frontendDist": "../ui/dist",
     "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "npm --prefix ../ui run dev",
-    "beforeBuildCommand": "npm --prefix ../ui run build"
+    "beforeDevCommand": "npm --prefix ui run dev",
+    "beforeBuildCommand": "npm --prefix ui run build"
   },
   "app": {
     "withGlobalTauri": false,
     "windows": [],
     "security": {
       "csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' asset: http://asset.localhost data: https://ddragon.leagueoflegends.com; media-src 'self' asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost https://ddragon.leagueoflegends.com",
-      "assetProtocol": { "enable": true, "scope": [] }
+      "assetProtocol": {
+        "enable": true,
+        "scope": []
+      }
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "publisher": "Emre-98",
     "homepage": "https://github.com/Emre-98/Clairvoyance",
     "copyright": "MIT License",
     "category": "Video",
     "shortDescription": "Records your games automatically, with every kill, death and objective on a timeline.",
     "licenseFile": "../LICENSE",
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
     "windows": {
       "nsis": {
         "installMode": "currentUser",
         "installerIcon": "icons/icon.ico",
         "displayLanguageSelector": false
+      }
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc2OTJFNjg5N0ZCMDdGNkIKUldScmY3Qi9pZWFTZHJNaGlEOWFZWFR2UFlNU2piN1hTNklkVlBNOFdpU3l6ODFZM2NDcjA0MVMK",
+      "endpoints": [
+        "https://github.com/Emre-98/Clairvoyance/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
       }
     }
   }

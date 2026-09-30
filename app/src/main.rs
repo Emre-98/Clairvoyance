@@ -19,6 +19,7 @@ mod perftest;
 mod platform;
 mod state;
 mod tray;
+mod updater;
 mod webview_power;
 
 use cv_core::engine::{Engine, EngineCommand, EngineEvent};
@@ -247,6 +248,7 @@ fn main() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main_window(app)))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(commands::handler())
         .on_window_event(|w, ev| {
             if w.label() != MAIN {
@@ -319,6 +321,7 @@ fn main() {
                 library_first_refresh: Default::default(),
                 maintenance: Default::default(),
                 startup: Default::default(),
+                updater: Default::default(),
             });
             let save_dir = st.save_dir();
             let _ = std::fs::create_dir_all(&save_dir);
@@ -329,6 +332,7 @@ fn main() {
             app.manage(st);
 
             maintenance::spawn(handle.clone());
+            updater::spawn(handle.clone());
             let tray = tray::create(&handle)?;
             let h = handle.clone();
             tauri::async_runtime::spawn(async move {

@@ -10,6 +10,7 @@ import type {
   StorageInfo,
   PerfTestStatus,
   CleanupReport,
+  UpdateStatus,
   SelfTestResult,
 } from "./types";
 
@@ -95,6 +96,9 @@ export const api = {
   quit: () => call<void>("quit_app"),
   removeLegacyApp: () => call<void>("remove_legacy_app"),
   uiReady: (pageMs: number) => call<{ since_launch_ms: number | null }>("ui_ready", { pageMs }),
+  updateStatus: () => call<UpdateStatus>("update_status"),
+  updateCheck: () => call<UpdateStatus>("update_check"),
+  updateInstall: () => call<void>("update_install"),
   uiTimings: () => call<{ startup_ms: number | null; page_ms: number | null }>("ui_timings"),
   setTheme: (theme: string, darkNow: boolean) => call<void>("set_theme", { theme, darkNow }),
   builtinEncoders: () => call<{ gpu: string; encoders: string[] }>("builtin_encoders"),

@@ -21,7 +21,7 @@
     { id: "games", label: "Games", icon: "gamepad" },
     { id: "storage", label: "Storage", icon: "folder" },
     { id: "appearance", label: "Appearance", icon: "palette" },
-    { id: "general", label: "General", icon: "settings" },
+    { id: "general", label: "General & updates", icon: "settings" },
     { id: "performance", label: "Performance test", icon: "cpu" },
     { id: "advanced", label: "Advanced", icon: "settings" },
   ];
@@ -83,6 +83,16 @@
     }
   });
   const ms = (v: number | null | undefined) => (v == null ? "-" : `${Math.round(v)} ms`);
+
+  async function checkUpdates() {
+    try {
+      const u = await api.updateCheck();
+      app.update = u;
+      if (u.state === "up_to_date") toast("You're on the latest version.", "ok");
+    } catch (e) {
+      toast(`Couldn't check for updates: ${e}`, "error", 8000);
+    }
+  }
 
   let storage = $state<StorageInfo | null>(null);
   let ff = $state<{ available: boolean; path?: string | null } | null>(null);
@@ -379,6 +389,26 @@
       </div>
       <p class="muted small">Closing the window keeps Clairvoyance in the tray (bottom-right, next to the clock). Use Quit there to exit.</p>
       <button class="btn danger" onclick={() => api.quit()}>Quit Clairvoyance</button>
+
+      <h3 class="sub">Updates</h3>
+      <div class="card box about">
+        <img src="/logo.svg" alt="" width="44" height="44" />
+        <div class="grow">
+          <strong>Clairvoyance {app.info?.version}</strong>
+          <div class="muted small">
+            {#if app.update?.state === "checking"}Checking for updates…
+            {:else if app.update?.state === "available"}Version {app.update.version} is available (see the card in the sidebar).
+            {:else if app.update?.state === "downloading" || app.update?.state === "installing"}Updating…
+            {:else if app.update?.state === "error"}Couldn't check: {app.update.error}
+            {:else if app.update?.state === "up_to_date"}You're up to date{app.update.checked_at ? ` (checked ${relativeDate(app.update.checked_at)})` : ""}.
+            {:else}Updates come from GitHub Releases.{/if}
+          </div>
+        </div>
+        <button class="btn" onclick={checkUpdates} disabled={app.update?.state === "checking" || app.update?.state === "downloading" || app.update?.state === "installing"}>Check now</button>
+      </div>
+      <div class="card box form">
+        <label class="check wide"><input type="checkbox" bind:checked={draft.auto_update_check} />Check for updates automatically <small>(when Clairvoyance starts and every few hours, never during a game; you always choose when to install)</small></label>
+      </div>
     {:else if active === "performance"}
       <h2>Performance test</h2>
       <div class="card box"><PerfTest /></div>
@@ -725,6 +755,11 @@
   }
   .pv-dots .e {
     background: var(--ev-epic);
+  }
+  .about {
+    display: flex;
+    align-items: center;
+    gap: 14px;
   }
   .metric {
     font-weight: 700;

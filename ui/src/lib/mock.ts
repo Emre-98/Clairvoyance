@@ -103,6 +103,7 @@ const settings: Settings = {
   start_minimized: true,
   show_perf: true,
   theme: (localStorage.getItem("cv-theme") as any) ?? "system",
+  auto_update_check: true,
   video: { encoder: "auto", quality: "standard", fps: 60, height: 1080, replay_buffer_secs: 30, record_mic: false, display_capture: false },
   events: { clip_kinds: ["multikill", "ace"], clip_before_secs: 10, clip_after_secs: 4, tts_enabled: false, tts_kinds: ["kill", "death", "multikill", "clip"], tts_volume: 70 },
   games: { league: { riot_id: "Tester#EUW", ult_key: "R" } },
@@ -180,6 +181,9 @@ const clips: ClipEntry[] = sessions.slice(0, Math.max(5, Math.floor(sessions.len
 ]);
 
 let legacyRemoved = false;
+let mockUpdate: any = q.get("update") === "1"
+  ? { state: "available", current_version: "1.0.0", version: "1.0.1", notes: "- Timeline jumps are faster\n- Light theme polish\n- Fixed: thumbnails for very short games", downloaded: 0, total: null, checked_at: new Date().toISOString() }
+  : { state: "up_to_date", current_version: "1.0.0", downloaded: 0, checked_at: new Date().toISOString() };
 
 export async function invoke(cmd: string, args: any = {}): Promise<any> {
   await new Promise((r) => setTimeout(r, 60));
@@ -213,6 +217,23 @@ export async function invoke(cmd: string, args: any = {}): Promise<any> {
       return { since_launch_ms: args.pageMs + 400 };
     case "ui_timings":
       return { startup_ms: 812, page_ms: 356 };
+    case "update_status":
+      return mockUpdate;
+    case "update_check":
+      await new Promise((r) => setTimeout(r, 900));
+      mockUpdate = { ...mockUpdate, state: "available", version: "1.0.1", notes: "- Faster library\n- Fixed a thumbnail bug", checked_at: new Date().toISOString() };
+      emit("update-status", mockUpdate);
+      return mockUpdate;
+    case "update_install": {
+      for (let i = 1; i <= 10; i++) {
+        await new Promise((r) => setTimeout(r, 200));
+        mockUpdate = { ...mockUpdate, state: "downloading", downloaded: i * 2.6e6, total: 2.6e7 };
+        emit("update-status", mockUpdate);
+      }
+      mockUpdate = { ...mockUpdate, state: "installing" };
+      emit("update-status", mockUpdate);
+      return;
+    }
     case "set_theme":
       settings.theme = args.theme;
       return;

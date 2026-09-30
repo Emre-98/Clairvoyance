@@ -216,6 +216,7 @@ export interface Settings {
   start_minimized: boolean;
   show_perf: boolean;
   theme: "system" | "dark" | "light";
+  auto_update_check: boolean;
   video: VideoSettings;
   events: EventSettings;
   games: Record<string, Record<string, unknown>>;
@@ -320,6 +321,18 @@ export interface PerfTestStatus {
   report?: PerfReport | null;
   report_text?: string | null;
   report_path?: string | null;
+}
+
+export interface UpdateStatus {
+  state: "idle" | "checking" | "up_to_date" | "available" | "downloading" | "installing" | "error";
+  current_version: string;
+  version?: string | null;
+  notes?: string | null;
+  date?: string | null;
+  downloaded: number;
+  total?: number | null;
+  error?: string | null;
+  checked_at?: string | null;
 }
 
 export interface SelfTestResult {

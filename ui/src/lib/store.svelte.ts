@@ -1,7 +1,7 @@
 import { api, on, onEngine } from "./api";
 import { initTheme } from "./theme";
 import { measurePaint, nextPaint, record } from "./perfmarks";
-import type { AppInfo, LiveStatus, SessionSummary, SessionView, Settings } from "./types";
+import type { AppInfo, LiveStatus, SessionSummary, SessionView, Settings, UpdateStatus } from "./types";
 
 export type Route =
   | { page: "home" }
@@ -26,6 +26,7 @@ export const app = $state({
   toasts: [] as Toast[],
   /** Bumped whenever something on disk changed. */
   libraryVersion: 0,
+  update: null as UpdateStatus | null,
 });
 
 // Game pages open instantly: their data is fetched on hover and kept until something changes.
@@ -107,6 +108,12 @@ export async function boot() {
     } else if (e.type === "game_ended") {
       toast("Game saved. Open it from your library.", "ok");
     }
+  });
+  api.updateStatus().then((u) => (app.update = u)).catch(() => {});
+  await on("update-status", (u: UpdateStatus) => {
+    const wasAvailable = app.update?.state === "available";
+    app.update = u;
+    if (u.state === "available" && !wasAvailable) toast(`Update available: v${u.version}`, "info", 6000);
   });
   await on("library-changed", () => {
     sessionCache.clear();
