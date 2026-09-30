@@ -1,0 +1,21 @@
+[package]
+name = "gr-game-cs2"
+description = "Counter-Strike 2 module: Valve's official Game State Integration (the game sends its state to a local HTTP endpoint)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+gr-core.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+async-trait.workspace = true
+tokio = { workspace = true, features = ["net", "io-util"] }
+log.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = ["Win32_System_Registry", "Win32_Foundation"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

@@ -1,0 +1,54 @@
+# ---- Build output ----
+/target/
+/target-*/
+/ui/node_modules/
+/ui/dist/
+/ui/dev-assets/
+/app/gen/
+/dist/
+*.exe
+*.msi
+*.zip
+*.pdb
+
+# ---- Recordings, thumbnails, test output (never commit media) ----
+*.mp4
+*.mkv
+*.webm
+*.mov
+*.jpg
+*.jpeg
+*.webp
+!/assets/**
+!/app/icons/**
+!/ui/public/**
+/Thumbnails/
+/perf-tests/
+selftest-output/
+
+# ---- Logs, caches, local settings ----
+*.log
+*.tmp
+settings.json
+library-cache.json
+.env
+.env.*
+
+# ---- Keys and secrets (the updater signing key lives OUTSIDE this folder) ----
+*.key
+*.key.pub
+*.pem
+*.pfx
+*.p12
+*.snk
+*secret*
+*password*
+/.claude-tmp/
+
+# ---- OS / editors ----
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp

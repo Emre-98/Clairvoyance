@@ -1,0 +1,58 @@
+[package]
+name = "gamerecorder"
+description = "GameRecorder desktop app (Tauri)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+default-run = "gamerecorder"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+gr-core.workspace = true
+gr-obs.workspace = true
+gr-capture = { path = "../crates/gr-capture" }
+gr-game-league.workspace = true
+gr-game-cs2 = { path = "../games/cs2" }
+gr-mock-league = { path = "../crates/gr-mock-league" }
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+async-trait.workspace = true
+tokio.workspace = true
+chrono.workspace = true
+log.workspace = true
+tauri = { version = "2", features = ["tray-icon", "image-png", "protocol-asset"] }
+tauri-plugin-single-instance = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+reqwest.workspace = true
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[target.'cfg(windows)'.dependencies]
+# Same versions Tauri/wry use; only for pausing the WebView while the window is hidden.
+webview2-com = "0.39"
+windows-core-062 = { package = "windows-core", version = "0.62" }
+windows = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_System_Threading",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_System_ProcessStatus",
+  "Win32_UI_WindowsAndMessaging",
+  "Win32_UI_Input",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_System_LibraryLoader",
+  "Win32_Graphics_Dxgi",
+  "Win32_System_Com",
+  "Win32_Media_Speech",
+  "Win32_System_Registry",
+  "Win32_Storage_FileSystem",
+  "Win32_Graphics_Gdi",
+  "Win32_UI_Shell",
+] }
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

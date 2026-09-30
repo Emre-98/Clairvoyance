@@ -1,0 +1,67 @@
+//! Built-in game recorder: Windows Graphics Capture + hardware H.264 (NVENC / AMF / Quick Sync
+//! through Media Foundation) + per-process WASAPI loopback audio, written as crash-safe
+//! fragmented MP4, with an in-memory replay buffer. Implements `gr_core::Recorder`, so OBS
+//! remains a drop-in alternative.
+//!
+//! `mp4` and `replay` are portable (tested anywhere); everything touching Windows lives in `win`.
+
+pub mod mp4;
+pub mod replay;
+
+#[cfg(windows)]
+pub mod win;
+#[cfg(windows)]
+pub use win::NativeRecorder;
+
+/// Stand-in on other platforms (development builds only): recording is Windows-only.
+#[cfg(not(windows))]
+pub struct NativeRecorder;
+
+#[cfg(not(windows))]
+impl NativeRecorder {
+    pub fn new() -> Self {
+        NativeRecorder
+    }
+    pub fn available_encoders() -> anyhow::Result<(String, Vec<String>)> {
+        anyhow::bail!("the built-in recorder only works on Windows")
+    }
+}
+
+#[cfg(not(windows))]
+impl Default for NativeRecorder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(not(windows))]
+#[async_trait::async_trait]
+impl gr_core::Recorder for NativeRecorder {
+    async fn ensure_connected(&self) -> anyhow::Result<()> {
+        anyhow::bail!("the built-in recorder only works on Windows")
+    }
+    async fn prepare(&self, _: &gr_core::game::CaptureTarget, _: &gr_core::recorder::RecordOptions) -> anyhow::Result<()> {
+        Ok(())
+    }
+    async fn start_recording(&self) -> anyhow::Result<()> {
+        anyhow::bail!("the built-in recorder only works on Windows")
+    }
+    async fn stop_recording(&self) -> anyhow::Result<std::path::PathBuf> {
+        anyhow::bail!("not recording")
+    }
+    async fn record_elapsed(&self) -> anyhow::Result<Option<std::time::Duration>> {
+        Ok(None)
+    }
+    async fn save_replay(&self) -> anyhow::Result<std::path::PathBuf> {
+        anyhow::bail!("not recording")
+    }
+    async fn screenshot(&self, _: &std::path::Path, _: u32) -> anyhow::Result<()> {
+        anyhow::bail!("not recording")
+    }
+    async fn finish(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+    async fn status(&self) -> gr_core::recorder::RecorderStatus {
+        gr_core::recorder::RecorderStatus::default()
+    }
+}
