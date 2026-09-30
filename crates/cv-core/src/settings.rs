@@ -102,6 +102,8 @@ pub struct Settings {
     pub games: BTreeMap<String, serde_json::Value>,
     /// Game ids that are switched off.
     pub disabled_games: Vec<String>,
+    /// Per-mode recording rules, keyed by game id (Settings > Game modes).
+    pub modes: BTreeMap<String, crate::modes::GameModes>,
     /// Path to ffmpeg.exe used for clip export (empty = auto).
     pub ffmpeg_path: String,
 }
@@ -129,6 +131,7 @@ impl Default for Settings {
             events: EventSettings::default(),
             games: BTreeMap::new(),
             disabled_games: Vec::new(),
+            modes: BTreeMap::new(),
             ffmpeg_path: String::new(),
         }
     }

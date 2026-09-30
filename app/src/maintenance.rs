@@ -81,6 +81,10 @@ pub async fn run(app: &AppHandle, forced: bool) -> RunReport {
     if busy(&st) {
         return RunReport { skipped_busy: true, ..Default::default() };
     }
+    // Game mode lists (League queues): small downloads/cached files, never during a game.
+    if crate::modes::refresh_catalog(&st).await {
+        let _ = app.emit("modes-changed", ());
+    }
     let s2 = st.clone();
     let report = tauri::async_runtime::spawn_blocking(move || crate::platform::in_background_mode(|| run_blocking(&s2, forced))).await.unwrap_or_default();
 

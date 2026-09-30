@@ -4,6 +4,7 @@ pub mod engine;
 pub mod events;
 pub mod game;
 pub mod library;
+pub mod modes;
 pub mod recorder;
 pub mod session;
 pub mod settings;

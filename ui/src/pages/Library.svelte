@@ -9,16 +9,20 @@
   let q = $state("");
   let game = $state("all");
   let result = $state("all");
+  let mode = $state("all");
   let favOnly = $state(false);
   let sort = $state("new");
 
   const games = $derived([...new Set(app.sessions.map((s) => s.game_name))]);
+  const modeOf = (s: (typeof app.sessions)[number]) => s.mode_name ?? s.player?.mode ?? null;
+  const modes = $derived([...new Set(app.sessions.map(modeOf).filter((m): m is string => !!m))].sort());
   const list = $derived.by(() => {
     const needle = q.trim().toLowerCase();
     let l = app.sessions.filter(
       (s) =>
         (game === "all" || s.game_name === game) &&
         (result === "all" || s.result === result) &&
+        (mode === "all" || modeOf(s) === mode) &&
         (!favOnly || s.favorite) &&
         (!needle || `${s.player?.character ?? ""} ${s.player?.mode ?? ""} ${s.game_name}`.toLowerCase().includes(needle)),
     );
@@ -47,6 +51,12 @@
       <select class="input" bind:value={game}>
         <option value="all">All games</option>
         {#each games as g}<option value={g}>{g}</option>{/each}
+      </select>
+    {/if}
+    {#if modes.length > 1}
+      <select class="input" bind:value={mode} aria-label="Game mode">
+        <option value="all">All modes</option>
+        {#each modes as m}<option value={m}>{m}</option>{/each}
       </select>
     {/if}
     <div class="seg">

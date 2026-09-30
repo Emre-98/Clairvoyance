@@ -2,16 +2,21 @@
 //! (`https://127.0.0.1:2999/liveclientdata/`), which exists only while you're in a match.
 //! No memory reading or injection, so it's safe with Vanguard.
 //!
+//! The queue (Ranked, Normal, ARAM, …) comes from the League client's local API (LCU), see
+//! [`queues`], so per-mode recording rules are decided before recording starts.
+//!
 //! "Ult pressed" can't come from the API (it doesn't expose ability casts), so the
 //! engine forwards key presses made while the game window is focused to [`LeagueIntegration::on_key`].
 
 pub mod events;
+pub mod queues;
 
 use async_trait::async_trait;
 use events::{translate, Ctx, EventList};
 use cv_core::game::{
     CaptureTarget, ConfigField, GameIntegration, GameResult, KeyPress, MatchPhase, PlayerInfo, PlayerStats, PollUpdate,
 };
+use cv_core::modes::{CatalogMode, MatchMode, ModeGroupInfo};
 use cv_core::{EventKind, GameEvent};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
@@ -101,6 +106,8 @@ pub struct LeagueIntegration {
     base: String,
     riot_id: String,
     ult_key: String,
+    /// League install folder (only needed if it can't be found automatically).
+    client_dir: String,
     seen: HashSet<i64>,
     ctx: Ctx,
     players_checked: Option<Instant>,
@@ -138,6 +145,7 @@ impl LeagueIntegration {
             base,
             riot_id: String::new(),
             ult_key: "R".into(),
+            client_dir: String::new(),
             seen: HashSet::new(),
             ctx: Ctx::default(),
             players_checked: None,
@@ -278,14 +286,21 @@ impl GameIntegration for LeagueIntegration {
                 kind: "key",
                 help: "The key you cast your ultimate with. Presses are marked as \"Ult pressed\" (the game can't confirm the cast).",
             },
+            ConfigField {
+                key: "client_dir",
+                label: "League install folder",
+                kind: "text",
+                help: "Only if game modes aren't detected: the folder with LeagueClient.exe, e.g. C:\\Riot Games\\League of Legends. Found automatically otherwise.",
+            },
         ]
     }
     fn default_config(&self) -> serde_json::Value {
-        serde_json::json!({ "riot_id": "", "ult_key": "R" })
+        serde_json::json!({ "riot_id": "", "ult_key": "R", "client_dir": "" })
     }
     fn configure(&mut self, config: &serde_json::Value) {
         self.riot_id = config["riot_id"].as_str().unwrap_or("").trim().to_string();
         self.ult_key = cv_core::settings::normalize_key(config["ult_key"].as_str().unwrap_or("R"));
+        self.client_dir = config["client_dir"].as_str().unwrap_or("").trim().to_string();
         if self.ult_key.is_empty() {
             self.ult_key = "R".into();
         }
@@ -299,6 +314,133 @@ impl GameIntegration for LeagueIntegration {
     async fn start(&mut self) -> anyhow::Result<()> {
         self.reset_match();
         Ok(())
+    }
+
+    fn mode_groups(&self) -> Vec<ModeGroupInfo> {
+        vec![
+            ModeGroupInfo { id: "ranked", label: "Ranked", help: "Solo/Duo and Flex" },
+            ModeGroupInfo { id: "normal", label: "Normal", help: "Draft, Quickplay, Swiftplay" },
+            ModeGroupInfo { id: "aram", label: "ARAM", help: "Howling Abyss" },
+            ModeGroupInfo { id: "arena", label: "Arena", help: "2v2v2v2" },
+            ModeGroupInfo { id: "rotating", label: "Rotating & event modes", help: "URF, One for All and other limited-time modes" },
+            ModeGroupInfo { id: "other", label: "Other", help: "Custom games, Practice Tool, Co-op vs AI, Tutorial" },
+        ]
+    }
+
+    /// Once per game, when it starts (loading screen): the exact queue from the League client;
+    /// if the client can't be reached, the coarse game mode from the Live Client Data API.
+    async fn detect_mode(&mut self) -> Option<MatchMode> {
+        for attempt in 0..3 {
+            if attempt > 0 {
+                tokio::time::sleep(Duration::from_millis(700)).await;
+            }
+            let Some(lock) = queues::find_lockfile(&self.client_dir) else {
+                log::debug!("mode: League client lockfile not found");
+                continue;
+            };
+            let Some(lcu) = queues::Lcu::new(&lock) else { continue };
+            match lcu.get("/lol-gameflow/v1/session").await {
+                Ok(v) => {
+                    if let Some(m) = queues::mode_from_session(&v) {
+                        return Some(m);
+                    }
+                }
+                Err(e) => log::debug!("mode: LCU gameflow: {e:#}"),
+            }
+        }
+        // Fallback: the in-game API (only knows CLASSIC / ARAM / CHERRY / ...).
+        for attempt in 0..3 {
+            if attempt > 0 {
+                tokio::time::sleep(Duration::from_millis(800)).await;
+            }
+            if let Ok(stats) = self.get::<GameStats>("gamestats").await {
+                if !stats.game_mode.is_empty() {
+                    let facts = queues::QueueFacts { id: -1, name: events::mode_name(&stats.game_mode), game_mode: stats.game_mode.clone(), ..Default::default() };
+                    let (group, default_rule) = queues::classify(&facts);
+                    let practice = stats.game_mode.eq_ignore_ascii_case("PRACTICETOOL");
+                    return Some(MatchMode {
+                        key: practice.then(|| queues::KEY_PRACTICE.to_string()),
+                        queue_id: None,
+                        name: facts.name,
+                        game_mode: Some(stats.game_mode),
+                        group,
+                        default_rule,
+                        source: "Live Client Data API (game mode only)".into(),
+                    });
+                }
+            }
+        }
+        None
+    }
+
+    async fn mode_catalog(&mut self, cache_dir: &std::path::Path) -> (Vec<CatalogMode>, bool) {
+        let mut out = queues::fixed_catalog();
+        let mut authoritative = false;
+        // 1. The client's own queue list (names in your language + what's playable now).
+        let live = match queues::find_lockfile(&self.client_dir).and_then(|l| queues::Lcu::new(&l)) {
+            Some(lcu) => lcu.get("/lol-game-queues/v1/queues").await.ok(),
+            None => None,
+        };
+        match live {
+            Some(v) => {
+                queues::write_cache(cache_dir, "league-client-queues.json", &v.to_string());
+                out.extend(queues::catalog_from_lcu(&v));
+                authoritative = true;
+            }
+            None => {
+                if let Some(v) = queues::read_cache(cache_dir, "league-client-queues.json").and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()) {
+                    // Offline: names from the last time, availability unknown.
+                    out.extend(queues::catalog_from_lcu(&v).into_iter().map(|mut c| {
+                        c.available = None;
+                        c
+                    }));
+                }
+            }
+        }
+        // 2. Riot's official list (refreshed once a day, cached).
+        let cached = queues::read_cache(cache_dir, "league-queues.json");
+        let fresh = std::fs::metadata(cache_dir.join("league-queues.json"))
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age < Duration::from_secs(24 * 3600));
+        let text = if fresh {
+            cached
+        } else {
+            let fetched = async {
+                let c = reqwest::Client::builder().timeout(Duration::from_secs(8)).user_agent("Clairvoyance").build().ok()?;
+                let r = c.get(queues::QUEUES_JSON_URL).send().await.ok()?.error_for_status().ok()?;
+                r.text().await.ok()
+            }
+            .await;
+            match fetched {
+                Some(t) if !queues::parse_static(&t).is_empty() => {
+                    queues::write_cache(cache_dir, "league-queues.json", &t);
+                    Some(t)
+                }
+                _ => cached,
+            }
+        };
+        if let Some(t) = text {
+            for mut c in queues::static_catalog(&queues::parse_static(&t)) {
+                if !out.iter().any(|o| o.key == c.key) {
+                    // Not in the client's list of playable queues right now.
+                    if authoritative {
+                        c.available = Some(false);
+                    }
+                    out.push(c);
+                }
+            }
+        }
+        for mut c in queues::known_catalog() {
+            if !out.iter().any(|o| o.key == c.key) {
+                if authoritative {
+                    c.available = Some(false);
+                }
+                out.push(c);
+            }
+        }
+        (out, authoritative)
     }
 
     async fn stop(&mut self) {

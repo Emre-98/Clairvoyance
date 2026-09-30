@@ -342,6 +342,7 @@ mod run {
             replay_buffer_secs: settings.video.replay_buffer_secs,
             record_mic: settings.video.record_mic,
             display_capture: settings.video.display_capture,
+            full_video: true,
         };
         let phases: Vec<(&str, Option<Arc<dyn Recorder>>)> = vec![("Not recording", None), ("Built-in recorder", Some(st.recorder.clone() as Arc<dyn Recorder>))];
         let mut windows: Vec<(String, f64, f64, Acc)> = Vec::new();

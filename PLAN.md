@@ -15,6 +15,13 @@
   protected); thumbnails in their own folder, made after the game; performance work (library
   cache, virtualized grids, lazy thumbnails, 1 s keyframes, skeletons, transitions);
   auto-updater + release workflow + RELEASING.md.
+- **Game modes (2026-10-01, v1.1.0):** choose per League mode (queue) whether it's recorded:
+  Record / Clips only / Off, grouped (Ranked, Normal, ARAM, Arena, Rotating & event, Other,
+  Unknown / new). The queue comes from the League client (LCU) at game start, before recording.
+- Owner test of the 2026-10-01 build (job 1 on the owner's PC): migration from GameRecorder
+  worked (settings, `Videos\GameRecorder` → `Videos\Clairvoyance`, app data); thumbnails were
+  made for the 3 existing games by the new Media Foundation code; window ready ~540 ms after
+  launch (old app ~526 ms; target < 1 s met by both); recorder self-test OK (NVENC, 0 dropped).
 - Owner tests so far (2026-09-30, RTX 5080 / i9-9900K, 4K → 1080p60): self-test and a Practice
   Tool game recorded fine: 0 dropped frames, NVENC, game-only audio, ~0.5% CPU, ~180 MB RAM while
   recording, League FPS 140.7 → 140.3 average (−0.3%), 1% low 102.5 → 100.2.
@@ -305,6 +312,43 @@ Compared:
   WebView2 bootstrapper, Start menu entry). `scripts/build-windows.sh` is still the Linux
   cross-build for test builds; `scripts/setup-cross-linux.sh` prepares that toolchain.
 
+### Game modes: per-queue recording rules (2026-10-01)
+- Detection (League, `games/league/src/queues.rs`), once per game, in `detect_mode()` right after
+  the game process appears (loading screen) and before recording starts:
+  1. League Client API (LCU): port + password from `<install>\lockfile` (install folder from
+     the setting "League install folder", `C:\ProgramData\Riot Games\RiotClientInstalls.json`,
+     the Riot metadata yaml, then `C:/D:/E:\Riot Games\League of Legends`);
+     `GET /lol-gameflow/v1/session` → `gameData.queue` (id, description, type, isRanked,
+     gameMode). Practice Tool / custom games get the keys `practice` / `custom`.
+  2. Fallback: Live Client Data API `gamestats.gameMode` (coarse: CLASSIC/ARAM/CHERRY/...): the
+     most permissive rule among known modes of that game mode is used.
+  3. Still unknown: the "Unknown / new modes" rule. The source used is logged ("mode: ... via").
+  Up to ~3 × 0.7 s of retries, only at game start; nothing extra runs during the game.
+- Mode list (`mode_catalog()`), refreshed by the maintenance pass (start-up, after games, every
+  6 h, never in game) and when Settings > Game modes opens: the client's
+  `/lol-game-queues/v1/queues` (names in the client's language + `queueAvailability`,
+  authoritative: queues it doesn't list are "not currently available") and Riot's official
+  `queues.json` (deprecated ones skipped), both cached in `%LOCALAPPDATA%\Clairvoyance\cache\`
+  for offline use. Only `queues::KNOWN` (a 9-line table of well-known queue ids → group,
+  default rule, fallback name) is built in; everything else is classified from the queue's own
+  data (isRanked/type/category/gameMode/map).
+- Settings (`settings.modes["league"]`, `cv-core/src/modes.rs`): per key (`q<queue id>`) name,
+  group, rule, availability, `is_new`. New queues (from the list or first seen in a game) are
+  added with the unknown rule and a "New mode detected" badge (the very first list isn't flagged);
+  gone ones stay, greyed, with their choice. Defaults: Ranked/Normal/ARAM/Arena record,
+  Practice Tool + Custom off, Co-op/Tutorial/rotating follow the unknown rule (record).
+  Changes are saved at once by dedicated commands (`modes_set`) and sent to the engine: they
+  apply to the next game. The Settings "Save changes" draft never overwrites them.
+- Engine: Off → no recorder, no polling (only the process is watched), nothing saved; the status
+  message / tray says e.g. "ARAM: recording off for this mode". Clips only → the recorder keeps
+  the replay buffer but writes no full video (`RecordOptions.full_video = false`); hotkey clips
+  work, and auto-clip event kinds are saved from the replay buffer a few seconds after the event
+  (overlapping events merged). Record → as before.
+- Every recording's `session.json` has `queue_id`, `mode_name`, `mode_key`, `record_mode`; the
+  library shows the mode as a tag and can filter by it. Older recordings use their old mode label.
+- Events work in every mode (they come from the Live Client Data API); modes without Baron etc.
+  simply have no such markers.
+
 ## Milestones
 - [x] 0. Project setup: solution, projects, core interfaces, this plan
 - [x] Choose the language/stack: Tauri 2 (see Decisions made)
@@ -331,17 +375,26 @@ Compared:
 - [x] 18. Thumbnails in their own folder, made after the game, regenerated when missing
 - [x] 19. Responsiveness: library cache, virtualization, lazy thumbnails, 1 s keyframes, measured
 - [x] 20. GitHub repo + auto-updater + release workflow (v1.0.0)
+- [x] 21. Game modes: per-queue Record / Clips only / Off from the League client, dynamic list (v1.1.0)
 
 ## Known issues
 - The Windows-only parts added on 2026-10-01 (Media Foundation thumbnails, updater install,
   migration on a real old install) compile and were checked on the owner's PC where noted in
   "Current status"; watch the log for "thumbnail for ... failed" (then ffmpeg is used if present).
 - Scrolling the library is smooth at 60 fps; on a much slower CPU (4x throttled) it's ~50 fps.
+- Game modes: the League client must be running for the exact queue (it always is when you
+  play normally). If the lockfile isn't found (unusual install folder), set Settings > Games >
+  League > "League install folder"; until then the coarse game mode decides (Ranked vs Normal
+  can't be told apart that way, so both follow the most permissive of their rules).
+- Clips-only games have no full video: their clips can't be re-cut in the clip editor, and the
+  "Create clip" button is disabled for them.
 - Windows SmartScreen may warn about the installer (it isn't code-signed with a certificate;
   updates are still signature-checked by the updater).
 
 ## Next steps
-- Owner: play a real game on v1.0.x (timeline, thumbnail after the game, storage page).
+- Owner: play a real game on v1.1.x (timeline, thumbnail after the game, storage page), and
+  test game modes: turn ARAM off and play an ARAM (nothing recorded, tray says why), play a
+  ranked or normal game (recorded, card shows the queue name).
 - Nice-to-haves: Dota 2 module (GSI, like CS2); code-signing certificate for the installer;
   optional WebP thumbnails if a WebP encoder is added.
 

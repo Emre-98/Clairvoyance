@@ -53,6 +53,11 @@ games, clips and downloaded tools over; the Home page then offers to uninstall t
   When they grow past it, the oldest are deleted first, with their clips, timeline and
   thumbnail. Star a game (favorite) or pin a clip ("keep") and it's never deleted
   automatically. The page shows what was removed; automatic clean-up can be turned off.
+- **Game modes** (Settings > Game modes): choose per League mode whether it's recorded:
+  Record, Clips only (timeline + clips, no full video) or Off. E.g. Ranked and Normal on, ARAM
+  and Arena off. The list comes from the League client and Riot, so new and rotating modes
+  appear by themselves ("New mode detected"); quick presets: Everything, Ranked only,
+  Ranked + Normal. The tray says when a game isn't recorded and why.
 - **Look**: Settings > Appearance: Dark, Light or Match Windows (follows your Windows setting).
 - **Updates**: when a new version is out, a card "Update available" appears in the sidebar with
   what's new; click **Update now** and Clairvoyance updates and restarts. It never checks or

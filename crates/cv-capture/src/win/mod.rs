@@ -212,7 +212,11 @@ impl NativeRecorder {
             audio: audio_cfgs,
             replay_secs: opts.replay_buffer_secs,
             replay_max_bytes: (rate as usize / 8) * (opts.replay_buffer_secs as usize + 4) + 32 * 1024 * 1024,
+            full_video: opts.full_video,
         };
+        if !opts.full_video {
+            log::info!("recorder: clips only (replay buffer, no full video)");
+        }
         log::info!("recorder: starting muxer and capture");
         let mux_thread = std::thread::Builder::new().name("mux".into()).spawn(move || mux::run(mp, mux_rx))?;
 
@@ -329,13 +333,14 @@ impl NativeRecorder {
         Ok(path)
     }
 
-    fn save_replay_blocking(&self) -> Result<PathBuf> {
+    fn save_replay_blocking(&self, want: Option<u32>) -> Result<PathBuf> {
         let (tx, rx) = channel();
         let secs;
         {
             let a = self.inner.active.lock().unwrap();
             let a = a.as_ref().context("not recording")?;
-            secs = self.inner.prepared.lock().unwrap().as_ref().map(|p| p.1.replay_buffer_secs).unwrap_or(30);
+            let buf = self.inner.prepared.lock().unwrap().as_ref().map(|p| p.1.replay_buffer_secs).unwrap_or(30);
+            secs = want.map(|w| w.clamp(3, buf)).unwrap_or(buf);
             let path = a.output_dir.join(format!("Replay_{}.mp4", stamp()));
             a.mux_tx.send(MuxMsg::SaveReplay { path, secs, reply: tx }).map_err(|_| anyhow!("recorder stopped"))?;
         }
@@ -378,9 +383,9 @@ impl Recorder for NativeRecorder {
         Ok(a.as_ref().map(|a| Duration::from_nanos(((qpc_hns() - a.rec_start).max(0) as u64) * 100)))
     }
 
-    async fn save_replay(&self) -> Result<PathBuf> {
+    async fn save_replay(&self, secs: Option<u32>) -> Result<PathBuf> {
         let me = NativeRecorder { inner: self.inner.clone() };
-        tokio::task::spawn_blocking(move || me.save_replay_blocking()).await?
+        tokio::task::spawn_blocking(move || me.save_replay_blocking(secs)).await?
     }
 
     async fn finish(&self) -> Result<()> {
@@ -406,12 +411,13 @@ pub fn self_test(out_dir: &Path, secs: u64, exe: Option<&str>, mic: bool) -> Res
         replay_buffer_secs: 10,
         record_mic: mic,
         display_capture: exe.is_none(),
+        full_video: true,
     };
     *rec.inner.prepared.lock().unwrap() = Some((target, opts));
     rec.start_blocking()?;
     std::thread::sleep(Duration::from_secs(secs));
     let frames = rec.inner.active.lock().unwrap().as_ref().and_then(|a| a.capture.lock().unwrap().as_ref().map(|c| (c.stats.frames.load(std::sync::atomic::Ordering::Relaxed), c.stats.dropped.load(std::sync::atomic::Ordering::Relaxed))));
-    let _ = rec.save_replay_blocking();
+    let _ = rec.save_replay_blocking(None);
     let path = rec.stop_blocking()?;
     // The same thumbnail path the app uses after a game (decode a frame from the file).
     if let Err(e) = thumb::video_thumbnail(&path, secs as f64 / 2.0, &out_dir.join("selftest.jpg"), 480) {

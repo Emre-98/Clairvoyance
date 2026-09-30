@@ -27,7 +27,16 @@ export const app = $state({
   /** Bumped whenever something on disk changed. */
   libraryVersion: 0,
   update: null as UpdateStatus | null,
+  /** Game modes detected since the user last looked (Settings > Game modes). */
+  newModes: 0,
 });
+
+async function countNewModes() {
+  try {
+    const v = await api.modesGet();
+    app.newModes = v.reduce((n, g) => n + Object.values(g.modes.entries).filter((e) => e.is_new).length, 0);
+  } catch {}
+}
 
 // Game pages open instantly: their data is fetched on hover and kept until something changes.
 const sessionCache = new Map<string, SessionView>();
@@ -110,6 +119,8 @@ export async function boot() {
     }
   });
   api.updateStatus().then((u) => (app.update = u)).catch(() => {});
+  countNewModes();
+  await on("modes-changed", () => countNewModes());
   await on("update-status", (u: UpdateStatus) => {
     const wasAvailable = app.update?.state === "available";
     app.update = u;

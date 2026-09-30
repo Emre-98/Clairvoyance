@@ -117,7 +117,7 @@
           <h1>{s.player?.character ?? s.game_name}</h1>
           <span class="result {s.result ?? ''}">{resultLabel}</span>
         </div>
-        <div class="muted">{s.game_name}{s.player?.mode ? ` · ${s.player.mode}` : ""} · {relativeDate(s.started_at)} · {clock(gameLen)}</div>
+        <div class="muted">{s.game_name}{(s.mode_name ?? s.player?.mode) ? ` · ${s.mode_name ?? s.player?.mode}` : ""}{s.record_mode === "clips_only" ? " · clips only" : ""} · {relativeDate(s.started_at)} · {clock(gameLen)}</div>
       </div>
       <div class="spacer"></div>
       <button class="btn" class:favon={s.favorite} onclick={toggleFav} title="Favorites are never deleted by the storage clean-up" aria-pressed={s.favorite}><Icon name="star" size={15} fill={s.favorite} />{s.favorite ? "Favorite" : "Add to favorites"}</button>

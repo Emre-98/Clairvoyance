@@ -169,4 +169,21 @@ pub trait GameIntegration: Send + Sync {
     fn on_key(&mut self, _key: &KeyPress, _game_time: f64) -> Option<GameEvent> {
         None
     }
+
+    /// Groups for Settings > Game modes. Empty = this game has no per-mode recording rules.
+    fn mode_groups(&self) -> Vec<crate::modes::ModeGroupInfo> {
+        Vec::new()
+    }
+    /// The mode of the match that is starting. Called once, right after `start()` and before
+    /// recording starts, so a mode that's switched off is never recorded. Keep it quick.
+    async fn detect_mode(&mut self) -> Option<crate::modes::MatchMode> {
+        None
+    }
+    /// The modes that exist, for the settings list (from live and cached sources; must work
+    /// offline from `cache_dir`). The bool says whether the list is the authoritative set of
+    /// modes playable right now (modes missing from it are then shown as unavailable).
+    /// Never called during a game.
+    async fn mode_catalog(&mut self, _cache_dir: &std::path::Path) -> (Vec<crate::modes::CatalogMode>, bool) {
+        (Vec::new(), false)
+    }
 }

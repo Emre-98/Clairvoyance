@@ -67,8 +67,13 @@ impl Tray {
     pub fn update(&self, s: &LiveStatus) {
         let text = match s.state {
             EngineState::Idle => "Waiting for a game".to_string(),
-            EngineState::Detected => format!("{} detected (not recording)", s.game_name.as_deref().unwrap_or("Game")),
-            EngineState::Recording => format!("Recording {}", s.game_name.as_deref().unwrap_or("game")),
+            // e.g. "ARAM: recording off for this mode"
+            EngineState::Detected => s.message.clone().unwrap_or_else(|| format!("{} detected (not recording)", s.game_name.as_deref().unwrap_or("Game"))),
+            EngineState::Recording => match (s.mode_rule, s.mode_name.as_deref()) {
+                (Some(cv_core::modes::ModeRule::ClipsOnly), Some(m)) => format!("{m}: clips only (no full video)"),
+                (_, Some(m)) => format!("Recording {m}"),
+                _ => format!("Recording {}", s.game_name.as_deref().unwrap_or("game")),
+            },
         };
         let mut last = self.last.lock().unwrap();
         if last.as_ref().is_some_and(|(st, t)| *st == s.state && *t == text) {

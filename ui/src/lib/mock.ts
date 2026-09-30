@@ -75,6 +75,9 @@ function makeSummary(i: number): SessionSummary {
     duration: 1500 + i * 97,
     favorite: i === 2,
     kept_clips: i === 4 ? 1 : 0,
+    queue_id: [420, 400, 450, 1700, 440][i % 5],
+    mode_name: ["Ranked Solo/Duo", "Normal Draft", "ARAM", "Arena", "Ranked Flex"][i % 5],
+    record_mode: i % 5 === 3 ? "clips_only" : "full",
     video_removed: false,
     size_bytes: 2.1e9 + i * 1.3e8,
     video_bytes: 2.0e9 + i * 1.3e8,
@@ -181,6 +184,39 @@ const clips: ClipEntry[] = sessions.slice(0, Math.max(5, Math.floor(sessions.len
 ]);
 
 let legacyRemoved = false;
+
+const mockModes: any = {
+  game_id: "league",
+  game_name: "League of Legends",
+  groups: [
+    { id: "ranked", label: "Ranked", help: "Solo/Duo and Flex" },
+    { id: "normal", label: "Normal", help: "Draft, Quickplay, Swiftplay" },
+    { id: "aram", label: "ARAM", help: "Howling Abyss" },
+    { id: "arena", label: "Arena", help: "2v2v2v2" },
+    { id: "rotating", label: "Rotating & event modes", help: "URF, One for All and other limited-time modes" },
+    { id: "other", label: "Other", help: "Custom games, Practice Tool, Co-op vs AI, Tutorial" },
+  ],
+  modes: {
+    unknown_rule: "record",
+    catalog_updated_at: new Date(Date.now() - 3600e3).toISOString(),
+    entries: {
+      q420: { name: "Ranked Solo/Duo", queue_id: 420, group: "ranked", rule: "record", available: true, is_new: false },
+      q440: { name: "Ranked Flex", queue_id: 440, group: "ranked", rule: "record", available: true, is_new: false },
+      q400: { name: "Normal Draft", queue_id: 400, group: "normal", rule: "record", available: true, is_new: false },
+      q490: { name: "Quickplay", queue_id: 490, group: "normal", rule: "record", available: true, is_new: false },
+      q480: { name: "Swiftplay", queue_id: 480, group: "normal", rule: "record", available: true, is_new: false },
+      q430: { name: "Normal Blind", queue_id: 430, group: "normal", rule: "record", available: false, is_new: false },
+      q450: { name: "ARAM", queue_id: 450, group: "aram", rule: "off", available: true, is_new: false },
+      q1700: { name: "Arena", queue_id: 1700, group: "arena", rule: "clips_only", available: true, is_new: false },
+      q1900: { name: "Pick URF", queue_id: 1900, group: "rotating", rule: "record", available: false, is_new: false },
+      q1020: { name: "One for All", queue_id: 1020, group: "rotating", rule: "record", available: false, is_new: false },
+      q2400: { name: "ARAM Mayhem", queue_id: 2400, group: "rotating", rule: "record", available: true, is_new: true },
+      custom: { name: "Custom games", group: "other", rule: "off", available: true, is_new: false },
+      practice: { name: "Practice Tool", group: "other", rule: "off", available: true, is_new: false },
+      q870: { name: "Co-op vs. AI Intro", queue_id: 870, group: "other", rule: "record", available: true, is_new: false },
+    },
+  },
+};
 let mockUpdate: any = q.get("update") === "1"
   ? { state: "available", current_version: "1.0.0", version: "1.0.1", notes: "- Timeline jumps are faster\n- Light theme polish\n- Fixed: thumbnails for very short games", downloaded: 0, total: null, checked_at: new Date().toISOString() }
   : { state: "up_to_date", current_version: "1.0.0", downloaded: 0, checked_at: new Date().toISOString() };
@@ -233,6 +269,23 @@ export async function invoke(cmd: string, args: any = {}): Promise<any> {
       mockUpdate = { ...mockUpdate, state: "installing" };
       emit("update-status", mockUpdate);
       return;
+    }
+    case "modes_get":
+    case "modes_refresh":
+      return [structuredClone(mockModes)];
+    case "modes_set": {
+      const m = mockModes.modes;
+      const E = Object.values(m.entries) as any[];
+      if (args.what === "mode") Object.assign(m.entries[args.key], { rule: args.rule, is_new: false });
+      if (args.what === "group") E.filter((e) => e.group === args.key).forEach((e) => ((e.rule = args.rule), (e.is_new = false)));
+      if (args.what === "unknown") m.unknown_rule = args.rule;
+      if (args.what === "seen") E.forEach((e) => (e.is_new = false));
+      if (args.what === "preset") {
+        const on = (g: string) => args.key === "everything" || g === "ranked" || (args.key === "ranked_normal" && g === "normal");
+        E.forEach((e) => ((e.rule = on(e.group) ? "record" : "off"), (e.is_new = false)));
+        m.unknown_rule = args.key === "everything" ? "record" : "off";
+      }
+      return [structuredClone(mockModes)];
     }
     case "set_theme":
       settings.theme = args.theme;

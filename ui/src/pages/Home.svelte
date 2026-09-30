@@ -86,9 +86,9 @@
       <div class="hero-left">
         <ChampionIcon id={st.player?.character_id} name={st.player?.character ?? st.game_name} size={64} />
         <div>
-          <div class="state"><span class="dot"></span>{st.state === "recording" ? "Recording" : "Game detected, not recording"}</div>
+          <div class="state"><span class="dot"></span>{st.state === "recording" ? (st.mode_rule === "clips_only" ? "Clips only" : "Recording") : st.mode_rule === "off" ? "Not recorded (mode off)" : "Game detected, not recording"}</div>
           <h2>{st.player?.character ?? st.game_name}</h2>
-          <div class="muted">{st.game_name} · {phaseLabel[st.phase] ?? st.phase}{st.player?.mode ? ` · ${st.player.mode}` : ""}</div>
+          <div class="muted">{st.game_name} · {phaseLabel[st.phase] ?? st.phase}{(st.mode_name ?? st.player?.mode) ? ` · ${st.mode_name ?? st.player?.mode}` : ""}{st.mode_rule === "clips_only" ? " · clips only" : ""}</div>
         </div>
       </div>
       <div class="hero-stats">

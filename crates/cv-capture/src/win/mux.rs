@@ -25,6 +25,9 @@ pub struct MuxParams {
     pub audio: Vec<AudioConfig>,
     pub replay_secs: u32,
     pub replay_max_bytes: usize,
+    /// false = "clips only": keep the in-memory replay buffer (hotkey and event clips) but
+    /// don't write the full recording to disk.
+    pub full_video: bool,
 }
 
 pub fn run(p: MuxParams, rx: Receiver<MuxMsg>) {
@@ -53,6 +56,22 @@ pub fn run(p: MuxParams, rx: Receiver<MuxMsg>) {
                     pps = au.pps.clone();
                 }
                 let key = au.key || f.key;
+                if !p.full_video {
+                    // Clips only: the replay buffer starts at the first keyframe.
+                    if vcfg.is_none() {
+                        if !(key && sps.is_some() && pps.is_some()) {
+                            continue;
+                        }
+                        vcfg = Some(VideoConfig { width: p.width, height: p.height, sps: sps.clone().unwrap(), pps: pps.clone().unwrap(), fps: p.fps });
+                        for a in pending_audio.drain(..) {
+                            replay.push(a);
+                        }
+                    }
+                    if !au.avcc.is_empty() {
+                        replay.push(Packet { track: 0, pts: f.pts, data: au.avcc, key });
+                    }
+                    continue;
+                }
                 if writer.is_none() && error.is_none() {
                     // The file starts at the first keyframe, when SPS/PPS are known.
                     if !(key && sps.is_some() && pps.is_some()) {
@@ -84,6 +103,13 @@ pub fn run(p: MuxParams, rx: Receiver<MuxMsg>) {
                     replay.push(pkt);
                 }
             }
+            Some(MuxMsg::Packet(a)) if !p.full_video => {
+                if vcfg.is_some() {
+                    replay.push(a);
+                } else if pending_audio.len() < 2000 {
+                    pending_audio.push(a);
+                }
+            }
             Some(MuxMsg::Packet(a)) => match writer.as_mut() {
                 Some(w) => {
                     w.push(a.clone());
@@ -107,6 +133,11 @@ pub fn run(p: MuxParams, rx: Receiver<MuxMsg>) {
                     None => Err(anyhow!("nothing recorded yet")),
                 };
                 let _ = reply.send(r);
+            }
+            Some(MuxMsg::Stop { reply }) if !p.full_video => {
+                // Nothing on disk to finish; the path doesn't exist (the engine knows).
+                let _ = reply.send(Ok((p.path.clone(), 0.0)));
+                return;
             }
             Some(MuxMsg::Stop { reply }) => {
                 let r = match writer.take() {

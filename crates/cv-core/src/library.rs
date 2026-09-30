@@ -46,6 +46,16 @@ pub struct SessionSummary {
     /// Where in the video a thumbnail should be taken (seconds).
     #[serde(default)]
     pub thumb_at: f64,
+    /// Queue / mode, e.g. 420 "Ranked Solo/Duo" (older recordings: the coarse mode name).
+    #[serde(default)]
+    pub queue_id: Option<i64>,
+    #[serde(default)]
+    pub mode_name: Option<String>,
+    #[serde(default)]
+    pub mode_key: Option<String>,
+    /// "full" or "clips_only".
+    #[serde(default)]
+    pub record_mode: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -244,6 +254,10 @@ fn read_entry(dir: &Path, s: &GameSession, thumbs: &ThumbStore) -> Entry {
         event_count: s.events.len(),
         clip_count: clips.len(),
         thumb_at,
+        queue_id: s.queue_id,
+        mode_name: s.mode_name.clone().or_else(|| s.player.as_ref().and_then(|p| p.mode.clone())),
+        mode_key: s.mode_key.clone(),
+        record_mode: s.record_mode.clone(),
     };
     Entry { sig, summary, clips }
 }
@@ -255,7 +269,7 @@ struct CacheFile {
     entries: Vec<Entry>,
 }
 
-const CACHE_VERSION: u32 = 1;
+const CACHE_VERSION: u32 = 2;
 
 /// In-memory library, persisted to a cache file, refreshed incrementally.
 pub struct LibraryIndex {

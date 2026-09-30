@@ -51,7 +51,7 @@ impl cv_core::Recorder for NativeRecorder {
     async fn record_elapsed(&self) -> anyhow::Result<Option<std::time::Duration>> {
         Ok(None)
     }
-    async fn save_replay(&self) -> anyhow::Result<std::path::PathBuf> {
+    async fn save_replay(&self, _secs: Option<u32>) -> anyhow::Result<std::path::PathBuf> {
         anyhow::bail!("not recording")
     }
     async fn finish(&self) -> anyhow::Result<()> {

@@ -47,13 +47,15 @@
       <Icon name="star" size={16} fill={fav} />
     </span>
     {#if s.duration}<span class="dur">{clock(s.duration)}</span>{/if}
-    {#if !s.video_path}<span class="novideo">No video</span>{/if}
+    {#if !s.video_path}<span class="novideo">{s.record_mode === "clips_only" ? "Clips only" : s.video_removed ? "Video removed" : "No video"}</span>{/if}
   </div>
   <div class="meta">
     <ChampionIcon id={s.player?.character_id} name={s.player?.character ?? s.game_name} size={38} />
     <div class="txt">
       <div class="title">{s.player?.character ?? s.game_name}</div>
-      <div class="sub">{s.player?.mode ?? s.game_name}</div>
+      <div class="sub">
+        {#if s.mode_name ?? s.player?.mode}<span class="modetag" title={s.queue_id ? `Queue ${s.queue_id}` : ""}>{s.mode_name ?? s.player?.mode}</span>{:else}{s.game_name}{/if}
+      </div>
     </div>
     <div class="right">
       <div class="kda">{kda(s.stats)}</div>
@@ -199,6 +201,21 @@
     color: var(--muted);
     margin-top: 2px;
     white-space: nowrap;
+  }
+  .modetag {
+    display: inline-block;
+    max-width: 100%;
+    padding: 1px 7px;
+    border-radius: 5px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text-2);
+    font-size: 11.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
   }
   .right {
     text-align: right;

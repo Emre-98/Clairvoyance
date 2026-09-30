@@ -75,6 +75,10 @@ pub fn get_settings(st: St) -> Settings {
 #[tauri::command]
 pub async fn save_settings(app: AppHandle, st: St<'_>, settings: Settings) -> R<()> {
     let old = st.settings();
+    // Game modes are changed through their own commands (saved at once); the page's draft
+    // copy may be older, so never let it overwrite them.
+    let mut settings = settings;
+    settings.modes = old.modes.clone();
     settings.save(&st.paths.config_file).map_err(err)?;
     *st.settings.write().unwrap() = settings.clone();
     if old.start_with_windows != settings.start_with_windows || settings.start_with_windows {
@@ -580,6 +584,49 @@ pub fn perf_test_cancel(st: St) {
 }
 
 #[tauri::command]
+pub fn modes_get(st: St) -> Vec<crate::modes::GameModesView> {
+    crate::modes::view(&st)
+}
+
+/// Refreshes the mode lists (client queue list, Riot's list). Not during a game.
+#[tauri::command]
+pub async fn modes_refresh(st: St<'_>) -> R<Vec<crate::modes::GameModesView>> {
+    let st = st.inner().clone();
+    if !crate::maintenance::busy(&st) {
+        crate::modes::refresh_catalog(&st).await;
+    }
+    Ok(crate::modes::view(&st))
+}
+
+/// `what`: "mode" (key), "group" (group id), "unknown", "preset" (everything / ranked /
+/// ranked_normal), "seen" (clear the "new" badges).
+#[tauri::command]
+pub fn modes_set(st: St, game: String, what: String, key: Option<String>, rule: Option<String>) -> R<Vec<crate::modes::GameModesView>> {
+    let rule = rule.as_deref().map(crate::modes::parse_rule).transpose()?;
+    crate::modes::edit(&st, &game, |m| match what.as_str() {
+        "mode" => {
+            if let (Some(k), Some(r)) = (key.as_deref(), rule) {
+                m.set_rule(k, r);
+            }
+        }
+        "group" => {
+            if let (Some(g), Some(r)) = (key.as_deref(), rule) {
+                m.set_group(g, r);
+            }
+        }
+        "unknown" => {
+            if let Some(r) = rule {
+                m.unknown_rule = r;
+            }
+        }
+        "preset" => m.apply_preset(key.as_deref().unwrap_or("everything")),
+        "seen" => m.clear_new(),
+        _ => {}
+    })?;
+    Ok(crate::modes::view(&st))
+}
+
+#[tauri::command]
 pub fn update_status(st: St) -> crate::updater::UpdateStatus {
     crate::updater::status(&st)
 }
@@ -656,6 +703,9 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static 
         ui_ready,
         ui_timings,
         update_status,
+        modes_get,
+        modes_refresh,
+        modes_set,
         update_check,
         update_install,
         finish_first_run,

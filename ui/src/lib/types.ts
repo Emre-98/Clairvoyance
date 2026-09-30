@@ -74,6 +74,8 @@ export interface LiveStatus {
   video_offset?: number | null;
   recorder: RecorderStatus;
   message?: string | null;
+  mode_name?: string | null;
+  mode_rule?: ModeRule | null;
 }
 
 export type EngineEvent =
@@ -106,6 +108,10 @@ export interface SessionSummary {
   event_count: number;
   clip_count: number;
   thumb_at: number;
+  queue_id?: number | null;
+  mode_name?: string | null;
+  mode_key?: string | null;
+  record_mode?: "full" | "clips_only" | null;
 }
 
 export interface ClipInfo {
@@ -155,6 +161,10 @@ export interface GameSession {
   perf: PerfStats;
   favorite: boolean;
   video_removed_at?: string | null;
+  queue_id?: number | null;
+  mode_name?: string | null;
+  mode_key?: string | null;
+  record_mode?: "full" | "clips_only" | null;
   warnings: string[];
 }
 
@@ -321,6 +331,39 @@ export interface PerfTestStatus {
   report?: PerfReport | null;
   report_text?: string | null;
   report_path?: string | null;
+}
+
+export type ModeRule = "record" | "clips_only" | "off";
+
+export interface ModeEntry {
+  name: string;
+  queue_id?: number | null;
+  game_mode?: string | null;
+  group: string;
+  rule: ModeRule;
+  /** false = not currently available (kept so the choice returns with the mode). */
+  available?: boolean | null;
+  is_new: boolean;
+  first_seen?: string | null;
+}
+
+export interface GameModes {
+  unknown_rule: ModeRule;
+  entries: Record<string, ModeEntry>;
+  catalog_updated_at?: string | null;
+}
+
+export interface ModeGroupInfo {
+  id: string;
+  label: string;
+  help: string;
+}
+
+export interface GameModesView {
+  game_id: string;
+  game_name: string;
+  groups: ModeGroupInfo[];
+  modes: GameModes;
 }
 
 export interface UpdateStatus {

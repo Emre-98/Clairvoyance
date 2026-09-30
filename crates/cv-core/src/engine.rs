@@ -7,6 +7,7 @@
 
 use crate::events::{fmt_clock, EventKind, GameEvent};
 use crate::game::{GameIntegration, KeyPress, MatchPhase, PlayerInfo, PlayerStats};
+use crate::modes::{GameModes, ModeRule};
 use crate::recorder::{RecordOptions, Recorder, RecorderStatus};
 use crate::session::{self, ClipInfo, GameSession, StatSample, CLIPS_DIR};
 use crate::settings::{Hotkey, Settings};
@@ -80,6 +81,10 @@ pub struct LiveStatus {
     pub video_offset: Option<f64>,
     pub recorder: RecorderStatus,
     pub message: Option<String>,
+    /// The match's mode, e.g. "Ranked Solo/Duo".
+    pub mode_name: Option<String>,
+    /// What this mode's rule said: record / clips_only / off.
+    pub mode_rule: Option<ModeRule>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -91,6 +96,8 @@ pub enum EngineEvent {
     GameEnded { session_id: String },
     /// Session file changed (saved, clips added).
     LibraryChanged,
+    /// A mode seen for the first time was added to the game's mode list (save the settings).
+    ModesChanged { game_id: String, modes: GameModes },
     /// A finished game's after-work (auto clips) is done: a good moment for thumbnails and the
     /// storage clean-up, which never run while a game is recording.
     PostProcessed { session_id: String },
@@ -115,6 +122,19 @@ struct Active {
     missing_checks: u32,
     last_perf: Instant,
     last_event: Option<GameEvent>,
+    /// This mode's rule: Off = watch the process only (no recording, no polling, nothing saved).
+    rule: ModeRule,
+    /// Clips-only mode: event clips waiting for their "seconds after".
+    pending_clips: Vec<PendingClip>,
+}
+
+/// An automatic event clip in clips-only mode, saved from the replay buffer once `due`.
+struct PendingClip {
+    due: Instant,
+    /// Game time of the first and last event in it.
+    first_gt: f64,
+    last_gt: f64,
+    title: String,
 }
 
 pub struct Engine {
@@ -213,6 +233,8 @@ impl Engine {
             st.event_count = a.session.events.len();
             st.last_event = a.last_event.clone();
             st.video_offset = (!a.offset_samples.is_empty()).then_some(a.session.video_offset);
+            st.mode_name = a.session.mode_name.clone();
+            st.mode_rule = Some(a.rule);
         }
         st
     }
@@ -329,7 +351,7 @@ impl Engine {
         }
     }
 
-    fn record_options(&self, dir: &Path) -> RecordOptions {
+    fn record_options(&self, dir: &Path, full_video: bool) -> RecordOptions {
         let v = &self.settings.video;
         RecordOptions {
             output_dir: dir.to_path_buf(),
@@ -340,6 +362,7 @@ impl Engine {
             replay_buffer_secs: v.replay_buffer_secs,
             record_mic: v.record_mic,
             display_capture: v.display_capture,
+            full_video,
         }
     }
 
@@ -364,9 +387,45 @@ impl Engine {
             let g = &self.games[idx];
             (g.id(), g.name(), g.capture())
         };
-        let session = GameSession::new(id.clone(), gid, gname, started);
-        let _ = session.save(&dir);
+        let mut session = GameSession::new(id.clone(), gid, gname, started);
         log::info!("{gname} detected, session {id}");
+
+        // Which mode is this, and is it recorded? Decided once, before recording starts.
+        let mut rule = ModeRule::Record;
+        let mut reason: Option<String> = None;
+        if !self.games[idx].mode_groups().is_empty() {
+            let t0 = Instant::now();
+            let mode = self.games[idx].detect_mode().await;
+            match &mode {
+                Some(m) => log::info!(
+                    "mode: {} (queue {}, key {}, game mode {}) via {} in {} ms",
+                    m.name,
+                    m.queue_id.map(|q| q.to_string()).unwrap_or("-".into()),
+                    m.key.as_deref().unwrap_or("-"),
+                    m.game_mode.as_deref().unwrap_or("-"),
+                    m.source,
+                    t0.elapsed().as_millis()
+                ),
+                None => log::info!("mode: unknown (League client and game API not reachable); using the \"unknown / new modes\" rule"),
+            }
+            let modes = self.settings.modes.entry(gid.to_string()).or_default();
+            let d = modes.decide(mode.as_ref());
+            if d.added {
+                let snapshot = modes.clone();
+                self.emit(EngineEvent::ModesChanged { game_id: gid.to_string(), modes: snapshot });
+            }
+            log::info!("mode rule: {}", d.reason);
+            rule = d.rule;
+            reason = Some(d.reason);
+            if let Some(m) = &mode {
+                session.queue_id = m.queue_id;
+                session.mode_name = Some(m.name.clone());
+                session.mode_key = m.key.clone();
+            }
+        }
+        if rule != ModeRule::Off {
+            let _ = session.save(&dir);
+        }
         let mut active = Active {
             game: idx,
             session,
@@ -384,10 +443,17 @@ impl Engine {
             missing_checks: 0,
             last_perf: Instant::now(),
             last_event: None,
+            rule,
+            pending_clips: Vec::new(),
         };
         self.message = None;
-        if self.settings.auto_record {
-            let opts = self.record_options(&dir);
+        if rule == ModeRule::Off {
+            // Not recorded: no recorder, no polling, nothing saved. Only the tray says why.
+            self.message = reason.clone();
+            let _ = std::fs::remove_dir_all(&dir);
+        } else if self.settings.auto_record {
+            active.session.record_mode = Some(if rule == ModeRule::ClipsOnly { "clips_only" } else { "full" }.into());
+            let opts = self.record_options(&dir, rule == ModeRule::Record);
             let res = async {
                 self.recorder.ensure_connected().await?;
                 self.recorder.prepare(&capture, &opts).await?;
@@ -408,7 +474,7 @@ impl Engine {
             }
             self.recorder_status = self.recorder.status().await;
         }
-        self.platform.set_input_enabled(true);
+        self.platform.set_input_enabled(rule != ModeRule::Off);
         self.active = Some(active);
         self.emit(EngineEvent::GameStarted { game_name: gname.into() });
         self.emit_status();
@@ -427,6 +493,19 @@ impl Engine {
 
     async fn tick_active(&mut self, n: u64) {
         let idx = self.active.as_ref().unwrap().game;
+        if self.active.as_ref().unwrap().rule == ModeRule::Off {
+            // Mode switched off: just wait for the game to close (every 2 s).
+            if n % 2 == 0 {
+                let running = self.game_running(idx);
+                let a = self.active.as_mut().unwrap();
+                a.missing_checks = if running { 0 } else { a.missing_checks + 1 };
+                if a.missing_checks >= 2 {
+                    self.wait_for_exit = None;
+                    self.end_session().await;
+                }
+            }
+            return;
+        }
         let update = match self.games[idx].poll().await {
             Ok(u) => Some(u),
             Err(e) => {
@@ -472,7 +551,11 @@ impl Engine {
                     a.next_stat_sample = (gt / STAT_SAMPLE_EVERY).floor() * STAT_SAMPLE_EVERY + STAT_SAMPLE_EVERY;
                 }
             }
-            if let Some(p) = u.player {
+            if let Some(mut p) = u.player {
+                // The exact queue name ("Ranked Solo/Duo") beats the coarse one from the game API.
+                if a.session.mode_name.is_some() {
+                    p.mode = a.session.mode_name.clone();
+                }
                 a.session.player = Some(p);
             }
             if let Some(s) = u.stats {
@@ -494,6 +577,7 @@ impl Engine {
         for ev in new_events {
             self.push_event(ev);
         }
+        self.save_due_event_clips(false).await;
 
         // Performance debug stat every 5 s.
         if self.active.as_ref().unwrap().last_perf.elapsed() >= Duration::from_secs(5) {
@@ -549,7 +633,23 @@ impl Engine {
             let text = if ev.kind == EventKind::Multikill || ev.steal { ev.title.clone() } else { ev.kind.callout().to_string() };
             self.platform.speak(&text, s.tts_volume);
         }
+        let clip_kind = s.clip_kinds.contains(&ev.kind);
+        let (before, after) = (s.clip_before_secs, s.clip_after_secs);
         let a = self.active.as_mut().unwrap();
+        if a.rule == ModeRule::ClipsOnly && a.recording && clip_kind {
+            // Clips only: save this moment from the replay buffer a few seconds later.
+            let due = Instant::now() + Duration::from_secs_f64(after.max(1.0));
+            match a.pending_clips.last_mut() {
+                Some(p) if ev.game_time - p.last_gt <= before + after => {
+                    p.due = due;
+                    p.last_gt = ev.game_time;
+                    if !p.title.contains(&ev.title) && p.title.len() < 60 {
+                        p.title = format!("{} + {}", p.title, ev.title);
+                    }
+                }
+                _ => a.pending_clips.push(PendingClip { due, first_gt: ev.game_time, last_gt: ev.game_time, title: ev.title.clone() }),
+            }
+        }
         a.seen.insert(ev.id.clone());
         a.session.events.push(ev.clone());
         a.last_event = Some(ev.clone());
@@ -605,11 +705,12 @@ impl Engine {
             return;
         }
         let gt = self.game_time_at(Instant::now());
+        let clips_only = a.rule == ModeRule::ClipsOnly;
         let video_end = match self.recorder.record_elapsed().await {
             Ok(Some(d)) => Some(d.as_secs_f64()),
             _ => a.rec_started.map(|r| r.elapsed().as_secs_f64()),
         };
-        match self.recorder.save_replay().await {
+        match self.recorder.save_replay(None).await {
             Ok(path) => {
                 let a = self.active.as_mut().unwrap();
                 let clips = a.dir.join(CLIPS_DIR);
@@ -623,8 +724,9 @@ impl Engine {
                 a.session.clips.push(ClipInfo {
                     file: final_path.file_name().unwrap().to_string_lossy().to_string(),
                     title: format!("Clip at {}", fmt_clock(gt)),
-                    video_start: video_end.map(|e| (e - len).max(0.0)),
-                    video_end,
+                    // Clips-only games have no full video to place the clip in.
+                    video_start: if clips_only { None } else { video_end.map(|e| (e - len).max(0.0)) },
+                    video_end: if clips_only { None } else { video_end },
                     created_at: Local::now(),
                     source: "replay".into(),
                     keep: false,
@@ -640,14 +742,68 @@ impl Engine {
         self.emit_status();
     }
 
+    /// Clips-only mode: saves the event clips whose "seconds after" have passed (all of them if
+    /// `all`, when the game ends).
+    async fn save_due_event_clips(&mut self, all: bool) {
+        let now = Instant::now();
+        let Some(a) = self.active.as_mut() else { return };
+        if a.pending_clips.is_empty() || !a.recording {
+            return;
+        }
+        let (due, keep): (Vec<PendingClip>, Vec<PendingClip>) = std::mem::take(&mut a.pending_clips).into_iter().partition(|p| all || p.due <= now);
+        a.pending_clips = keep;
+        let ev = self.settings.events.clone();
+        for p in due {
+            let secs = ((p.last_gt - p.first_gt) + ev.clip_before_secs + ev.clip_after_secs).ceil().max(3.0) as u32;
+            match self.recorder.save_replay(Some(secs)).await {
+                Ok(path) => {
+                    let a = self.active.as_mut().unwrap();
+                    let clips = a.dir.join(CLIPS_DIR);
+                    let _ = std::fs::create_dir_all(&clips);
+                    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("mp4").to_string();
+                    let name = format!("{}_{}.{ext}", session::sanitize(&p.title), fmt_clock(p.first_gt).replace(':', "-"));
+                    let dest = session::unique_path(&clips, &name);
+                    let final_path = if move_file(&path, &dest).await { dest } else { path };
+                    a.session.clips.push(ClipInfo {
+                        file: final_path.file_name().unwrap().to_string_lossy().to_string(),
+                        title: p.title.clone(),
+                        video_start: None,
+                        video_end: None,
+                        created_at: Local::now(),
+                        source: "event".into(),
+                        keep: false,
+                    });
+                    let _ = a.session.save(&a.dir);
+                    log::info!("event clip saved ({secs} s): {}", p.title);
+                }
+                Err(e) => log::warn!("event clip failed: {e:#}"),
+            }
+        }
+        self.emit(EngineEvent::LibraryChanged);
+    }
+
     async fn end_session(&mut self) {
+        if self.active.as_ref().is_some_and(|a| a.rule == ModeRule::ClipsOnly) {
+            self.save_due_event_clips(true).await;
+        }
         let Some(mut a) = self.active.take() else { return };
+        if a.rule == ModeRule::Off {
+            self.games[a.game].stop().await;
+            self.platform.set_input_enabled(false);
+            log::info!("{} ended (not recorded: {})", a.session.game_name, self.message.clone().unwrap_or_default());
+            self.message = None;
+            self.emit_status();
+            return;
+        }
         self.platform.set_input_enabled(false);
         let idx = a.game;
         let short = self.games[idx].short_name();
         if a.recording {
             let elapsed = a.rec_started.map(|r| r.elapsed().as_secs_f64());
             match self.recorder.stop_recording().await {
+                Ok(_) if a.rule == ModeRule::ClipsOnly => {
+                    log::info!("clips-only game ended: {} clips", a.session.clips.len());
+                }
                 Ok(path) => {
                     a.session.video_duration = elapsed;
                     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("mp4").to_string();

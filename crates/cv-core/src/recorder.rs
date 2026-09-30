@@ -34,8 +34,15 @@ pub struct RecordOptions {
     pub height: u32,
     pub replay_buffer_secs: u32,
     pub record_mic: bool,
-    /// Force Display Capture instead of Game Capture.
+    /// Capture the whole monitor instead of the game window.
     pub display_capture: bool,
+    /// false = "clips only": keep the replay buffer (hotkey + event clips), no full video file.
+    #[serde(default = "yes")]
+    pub full_video: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 #[async_trait]
@@ -49,8 +56,9 @@ pub trait Recorder: Send + Sync {
     async fn stop_recording(&self) -> anyhow::Result<PathBuf>;
     /// How long the current recording has run, according to the recorder itself.
     async fn record_elapsed(&self) -> anyhow::Result<Option<Duration>>;
-    /// Saves the replay buffer and returns the saved file.
-    async fn save_replay(&self) -> anyhow::Result<PathBuf>;
+    /// Saves the last `secs` seconds of the replay buffer (all of it if `None`) and returns
+    /// the saved file.
+    async fn save_replay(&self, secs: Option<u32>) -> anyhow::Result<PathBuf>;
     /// Called after a game so the recorder can restore the user's own setup.
     async fn finish(&self) -> anyhow::Result<()>;
     async fn status(&self) -> RecorderStatus;

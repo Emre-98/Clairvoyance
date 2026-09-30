@@ -11,6 +11,7 @@ import type {
   PerfTestStatus,
   CleanupReport,
   UpdateStatus,
+  GameModesView,
   SelfTestResult,
 } from "./types";
 
@@ -96,6 +97,10 @@ export const api = {
   quit: () => call<void>("quit_app"),
   removeLegacyApp: () => call<void>("remove_legacy_app"),
   uiReady: (pageMs: number) => call<{ since_launch_ms: number | null }>("ui_ready", { pageMs }),
+  modesGet: () => call<GameModesView[]>("modes_get"),
+  modesRefresh: () => call<GameModesView[]>("modes_refresh"),
+  modesSet: (game: string, what: "mode" | "group" | "unknown" | "preset" | "seen", key?: string | null, rule?: string | null) =>
+    call<GameModesView[]>("modes_set", { game, what, key: key ?? null, rule: rule ?? null }),
   updateStatus: () => call<UpdateStatus>("update_status"),
   updateCheck: () => call<UpdateStatus>("update_check"),
   updateInstall: () => call<void>("update_install"),

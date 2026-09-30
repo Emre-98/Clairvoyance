@@ -15,6 +15,7 @@ mod input;
 mod logger;
 mod maintenance;
 mod migrate;
+mod modes;
 mod perftest;
 mod platform;
 mod state;
@@ -209,6 +210,18 @@ fn handle_engine_event(app: &AppHandle, tray: &tray::Tray, ev: EngineEvent) {
         EngineEvent::Notice { level, text } => log::info!("notice [{level}] {text}"),
         // The game is over and its clips are cut: thumbnails + storage clean-up now.
         EngineEvent::PostProcessed { .. } => st.maintenance.kick(),
+        // A mode seen for the first time: remember it (with the "unknown / new modes" rule).
+        EngineEvent::ModesChanged { game_id, modes } => {
+            let s = {
+                let mut s = st.settings.write().unwrap();
+                s.modes.insert(game_id.clone(), modes.clone());
+                s.clone()
+            };
+            if let Err(e) = s.save(&st.paths.config_file) {
+                log::warn!("saving the new game mode: {e:#}");
+            }
+            let _ = app.emit("modes-changed", ());
+        }
         _ => {}
     }
     if matches!(ev, EngineEvent::LibraryChanged | EngineEvent::GameEnded { .. }) {

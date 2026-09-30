@@ -87,6 +87,18 @@ pub struct GameSession {
     /// In-game clock at the end.
     #[serde(default)]
     pub game_duration: Option<f64>,
+    /// The match's queue / mode (League: queue id 420 = "Ranked Solo/Duo"), kept with the
+    /// recording so it keeps its label even if Riot later removes or renames the mode.
+    #[serde(default)]
+    pub queue_id: Option<i64>,
+    #[serde(default)]
+    pub mode_name: Option<String>,
+    /// Key in Settings > Game modes, e.g. "q420".
+    #[serde(default)]
+    pub mode_key: Option<String>,
+    /// "full" or "clips_only".
+    #[serde(default)]
+    pub record_mode: Option<String>,
     #[serde(default)]
     pub player: Option<PlayerInfo>,
     #[serde(default)]
@@ -125,6 +137,10 @@ impl GameSession {
             video_offset: 0.0,
             video_duration: None,
             game_duration: None,
+            queue_id: None,
+            mode_name: None,
+            mode_key: None,
+            record_mode: None,
             player: None,
             stats: None,
             result: None,

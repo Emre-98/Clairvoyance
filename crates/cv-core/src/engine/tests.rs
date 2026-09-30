@@ -43,6 +43,7 @@ impl GameIntegration for FakeGame {
 #[derive(Default)]
 struct FakeRecorder {
     dir: Mutex<Option<PathBuf>>,
+    full_video: Mutex<Option<bool>>,
     started: Mutex<bool>,
     game_clock: Arc<Mutex<f64>>,
 }
@@ -52,6 +53,7 @@ impl Recorder for FakeRecorder {
     async fn ensure_connected(&self) -> anyhow::Result<()> { Ok(()) }
     async fn prepare(&self, _t: &CaptureTarget, o: &RecordOptions) -> anyhow::Result<()> {
         *self.dir.lock().unwrap() = Some(o.output_dir.clone());
+        *self.full_video.lock().unwrap() = Some(o.full_video);
         Ok(())
     }
     async fn start_recording(&self) -> anyhow::Result<()> { *self.started.lock().unwrap() = true; Ok(()) }
@@ -65,7 +67,7 @@ impl Recorder for FakeRecorder {
         let polls = *self.game_clock.lock().unwrap();
         Ok(Some(Duration::from_secs_f64(polls + 25.0)))
     }
-    async fn save_replay(&self) -> anyhow::Result<PathBuf> { anyhow::bail!("no") }
+    async fn save_replay(&self, _secs: Option<u32>) -> anyhow::Result<PathBuf> { anyhow::bail!("no") }
     async fn finish(&self) -> anyhow::Result<()> { Ok(()) }
     async fn status(&self) -> RecorderStatus { RecorderStatus { connected: true, ..Default::default() } }
 }
@@ -259,5 +261,98 @@ async fn match_only_games_record_per_match() {
     assert_eq!(count(&mut rx), (0, 1), "leaving the match ends it");
     ctx.send(EngineCommand::Shutdown).unwrap();
     h.await.unwrap();
+    std::fs::remove_dir_all(root).ok();
+}
+
+/// A game with per-mode rules; `detect_mode` reports `mode`.
+struct ModeGame {
+    inner: FakeGame,
+    mode: crate::modes::MatchMode,
+}
+#[async_trait]
+impl GameIntegration for ModeGame {
+    fn id(&self) -> &'static str { self.inner.id() }
+    fn name(&self) -> &'static str { self.inner.name() }
+    fn short_name(&self) -> &'static str { self.inner.short_name() }
+    fn process_names(&self) -> &'static [&'static str] { self.inner.process_names() }
+    fn capture(&self) -> CaptureTarget { self.inner.capture() }
+    fn supports_events(&self) -> bool { true }
+    fn end_grace(&self) -> Duration { Duration::from_millis(0) }
+    async fn poll(&mut self) -> anyhow::Result<PollUpdate> { self.inner.poll().await }
+    fn mode_groups(&self) -> Vec<crate::modes::ModeGroupInfo> {
+        vec![crate::modes::ModeGroupInfo { id: "aram", label: "ARAM", help: "" }]
+    }
+    async fn detect_mode(&mut self) -> Option<crate::modes::MatchMode> { Some(self.mode.clone()) }
+}
+
+fn mode(key: &str, name: &str) -> crate::modes::MatchMode {
+    crate::modes::MatchMode { key: Some(key.into()), queue_id: Some(450), name: name.into(), game_mode: Some("ARAM".into()), group: "aram".into(), default_rule: None, source: "test".into() }
+}
+
+#[tokio::test(start_paused = true)]
+async fn modes_switched_off_are_never_recorded() {
+    let root = std::env::temp_dir().join(format!("cv-engine-off-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let game = ModeGame { inner: FakeGame { polls: 0, end_after: 1000 }, mode: mode("q450", "ARAM") };
+    let recorder = Arc::new(FakeRecorder::default());
+    let platform = Arc::new(FakePlatform { procs: Mutex::new(vec!["fake.exe".into()]) });
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let (_ctx, crx) = tokio::sync::mpsc::unbounded_channel();
+    let (_itx, irx) = tokio::sync::mpsc::unbounded_channel();
+    let mut settings = Settings::default();
+    settings.save_dir = root.to_string_lossy().to_string();
+    let mut gm = crate::modes::GameModes::default();
+    gm.merge_catalog(&[crate::modes::CatalogMode { key: "q450".into(), queue_id: Some(450), name: "ARAM".into(), game_mode: Some("ARAM".into()), group: "aram".into(), default_rule: Some(ModeRule::Off), available: Some(true) }], false);
+    settings.modes.insert("fake".into(), gm);
+    let engine = Engine::new(vec![Box::new(game)], recorder.clone(), platform.clone(), None, settings, root.clone(), tx);
+    let handle = tokio::spawn(engine.run(crx, irx));
+    tokio::time::sleep(Duration::from_secs(10)).await;
+    assert!(!*recorder.started.lock().unwrap(), "an ARAM with ARAM switched off isn't recorded");
+    let mut msg = None;
+    while let Ok(ev) = rx.try_recv() {
+        if let EngineEvent::Status(s) = ev {
+            if s.message.is_some() {
+                msg = s.message;
+            }
+        }
+    }
+    assert_eq!(msg.as_deref(), Some("ARAM: recording off for this mode"));
+    // The game closes: nothing saved.
+    platform.procs.lock().unwrap().clear();
+    tokio::time::sleep(Duration::from_secs(6)).await;
+    assert_eq!(std::fs::read_dir(&root).unwrap().count(), 0, "no folder for an unrecorded game");
+    handle.abort();
+    std::fs::remove_dir_all(root).ok();
+}
+
+#[tokio::test(start_paused = true)]
+async fn new_modes_are_added_and_follow_the_unknown_rule() {
+    let root = std::env::temp_dir().join(format!("cv-engine-new-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let game = ModeGame { inner: FakeGame { polls: 0, end_after: 1000 }, mode: mode("q31337", "Brand New Mode") };
+    let recorder = Arc::new(FakeRecorder::default());
+    let platform = Arc::new(FakePlatform { procs: Mutex::new(vec!["fake.exe".into()]) });
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let (_ctx, crx) = tokio::sync::mpsc::unbounded_channel();
+    let (_itx, irx) = tokio::sync::mpsc::unbounded_channel();
+    let mut settings = Settings::default();
+    settings.save_dir = root.to_string_lossy().to_string();
+    settings.modes.insert("fake".into(), crate::modes::GameModes { unknown_rule: ModeRule::ClipsOnly, ..Default::default() });
+    let engine = Engine::new(vec![Box::new(game)], recorder.clone(), platform.clone(), None, settings, root.clone(), tx);
+    let handle = tokio::spawn(engine.run(crx, irx));
+    tokio::time::sleep(Duration::from_secs(8)).await;
+    assert!(*recorder.started.lock().unwrap());
+    assert_eq!(*recorder.full_video.lock().unwrap(), Some(false), "clips only: no full video");
+    let mut added = None;
+    while let Ok(ev) = rx.try_recv() {
+        if let EngineEvent::ModesChanged { modes, .. } = ev {
+            added = Some(modes);
+        }
+    }
+    let m = added.expect("the new mode is reported so it's saved in the settings");
+    assert!(m.entries["q31337"].is_new);
+    assert_eq!(m.entries["q31337"].rule, ModeRule::ClipsOnly);
+    handle.abort();
     std::fs::remove_dir_all(root).ok();
 }

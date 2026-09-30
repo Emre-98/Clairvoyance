@@ -10,12 +10,14 @@
   import HotkeyInput from "../components/HotkeyInput.svelte";
   import BuiltinRecorder from "../components/BuiltinRecorder.svelte";
   import PerfTest from "../components/PerfTest.svelte";
+  import GameModes from "../components/GameModes.svelte";
 
   let { section = "setup" }: { section?: string } = $props();
 
   const sections = [
     { id: "setup", label: "Recorder", icon: "rec" },
     { id: "recording", label: "Recording", icon: "clips" },
+    { id: "modes", label: "Game modes", icon: "flag" },
     { id: "hotkeys", label: "Hotkeys", icon: "keyboard" },
     { id: "events", label: "Events & clips", icon: "bolt" },
     { id: "games", label: "Games", icon: "gamepad" },
@@ -164,7 +166,7 @@
   <nav class="subnav">
     <h1>Settings</h1>
     {#each sections as s}
-      <button class:on={active === s.id} onclick={() => (active = s.id)}><Icon name={s.icon} size={16} />{s.label}</button>
+      <button class:on={active === s.id} onclick={() => (active = s.id)}><Icon name={s.icon} size={16} />{s.label}{#if s.id === "modes" && app.newModes > 0}<span class="navnew" title="New modes detected">{app.newModes}</span>{/if}</button>
     {/each}
   </nav>
 
@@ -217,6 +219,10 @@
         <label class="check wide"><input type="checkbox" bind:checked={draft.video.record_mic} />Record my microphone <small>(its own audio track; the game's sound is always recorded on its own)</small></label>
         <label class="check wide"><input type="checkbox" bind:checked={draft.video.display_capture} />Capture the whole screen instead of the game window <small>(only if recordings come out black)</small></label>
       </div>
+    {:else if active === "modes"}
+      <h2>Game modes</h2>
+      <p class="lead">Choose per mode whether it's recorded. The list comes from the League client and Riot, so rotating and new modes show up by themselves.</p>
+      <GameModes />
     {:else if active === "hotkeys"}
       <h2>Hotkeys</h2>
       <p class="lead">Work while a game is running, without stealing the key from the game.</p>
@@ -760,6 +766,19 @@
     display: flex;
     align-items: center;
     gap: 14px;
+  }
+  .navnew {
+    margin-left: auto;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    display: grid;
+    place-items: center;
+    font-size: 11px;
+    font-weight: 800;
+    background: var(--accent-grad);
+    color: var(--on-accent);
   }
   .metric {
     font-weight: 700;
