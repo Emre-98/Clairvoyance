@@ -19,15 +19,28 @@ export function bytes(n: number | null | undefined): string {
   return `${v >= 100 || i === 0 ? v.toFixed(0) : v.toFixed(1)} ${u[i]}`;
 }
 
+// Intl formatters are expensive to create: build them once (this runs for every card).
+const fmtTime = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
+const fmtWeekday = new Intl.DateTimeFormat(undefined, { weekday: "long" });
+const fmtDayMonth = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" });
+const fmtDayMonthYear = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric" });
+const relCache = new Map<string, { at: number; text: string }>();
+
 export function relativeDate(iso: string): string {
+  const today = startOfDay(new Date());
+  const hit = relCache.get(iso);
+  if (hit && hit.at === today) return hit.text;
   const d = new Date(iso);
-  const now = new Date();
-  const days = Math.floor((startOfDay(now) - startOfDay(d)) / 86400000);
-  const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-  if (days === 0) return `Today, ${time}`;
-  if (days === 1) return `Yesterday, ${time}`;
-  if (days < 7) return `${d.toLocaleDateString(undefined, { weekday: "long" })}, ${time}`;
-  return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: d.getFullYear() === now.getFullYear() ? undefined : "numeric" });
+  const days = Math.floor((today - startOfDay(d)) / 86400000);
+  const time = fmtTime.format(d);
+  let text: string;
+  if (days === 0) text = `Today, ${time}`;
+  else if (days === 1) text = `Yesterday, ${time}`;
+  else if (days < 7) text = `${fmtWeekday.format(d)}, ${time}`;
+  else text = (d.getFullYear() === new Date().getFullYear() ? fmtDayMonth : fmtDayMonthYear).format(d);
+  if (relCache.size > 5000) relCache.clear();
+  relCache.set(iso, { at: today, text });
+  return text;
 }
 
 function startOfDay(d: Date) {
@@ -45,7 +58,10 @@ export function kdaRatio(s: { kills: number; deaths: number; assists: number } |
   return ((s.kills + s.assists) / s.deaths).toFixed(2);
 }
 
+const numFmts = new Map<number, Intl.NumberFormat>();
 export function num(n: number | null | undefined, digits = 0): string {
   if (n == null) return "-";
-  return n.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits });
+  let f = numFmts.get(digits);
+  if (!f) numFmts.set(digits, (f = new Intl.NumberFormat(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits })));
+  return f.format(n);
 }

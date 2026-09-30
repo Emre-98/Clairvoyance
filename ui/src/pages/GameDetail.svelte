@@ -249,7 +249,14 @@
       {#each s.warnings as w}<div class="pill warnpill"><Icon name="warn" size={13} />{w}</div>{/each}
     </div>
   {:else}
-    <div class="muted">Loading…</div>
+    <div class="head" aria-busy="true">
+      <span class="skeleton" style="width:48px;height:48px;border-radius:10px"></span>
+      <div class="htxt"><span class="skeleton-line" style="width:180px;height:22px"></span><br /><span class="skeleton-line" style="width:260px"></span></div>
+    </div>
+    <div class="main">
+      <div class="skeleton" style="aspect-ratio:16/9;border-radius:var(--radius)"></div>
+      <div class="skeleton" style="height:420px;border-radius:var(--radius)"></div>
+    </div>
   {/if}
 </div>
 

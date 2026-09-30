@@ -45,6 +45,9 @@ pub struct AppState {
     /// The background refresh after start-up has been started.
     pub library_first_refresh: std::sync::atomic::AtomicBool,
     pub maintenance: crate::maintenance::Maintenance,
+    /// (launch -> first content painted, page load -> first content painted), in ms, for the
+    /// first window of this run.
+    pub startup: std::sync::Mutex<(Option<f64>, Option<f64>)>,
 }
 
 impl AppState {

@@ -579,6 +579,31 @@ pub fn perf_test_cancel(st: St) {
     st.perf_cancel.store(true, std::sync::atomic::Ordering::SeqCst);
 }
 
+#[derive(Serialize)]
+pub struct UiTimings {
+    startup_ms: Option<f64>,
+    page_ms: Option<f64>,
+}
+
+/// The UI reports its first painted content. The first report of a run is the cold start
+/// (process launch -> window showing the library); it's logged.
+#[tauri::command]
+pub fn ui_ready(st: St, page_ms: f64) -> UiTimings {
+    let mut s = st.startup.lock().unwrap();
+    if s.0.is_none() {
+        let since = crate::LAUNCHED.get().map(|t| t.elapsed().as_secs_f64() * 1000.0);
+        *s = (since, Some(page_ms));
+        log::info!("startup: window content painted {:.0} ms after launch (page {:.0} ms)", since.unwrap_or(0.0), page_ms);
+    }
+    UiTimings { startup_ms: s.0, page_ms: s.1 }
+}
+
+#[tauri::command]
+pub fn ui_timings(st: St) -> UiTimings {
+    let s = st.startup.lock().unwrap();
+    UiTimings { startup_ms: s.0, page_ms: s.1 }
+}
+
 #[tauri::command]
 pub fn quit_app(app: AppHandle) {
     crate::quit(&app);
@@ -610,6 +635,8 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static 
         storage_info,
         cleanup_now,
         set_clip_keep,
+        ui_ready,
+        ui_timings,
         finish_first_run,
         simulate_game,
         builtin_encoders,

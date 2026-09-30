@@ -81,6 +81,9 @@
 </aside>
 
 <style>
+  .nav:active {
+    transform: scale(0.98);
+  }
   .sidebar {
     width: 212px;
     flex: none;
@@ -97,6 +100,7 @@
     gap: 2px;
   }
   .nav {
+    transition: background 0.15s var(--ease), color 0.15s var(--ease), transform 0.1s var(--ease);
     display: flex;
     align-items: center;
     gap: 12px;

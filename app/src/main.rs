@@ -38,6 +38,9 @@ fn env_dir(var: &str) -> Option<PathBuf> {
 
 pub const APP_NAME: &str = "Clairvoyance";
 
+/// When the process started (for the "window ready" startup time).
+pub static LAUNCHED: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
 struct Roots {
     roaming: PathBuf,
     local: PathBuf,
@@ -222,6 +225,7 @@ fn handle_engine_event(app: &AppHandle, tray: &tray::Tray, ev: EngineEvent) {
 }
 
 fn main() {
+    let _ = LAUNCHED.set(std::time::Instant::now());
     let start_hidden = std::env::args().any(|a| a == "--minimized");
     let paths = paths();
     // First start after the rename from GameRecorder: bring the old settings, recordings and
@@ -314,6 +318,7 @@ fn main() {
                 library_dirty: Default::default(),
                 library_first_refresh: Default::default(),
                 maintenance: Default::default(),
+                startup: Default::default(),
             });
             let save_dir = st.save_dir();
             let _ = std::fs::create_dir_all(&save_dir);

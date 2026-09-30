@@ -5,6 +5,7 @@
   import { KIND, USER_KINDS } from "../lib/eventmeta";
   import type { EventKind, Settings, StorageInfo } from "../lib/types";
   import { setTheme, type Theme } from "../lib/theme";
+  import { summary as perfSummary } from "../lib/perfmarks";
   import Icon from "../components/Icon.svelte";
   import HotkeyInput from "../components/HotkeyInput.svelte";
   import BuiltinRecorder from "../components/BuiltinRecorder.svelte";
@@ -72,6 +73,16 @@
     draft.theme = t;
     baseline.theme = t;
   }
+
+  let timings = $state<{ startup_ms: number | null; page_ms: number | null } | null>(null);
+  let marks = $state(perfSummary());
+  $effect(() => {
+    if (active === "advanced") {
+      marks = perfSummary();
+      api.uiTimings().then((t) => (timings = t)).catch(() => {});
+    }
+  });
+  const ms = (v: number | null | undefined) => (v == null ? "-" : `${Math.round(v)} ms`);
 
   let storage = $state<StorageInfo | null>(null);
   let ff = $state<{ available: boolean; path?: string | null } | null>(null);
@@ -373,6 +384,12 @@
       <div class="card box"><PerfTest /></div>
     {:else if active === "advanced"}
       <h2>Advanced</h2>
+      <h3 class="sub">Responsiveness (measured in this window)</h3>
+      <div class="card box list">
+        <div class="item"><div><strong>Window ready after launch</strong><span class="muted">Start of the app until the library is on screen (target under 1 s)</span></div><span class="metric">{ms(timings?.startup_ms)}</span></div>
+        <div class="item"><div><strong>Page switch</strong><span class="muted">Click until the new page is painted, median / slowest of the last {marks.page_switch.n} (target under 100 ms)</span></div><span class="metric">{ms(marks.page_switch.median)} / {ms(marks.page_switch.max)}</span></div>
+        <div class="item"><div><strong>Timeline jump</strong><span class="muted">Marker click until the video shows the moment, median / slowest of the last {marks.seek.n} (target under 200 ms)</span></div><span class="metric">{ms(marks.seek.median)} / {ms(marks.seek.max)}</span></div>
+      </div>
       <h3 class="sub">Try it without playing</h3>
       <div class="card box">
         <p class="lead" style="margin-top:0">Plays a scripted League match against a fake game API (kills, a triple kill, a stolen Herald, towers, Baron…) and records your screen, so you can see the whole flow: detection, recording, events and the timeline.</p>
@@ -406,6 +423,9 @@
 </div>
 
 <style>
+  .subnav button:active {
+    transform: scale(0.98);
+  }
   .settings {
     display: flex;
     height: 100%;
@@ -424,6 +444,7 @@
     padding: 0 10px 16px;
   }
   .subnav button {
+    transition: background 0.15s var(--ease), color 0.15s var(--ease), transform 0.1s var(--ease);
     display: flex;
     align-items: center;
     gap: 10px;
@@ -704,6 +725,11 @@
   }
   .pv-dots .e {
     background: var(--ev-epic);
+  }
+  .metric {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
   .limit-head {
     display: flex;

@@ -7,8 +7,15 @@
   import Icon from "./Icon.svelte";
 
   let { s }: { s: SessionSummary } = $props();
+  // Optimistic: the star flips at once; the library refresh confirms it.
   let favLocal = $state<boolean | null>(null);
   const fav = $derived(favLocal ?? s.favorite);
+  $effect(() => {
+    s.favorite;
+    favLocal = null;
+  });
+  let loaded = $state(false);
+  let failed = $state(false);
 
   const thumb = $derived(
     s.thumb_path
@@ -27,9 +34,14 @@
 </script>
 
 <button class="card game" onpointerenter={() => prefetchSession(s.id)} onfocus={() => prefetchSession(s.id)} onclick={() => go({ page: "game", id: s.id })}>
-  <div class="thumb" style={thumb ? `background-image:url('${thumb}')` : ""}>
-    {#if !thumb}<div class="ph"><Icon name="gamepad" size={34} stroke={1.5} /></div>{/if}
-    {#if thumb}<div class="shade"></div>{/if}
+  <div class="thumb">
+    {#if thumb && !failed}
+      {#if !loaded}<div class="skeleton ph-skel"></div>{/if}
+      <img src={thumb} alt="" loading="lazy" decoding="async" draggable="false" class:shown={loaded} onload={() => (loaded = true)} onerror={() => (failed = true)} />
+      <div class="shade"></div>
+    {:else}
+      <div class="ph"><Icon name="gamepad" size={34} stroke={1.5} /></div>
+    {/if}
     {#if resultLabel}<span class="badge {s.result}">{resultLabel}</span>{/if}
     <span class="fav" class:on={fav} role="button" tabindex="-1" title={fav ? "Favorite (never auto-deleted)" : "Add to favorites"} onclick={toggleFav} onkeydown={() => {}}>
       <Icon name="star" size={16} fill={fav} />
@@ -52,18 +64,42 @@
 
 <style>
   .game {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
     padding: 0;
     overflow: hidden;
     text-align: left;
-    transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+    transition: transform 0.16s var(--ease), border-color 0.16s var(--ease), box-shadow 0.16s var(--ease);
   }
   .game:hover {
     transform: translateY(-2px);
     border-color: var(--border-2);
     box-shadow: var(--shadow);
   }
+  .game:active {
+    transform: translateY(0) scale(0.985);
+    transition-duration: 0.06s;
+  }
+  img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transition: opacity 0.2s var(--ease);
+  }
+  img.shown {
+    opacity: 1;
+  }
+  .ph-skel {
+    position: absolute;
+    inset: 0;
+  }
   .thumb {
     position: relative;
+    flex: none;
     aspect-ratio: 16 / 9;
     background: var(--media-placeholder);
   }
@@ -89,7 +125,6 @@
     font-weight: 700;
     letter-spacing: 0.03em;
     text-transform: uppercase;
-    backdrop-filter: blur(6px);
   }
   .badge.win {
     background: var(--media-win-bg);
@@ -143,6 +178,7 @@
     color: var(--media-warn);
   }
   .meta {
+    flex: 1;
     display: flex;
     align-items: center;
     gap: 11px;

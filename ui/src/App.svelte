@@ -29,6 +29,8 @@
     {:else if app.settings && app.info}
       <Sidebar />
       <main>
+        {#key app.route.page === "game" ? "game:" + app.route.id : app.route.page}
+        <div class="route">
         {#if app.route.page === "home"}
           <Home />
         {:else if app.route.page === "games"}
@@ -40,6 +42,8 @@
         {:else if app.route.page === "settings"}
           <Settings section={app.route.section ?? "setup"} />
         {/if}
+        </div>
+        {/key}
       </main>
       {#if !app.settings.first_run_done}<Setup />{/if}
     {/if}
@@ -64,5 +68,16 @@
     min-width: 0;
     height: 100%;
     overflow: hidden;
+  }
+  /* Page change: a short fade + rise on the GPU (opacity/transform only). */
+  .route {
+    height: 100%;
+    animation: route-in 0.17s var(--ease) both;
+  }
+  @keyframes route-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
   }
 </style>

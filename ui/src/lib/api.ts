@@ -29,7 +29,7 @@ async function init() {
     invokeImpl = core.invoke as Invoke;
     listenImpl = async (name, cb) => ev.listen(name, (e) => cb(e.payload));
     fileSrcImpl = (p) => core.convertFileSrc(p);
-  } else if (import.meta.env.DEV) {
+  } else if (import.meta.env.DEV || import.meta.env.VITE_MOCK) {
     // Browser preview with fake data (npm run dev).
     const mock = await import("./mock");
     invokeImpl = mock.invoke as Invoke;
@@ -94,6 +94,8 @@ export const api = {
   simulateGame: (speed: number, length: number) => call<void>("simulate_game", { speed, length }),
   quit: () => call<void>("quit_app"),
   removeLegacyApp: () => call<void>("remove_legacy_app"),
+  uiReady: (pageMs: number) => call<{ since_launch_ms: number | null }>("ui_ready", { pageMs }),
+  uiTimings: () => call<{ startup_ms: number | null; page_ms: number | null }>("ui_timings"),
   setTheme: (theme: string, darkNow: boolean) => call<void>("set_theme", { theme, darkNow }),
   builtinEncoders: () => call<{ gpu: string; encoders: string[] }>("builtin_encoders"),
   recorderSelftest: (secs: number) => call<SelfTestResult>("recorder_selftest", { secs }),

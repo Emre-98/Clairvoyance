@@ -12,6 +12,7 @@
   import type { ClipEntry } from "../lib/types";
   import Icon from "../components/Icon.svelte";
   import ChampionIcon from "../components/ChampionIcon.svelte";
+  import VirtualGrid from "../components/VirtualGrid.svelte";
 
   let clips = $state<ClipEntry[]>(cache ?? []);
   let loaded = $state(cache != null);
@@ -41,13 +42,26 @@
     }
   }
 
-  function hover(e: MouseEvent, play: boolean) {
-    const v = (e.currentTarget as HTMLElement).querySelector("video");
-    if (!v) return;
-    if (play) v.play().catch(() => {});
-    else {
-      v.pause();
-      v.currentTime = 0;
+  // Hover preview: the video element only exists for the card under the mouse (after a short
+  // delay), so scrolling past hundreds of clips never loads any video.
+  let previewKey = $state<string | null>(null);
+  let hoverTimer = 0;
+  const keyOf = (c: ClipEntry) => c.session_id + "/" + c.file;
+  function hover(c: ClipEntry, on: boolean) {
+    clearTimeout(hoverTimer);
+    if (on) hoverTimer = window.setTimeout(() => (previewKey = keyOf(c)), 350);
+    else if (previewKey === keyOf(c)) previewKey = null;
+  }
+
+  async function toggleKeep(c: ClipEntry) {
+    const keep = !c.keep;
+    c.keep = keep; // instant; confirmed by the library refresh
+    try {
+      await api.setClipKeep(c.session_id, c.file, keep);
+      toast(keep ? "Clip kept: the storage clean-up will never delete it" : "Clip no longer kept", "ok");
+    } catch (e) {
+      c.keep = !keep;
+      toast(String(e), "error");
     }
   }
 </script>
@@ -65,19 +79,29 @@
     </div>
   </div>
 
-  {#if loaded && shown.length === 0}
+  {#if !loaded}
+    <div class="grid">{#each Array(6) as _}<div class="card"><div class="skeleton" style="aspect-ratio:16/9"></div><div style="padding:14px 12px"><span class="skeleton-line" style="width:70%"></span></div></div>{/each}</div>
+  {:else if shown.length === 0}
     <div class="empty">
       <Icon name="scissors" size={34} stroke={1.5} />
       <strong>No clips yet</strong>
       <span>Press <kbd>{app.settings?.hotkey_clip}</kbd> in game to save the last {app.settings?.video.replay_buffer_secs ?? 30} seconds.</span>
     </div>
   {:else}
-    <div class="grid">
-      {#each shown as c (c.path + c.title + c.created_at)}
-        <div class="card clip fade-in" onmouseenter={(e) => hover(e, true)} onmouseleave={(e) => hover(e, false)} role="group">
+    <VirtualGrid items={shown} key={(c) => keyOf(c) + c.created_at} extraHeight={90}>
+      {#snippet item(c)}
+        <div class="card clip" onmouseenter={() => hover(c, true)} onmouseleave={() => hover(c, false)} role="group">
           <button class="thumb" onclick={() => (playing = c)} aria-label="Play {c.title}">
-            <video src={fileSrc(c.path) + "#t=0.5"} muted preload="metadata" loop playsinline></video>
+            {#if c.thumb_path}
+              <img src={fileSrc(c.thumb_path)} alt="" loading="lazy" decoding="async" draggable="false" />
+            {:else}
+              <span class="ph"><Icon name="film" size={30} stroke={1.5} /></span>
+            {/if}
+            {#if previewKey === keyOf(c)}
+              <video src={fileSrc(c.path)} muted autoplay loop playsinline preload="auto"></video>
+            {/if}
             <span class="src">{sourceLabel[c.source] ?? c.source}</span>
+            {#if c.keep}<span class="kept" title="Kept: never deleted by the storage clean-up"><Icon name="pin" size={12} />Kept</span>{/if}
             <span class="playbtn"><Icon name="play" size={22} fill /></span>
           </button>
           <div class="meta">
@@ -91,11 +115,12 @@
             <button class="btn ghost small" onclick={() => go({ page: "game", id: c.session_id })}>Game</button>
             <button class="btn ghost small" onclick={() => api.reveal(c.path)}><Icon name="folder" size={14} />Show</button>
             <div class="spacer"></div>
+            <button class="btn ghost small icon keepbtn" class:on={c.keep} title={c.keep ? "Kept (click to un-keep)" : "Keep: never auto-delete this clip"} aria-pressed={c.keep} onclick={() => toggleKeep(c)}><Icon name="pin" size={15} /></button>
             <button class="btn ghost small icon" title="Delete" onclick={() => remove(c)}><Icon name="trash" size={15} /></button>
           </div>
         </div>
-      {/each}
-    </div>
+      {/snippet}
+    </VirtualGrid>
   {/if}
 </div>
 
@@ -140,6 +165,7 @@
   }
   .thumb {
     position: relative;
+    flex: none;
     display: block;
     width: 100%;
     aspect-ratio: 16 / 9;
@@ -147,11 +173,42 @@
     border: none;
     background: var(--media-bg);
   }
+  .clip {
+    display: flex;
+    flex-direction: column;
+  }
+  .thumb img,
   .thumb video {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
+  }
+  .thumb .ph {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: var(--on-media-2);
+  }
+  .kept {
+    position: absolute;
+    right: 8px;
+    top: 8px;
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 5px;
+    background: var(--media-overlay);
+    color: var(--media-fav);
+  }
+  .keepbtn.on {
+    color: var(--fav);
   }
   .src {
     position: absolute;

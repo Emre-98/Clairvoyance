@@ -209,6 +209,10 @@ export async function invoke(cmd: string, args: any = {}): Promise<any> {
           },
         ],
       };
+    case "ui_ready":
+      return { since_launch_ms: args.pageMs + 400 };
+    case "ui_timings":
+      return { startup_ms: 812, page_ms: 356 };
     case "set_theme":
       settings.theme = args.theme;
       return;

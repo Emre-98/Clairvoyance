@@ -2,6 +2,7 @@
   import { keepScroll } from "../lib/scroll";
   import { app } from "../lib/store.svelte";
   import GameCard from "../components/GameCard.svelte";
+  import VirtualGrid from "../components/VirtualGrid.svelte";
   import Icon from "../components/Icon.svelte";
   import { bytes } from "../lib/format";
 
@@ -63,15 +64,17 @@
     </select>
   </div>
 
-  {#if list.length === 0}
+  {#if !app.sessionsLoaded}
+    <div class="grid">{#each Array(6) as _}<div class="card skel-card"><div class="skeleton skel-thumb"></div><div class="skel-meta"><span class="skeleton-line" style="width:60%"></span><span class="skeleton-line" style="width:35%"></span></div></div>{/each}</div>
+  {:else if list.length === 0}
     <div class="empty">
       <Icon name="library" size={34} stroke={1.5} />
       <strong>{app.sessions.length ? "No games match these filters" : "No games yet"}</strong>
     </div>
   {:else}
-    <div class="grid">
-      {#each list as s (s.id)}<GameCard {s} />{/each}
-    </div>
+    <VirtualGrid items={list} key={(s) => s.id} extraHeight={64}>
+      {#snippet item(s)}<GameCard {s} />{/snippet}
+    </VirtualGrid>
   {/if}
 </div>
 
@@ -116,6 +119,18 @@
   .seg button.on {
     background: var(--surface-3);
     color: var(--text);
+  }
+  .skel-card {
+    overflow: hidden;
+  }
+  .skel-thumb {
+    aspect-ratio: 16 / 9;
+  }
+  .skel-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 14px 12px;
   }
   .favon {
     color: var(--fav);

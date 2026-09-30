@@ -1,5 +1,6 @@
 import { api, on, onEngine } from "./api";
 import { initTheme } from "./theme";
+import { measurePaint, nextPaint, record } from "./perfmarks";
 import type { AppInfo, LiveStatus, SessionSummary, SessionView, Settings } from "./types";
 
 export type Route =
@@ -60,6 +61,7 @@ export function toast(text: string, level: Toast["level"] = "info", ms = 4500) {
 }
 
 export function go(route: Route) {
+  measurePaint("page_switch");
   app.route = route;
 }
 
@@ -91,6 +93,11 @@ export async function boot() {
       app.status = s;
     }), refreshSessions()]);
   initTheme(app.settings?.theme);
+  // Report when the first real content is on screen (startup time, logged by the app).
+  nextPaint().then((t) => {
+    record("startup", t);
+    api.uiReady(t).catch(() => {});
+  });
   await onEngine((e) => {
     if (e.type === "status") {
       const { type: _t, ...s } = e;

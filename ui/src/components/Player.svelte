@@ -4,6 +4,7 @@
   import { clock } from "../lib/format";
   import Icon from "./Icon.svelte";
   import Timeline from "./Timeline.svelte";
+  import { record } from "../lib/perfmarks";
 
   let {
     src,
@@ -55,6 +56,11 @@
   }
 
   export function jumpTo(e: GameEvent) {
+    // Measure click -> the video showing the new position.
+    if (video) {
+      const t0 = performance.now();
+      video.addEventListener("seeked", () => requestAnimationFrame(() => record("seek", performance.now() - t0)), { once: true });
+    }
     seek(target(e), true);
     flash = e.title;
     setTimeout(() => (flash = null), 1600);
