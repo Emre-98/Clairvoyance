@@ -89,6 +89,32 @@ pub async fn save_settings(app: AppHandle, st: St<'_>, settings: Settings) -> R<
     Ok(())
 }
 
+/// Switches the theme at once (no restart) and remembers it. `dark_now` is what the page shows,
+/// used to match the native window background (it matters while resizing).
+#[tauri::command]
+pub fn set_theme(app: AppHandle, st: St, theme: String, dark_now: bool) -> R<()> {
+    let theme = match theme.as_str() {
+        "dark" | "light" => theme,
+        _ => "system".to_string(),
+    };
+    let changed = {
+        let mut s = st.settings.write().unwrap();
+        let changed = s.theme != theme;
+        s.theme = theme;
+        if changed {
+            s.save(&st.paths.config_file).map_err(err)?;
+        }
+        changed
+    };
+    if let Some(w) = app.get_webview_window(crate::MAIN) {
+        let _ = w.set_background_color(Some(crate::theme_background(dark_now)));
+    }
+    if changed {
+        log::info!("theme: {}", st.settings.read().unwrap().theme);
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn list_sessions(st: St<'_>) -> R<Vec<SessionSummary>> {
     let dir = st.save_dir();
@@ -489,5 +515,6 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static 
         perf_test_cancel,
         quit_app,
         remove_legacy_app,
+        set_theme,
     ]
 }

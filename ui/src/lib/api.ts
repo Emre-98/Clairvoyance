@@ -92,6 +92,7 @@ export const api = {
   simulateGame: (speed: number, length: number) => call<void>("simulate_game", { speed, length }),
   quit: () => call<void>("quit_app"),
   removeLegacyApp: () => call<void>("remove_legacy_app"),
+  setTheme: (theme: string, darkNow: boolean) => call<void>("set_theme", { theme, darkNow }),
   builtinEncoders: () => call<{ gpu: string; encoders: string[] }>("builtin_encoders"),
   recorderSelftest: (secs: number) => call<SelfTestResult>("recorder_selftest", { secs }),
   perfTestStart: (phaseSecs: number) => call<void>("perf_test_start", { phaseSecs }),

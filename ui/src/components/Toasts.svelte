@@ -27,7 +27,7 @@
     align-items: flex-start;
     padding: 11px 14px;
     border-radius: 10px;
-    background: #0a0c12;
+    background: var(--popover);
     border: 1px solid var(--border-2);
     box-shadow: var(--shadow);
     font-size: 13px;
@@ -45,7 +45,7 @@
     color: var(--warn);
   }
   .error {
-    border-color: rgba(255, 77, 109, 0.45);
+    border-color: color-mix(in srgb, var(--danger) 45%, transparent);
   }
   .error :global(svg) {
     color: var(--danger);

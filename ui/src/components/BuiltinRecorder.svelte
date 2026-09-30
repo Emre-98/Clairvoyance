@@ -90,7 +90,7 @@
     color: var(--text-2);
   }
   .ic.ok {
-    background: rgba(61, 220, 132, 0.18);
+    background: var(--ok-soft);
     color: var(--ok);
   }
   .warn {

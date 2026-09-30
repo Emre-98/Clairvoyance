@@ -73,14 +73,37 @@ fn old_paths() -> migrate::OldPaths {
     }
 }
 
+/// Native background behind the page: matches the theme so opening the window never flashes.
+pub fn theme_background(dark: bool) -> tauri::window::Color {
+    if dark {
+        tauri::window::Color(11, 13, 20, 255)
+    } else {
+        tauri::window::Color(243, 244, 248, 255)
+    }
+}
+
+/// True if the given theme setting ("system" / "dark" / "light") shows dark right now.
+pub fn theme_is_dark(theme: &str) -> bool {
+    match theme {
+        "dark" => true,
+        "light" => false,
+        _ => platform::windows_prefers_dark(),
+    }
+}
+
 fn build_main_window(app: &AppHandle, visible: bool) -> Option<tauri::WebviewWindow> {
+    let theme = app.state::<Arc<AppState>>().settings.read().unwrap().theme().to_string();
+    // The page reads this before its first paint (public/theme-boot.js), so the right theme is
+    // there from the first frame.
+    let boot = format!("window.__CV_THEME__ = {};", serde_json::to_string(&theme).unwrap_or_default());
     let built = WebviewWindowBuilder::new(app, MAIN, WebviewUrl::App("index.html".into()))
+        .initialization_script(&boot)
         .title("Clairvoyance")
         .inner_size(1320.0, 820.0)
         .min_inner_size(980.0, 620.0)
         .decorations(false)
         .shadow(true)
-        .background_color(tauri::window::Color(13, 15, 22, 255))
+        .background_color(theme_background(theme_is_dark(&theme)))
         .center()
         .visible(visible)
         .build();

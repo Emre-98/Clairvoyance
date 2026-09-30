@@ -68,7 +68,7 @@
   }
   .hk.listening {
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(46, 230, 197, 0.15);
+    box-shadow: 0 0 0 3px var(--accent-soft);
     color: var(--accent);
     font-size: 13px;
   }

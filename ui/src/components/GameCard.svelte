@@ -29,7 +29,7 @@
 <button class="card game" onpointerenter={() => prefetchSession(s.id)} onfocus={() => prefetchSession(s.id)} onclick={() => go({ page: "game", id: s.id })}>
   <div class="thumb" style={thumb ? `background-image:url('${thumb}')` : ""}>
     {#if !thumb}<div class="ph"><Icon name="gamepad" size={34} stroke={1.5} /></div>{/if}
-    <div class="shade"></div>
+    {#if thumb}<div class="shade"></div>{/if}
     {#if resultLabel}<span class="badge {s.result}">{resultLabel}</span>{/if}
     <span class="fav" class:on={fav} role="button" tabindex="-1" title={fav ? "Favorite (never auto-deleted)" : "Add to favorites"} onclick={toggleFav} onkeydown={() => {}}>
       <Icon name="star" size={16} fill={fav} />
@@ -65,19 +65,19 @@
   .thumb {
     position: relative;
     aspect-ratio: 16 / 9;
-    background: linear-gradient(135deg, #1f2638, #121622) center / cover no-repeat;
+    background: var(--media-placeholder);
   }
   .ph {
     position: absolute;
     inset: 0;
     display: grid;
     place-items: center;
-    color: #39415a;
+    color: var(--faint);
   }
   .shade {
     position: absolute;
     inset: 0;
-    background: linear-gradient(180deg, rgba(0, 0, 0, 0.25) 0%, transparent 35%, transparent 60%, rgba(0, 0, 0, 0.55) 100%);
+    background: var(--media-shade);
   }
   .badge {
     position: absolute;
@@ -92,18 +92,18 @@
     backdrop-filter: blur(6px);
   }
   .badge.win {
-    background: rgba(61, 220, 132, 0.2);
-    color: #7cf0b0;
-    border: 1px solid rgba(61, 220, 132, 0.4);
+    background: var(--media-win-bg);
+    color: var(--media-win-text);
+    border: 1px solid var(--media-win-border);
   }
   .badge.loss {
-    background: rgba(255, 77, 109, 0.2);
-    color: #ff9cb0;
-    border: 1px solid rgba(255, 77, 109, 0.4);
+    background: var(--media-loss-bg);
+    color: var(--media-loss-text);
+    border: 1px solid var(--media-loss-border);
   }
   .badge.draw {
-    background: rgba(200, 200, 200, 0.2);
-    color: #ddd;
+    background: var(--media-overlay);
+    color: var(--on-media-2);
   }
   .fav {
     position: absolute;
@@ -114,8 +114,8 @@
     border-radius: 8px;
     display: grid;
     place-items: center;
-    color: rgba(255, 255, 255, 0.75);
-    background: rgba(0, 0, 0, 0.35);
+    color: var(--on-media-2);
+    background: var(--media-overlay);
     opacity: 0;
     transition: opacity 0.15s;
   }
@@ -124,7 +124,7 @@
     opacity: 1;
   }
   .fav.on {
-    color: #f5c542;
+    color: var(--media-fav);
   }
   .dur,
   .novideo {
@@ -134,13 +134,13 @@
     font-size: 12px;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
-    color: #fff;
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+    color: var(--on-media);
+    text-shadow: var(--media-text-shadow);
   }
   .novideo {
     left: 10px;
     right: auto;
-    color: #ffcf7a;
+    color: var(--media-warn);
   }
   .meta {
     display: flex;

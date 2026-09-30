@@ -152,8 +152,8 @@
     gap: 14px;
     padding: 14px 16px;
     margin-bottom: 16px;
-    border-color: rgba(245, 184, 61, 0.35);
-    color: var(--warn);
+    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+    color: var(--accent-text);
   }
   .banner strong {
     color: var(--text);
@@ -167,14 +167,14 @@
     margin-bottom: 30px;
     overflow: hidden;
     background:
-      radial-gradient(600px 200px at 0% 0%, rgba(46, 230, 197, 0.08), transparent 70%),
-      radial-gradient(500px 220px at 100% 100%, rgba(123, 97, 255, 0.1), transparent 70%),
+      radial-gradient(600px 200px at 0% 0%, var(--glow-a), transparent 70%),
+      radial-gradient(500px 220px at 100% 100%, var(--glow-b), transparent 70%),
       var(--surface);
   }
   .hero.rec {
-    border-color: rgba(255, 77, 109, 0.35);
+    border-color: color-mix(in srgb, var(--danger) 35%, transparent);
     background:
-      radial-gradient(600px 220px at 0% 0%, rgba(255, 77, 109, 0.1), transparent 70%),
+      radial-gradient(600px 220px at 0% 0%, color-mix(in srgb, var(--danger) 10%, transparent), transparent 70%),
       var(--surface);
   }
   .hero-left {
@@ -197,7 +197,7 @@
     color: var(--accent);
   }
   .hero.rec .state {
-    color: #ff7d95;
+    color: var(--danger-text);
   }
   .hero.det .state {
     color: var(--warn);
@@ -233,7 +233,7 @@
     align-self: center;
   }
   .hero-stats > div {
-    background: rgba(255, 255, 255, 0.025);
+    background: color-mix(in srgb, var(--surface-2) 60%, transparent);
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 12px 14px;

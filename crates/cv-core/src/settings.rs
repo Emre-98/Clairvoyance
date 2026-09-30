@@ -89,6 +89,8 @@ pub struct Settings {
     pub start_minimized: bool,
     /// Show the CPU/RAM debug stat in the UI.
     pub show_perf: bool,
+    /// "system" (follow Windows, the default), "dark" or "light".
+    pub theme: String,
     pub video: VideoSettings,
     pub events: EventSettings,
     /// Per-game settings, keyed by game id (see `GameIntegration::config_fields`).
@@ -115,6 +117,7 @@ impl Default for Settings {
             start_with_windows: false,
             start_minimized: false,
             show_perf: true,
+            theme: "system".into(),
             video: VideoSettings::default(),
             events: EventSettings::default(),
             games: BTreeMap::new(),
@@ -127,6 +130,15 @@ impl Default for Settings {
 pub const SETTINGS_VERSION: u32 = 2;
 
 impl Settings {
+    /// The theme setting, normalized to "system", "dark" or "light".
+    pub fn theme(&self) -> &str {
+        match self.theme.as_str() {
+            "dark" => "dark",
+            "light" => "light",
+            _ => "system",
+        }
+    }
+
     pub fn load(path: &Path) -> Self {
         let (mut s, leftovers) = match std::fs::read_to_string(path) {
             Ok(t) => match serde_json::from_str::<serde_json::Value>(&t) {

@@ -53,12 +53,12 @@
     flex: none;
     border-radius: 10px;
     overflow: hidden;
-    background: linear-gradient(135deg, #2a3147, #1a1f2e);
+    background: linear-gradient(135deg, var(--surface-3), var(--surface-2));
     display: grid;
     place-items: center;
     font-weight: 700;
     color: var(--text-2);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border);
   }
   .round {
     border-radius: 50%;

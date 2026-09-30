@@ -218,14 +218,14 @@
   .screen {
     position: relative;
     aspect-ratio: 16 / 9;
-    background: #000;
+    background: var(--media-bg);
   }
   video {
     width: 100%;
     height: 100%;
     display: block;
     object-fit: contain;
-    background: #000;
+    background: var(--media-bg);
   }
   .bigplay {
     position: absolute;
@@ -236,8 +236,8 @@
     height: 68px;
     border-radius: 50%;
     border: none;
-    background: rgba(10, 12, 18, 0.65);
-    color: #fff;
+    background: var(--media-overlay);
+    color: var(--on-media);
     display: grid;
     place-items: center;
     backdrop-filter: blur(6px);
@@ -249,7 +249,8 @@
     top: 14px;
     padding: 6px 12px;
     border-radius: 8px;
-    background: rgba(10, 12, 18, 0.75);
+    background: var(--media-overlay);
+    color: var(--on-media);
     font-weight: 600;
     animation: fade 0.2s;
   }
@@ -266,7 +267,7 @@
   }
   .err {
     flex-direction: row;
-    color: var(--warn);
+    color: var(--media-warn);
   }
   .controls {
     display: flex;
@@ -335,7 +336,7 @@
     height: 18px;
     border-radius: 50%;
     background: var(--c);
-    color: #0b0d14;
+    color: var(--on-ev);
     display: grid;
     place-items: center;
   }

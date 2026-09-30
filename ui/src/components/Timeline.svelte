@@ -175,7 +175,7 @@
     border-radius: 50%;
     border: 2px solid var(--surface);
     background: var(--c);
-    color: #0b0d14;
+    color: var(--on-ev);
     display: grid;
     place-items: center;
     padding: 0;
@@ -194,7 +194,7 @@
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: #fff;
+    background: var(--text);
     border: 2px solid var(--surface);
   }
   .tip {
@@ -202,7 +202,7 @@
     transform: translateX(-50%);
     min-width: 200px;
     max-width: 300px;
-    background: #0a0c12;
+    background: var(--popover);
     border: 1px solid var(--border-2);
     border-radius: 10px;
     padding: 10px 12px;
@@ -222,7 +222,7 @@
     border-radius: 50%;
     display: grid;
     place-items: center;
-    color: #0b0d14;
+    color: var(--on-ev);
     flex: none;
   }
   .stealbadge {
@@ -231,8 +231,8 @@
     letter-spacing: 0.08em;
     padding: 1px 6px;
     border-radius: 4px;
-    background: #f5c542;
-    color: #1a1400;
+    background: var(--fav);
+    color: var(--on-fav);
   }
   .tip-sub {
     color: var(--muted);
@@ -270,11 +270,11 @@
   }
   .played {
     left: 0;
-    background: rgba(233, 235, 243, 0.35);
+    background: color-mix(in srgb, var(--text) 35%, transparent);
   }
   .loading {
     left: 0;
-    background: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0 4px, transparent 4px 8px);
+    background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--text) 10%, transparent) 0 4px, transparent 4px 8px);
   }
   .cliprange {
     top: 16px;
@@ -286,7 +286,7 @@
     top: 4px;
     height: 14px;
     border-radius: 4px;
-    background: rgba(46, 230, 197, 0.22);
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
     border: 1px solid var(--accent);
   }
   .handle {
@@ -316,8 +316,8 @@
     height: 18px;
     margin-left: -1.5px;
     border-radius: 2px;
-    background: #fff;
-    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.4);
+    background: var(--text);
+    box-shadow: 0 0 0 2px var(--surface);
     z-index: 3;
   }
   .hovertime {
@@ -327,8 +327,8 @@
     font-size: 11px;
     padding: 1px 6px;
     border-radius: 4px;
-    background: #000;
-    color: #fff;
+    background: var(--text);
+    color: var(--surface);
     pointer-events: none;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;

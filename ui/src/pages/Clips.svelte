@@ -145,7 +145,7 @@
     aspect-ratio: 16 / 9;
     padding: 0;
     border: none;
-    background: #000;
+    background: var(--media-bg);
   }
   .thumb video {
     width: 100%;
@@ -161,18 +161,18 @@
     font-weight: 700;
     padding: 2px 7px;
     border-radius: 5px;
-    background: rgba(0, 0, 0, 0.55);
-    color: var(--accent);
+    background: var(--media-overlay);
+    color: var(--on-media);
   }
   .playbtn {
     position: absolute;
     inset: 0;
     display: grid;
     place-items: center;
-    color: white;
+    color: var(--on-media);
     opacity: 0;
     transition: opacity 0.15s;
-    background: rgba(0, 0, 0, 0.2);
+    background: color-mix(in srgb, var(--media-bg) 25%, transparent);
   }
   .clip:hover .playbtn {
     opacity: 1;
@@ -206,7 +206,7 @@
   .modal {
     position: fixed;
     inset: 0;
-    background: rgba(5, 6, 10, 0.78);
+    background: var(--scrim);
     display: grid;
     place-items: center;
     z-index: 50;
@@ -222,7 +222,7 @@
   .modal-body video {
     width: 100%;
     max-height: 72vh;
-    background: #000;
+    background: var(--media-bg);
     border-radius: 8px;
   }
 </style>

@@ -118,7 +118,7 @@
     color: var(--text);
   }
   .favon {
-    color: #f5c542;
-    border-color: rgba(245, 197, 66, 0.4);
+    color: var(--fav);
+    border-color: color-mix(in srgb, var(--fav) 40%, transparent);
   }
 </style>

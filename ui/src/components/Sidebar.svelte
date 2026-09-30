@@ -146,18 +146,18 @@
   }
   .live.rec .dot {
     background: var(--danger);
-    box-shadow: 0 0 0 0 rgba(255, 77, 109, 0.6);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 60%, transparent);
     animation: pulse 1.6s infinite;
   }
   .live.rec {
-    border-color: rgba(255, 77, 109, 0.35);
+    border-color: color-mix(in srgb, var(--danger) 35%, transparent);
   }
   @keyframes pulse {
     70% {
-      box-shadow: 0 0 0 7px rgba(255, 77, 109, 0);
+      box-shadow: 0 0 0 7px transparent;
     }
     100% {
-      box-shadow: 0 0 0 0 rgba(255, 77, 109, 0);
+      box-shadow: 0 0 0 0 transparent;
     }
   }
   .live .row {

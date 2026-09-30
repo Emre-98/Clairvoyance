@@ -269,3 +269,29 @@ pub fn free_space(dir: &std::path::Path) -> Option<u64> {
 pub fn free_space(_dir: &std::path::Path) -> Option<u64> {
     None
 }
+
+/// Whether Windows apps are set to dark mode (Settings > Personalization > Colors).
+#[cfg(windows)]
+pub fn windows_prefers_dark() -> bool {
+    use windows::core::w;
+    use windows::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
+    let mut v: u32 = 1;
+    let mut len = 4u32;
+    let r = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            w!("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"),
+            w!("AppsUseLightTheme"),
+            RRF_RT_REG_DWORD,
+            None,
+            Some(&mut v as *mut u32 as *mut _),
+            Some(&mut len),
+        )
+    };
+    r.is_ok() && v == 0
+}
+
+#[cfg(not(windows))]
+pub fn windows_prefers_dark() -> bool {
+    true
+}

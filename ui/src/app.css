@@ -1,38 +1,106 @@
 :root {
-  --bg: #0b0d14;
-  --bg-2: #0f121b;
-  --surface: #141824;
-  --surface-2: #1a1f2e;
-  --surface-3: #222839;
-  --border: #252b3d;
-  --border-2: #313850;
-  --text: #e9ebf3;
-  --text-2: #b4b9cc;
-  --muted: #7d849b;
-  --accent: #2ee6c5;
-  --accent-2: #7b61ff;
-  --accent-grad: linear-gradient(135deg, #2ee6c5 0%, #7b61ff 100%);
-  --danger: #ff4d6d;
-  --warn: #f5b83d;
-  --ok: #3ddc84;
+  /*
+   * Theme tokens. Every colour in the app comes from here: components never hardcode colours.
+   * light-dark(light, dark) picks by the root's color-scheme, which the theme setting drives:
+   *   data-theme="system" -> "light dark" (follows Windows, updates live)
+   *   data-theme="dark" / "light" -> forced.
+   * Dark is the main look (Ascent/Outplayed style); light is tuned separately for contrast.
+   */
+  color-scheme: light dark;
 
-  /* Timeline event colours (owner spec). Icons carry identity too, never colour alone. */
-  --ev-kill: #3ddc84;
-  --ev-death: #ff4d6d;
-  --ev-assist: #4da3ff;
-  --ev-ult: #b36bff;
-  --ev-structure: #ff9f43;
-  --ev-epic: #f5c542;
-  --ev-marker: #d5d9e6;
-  --ev-clip: #2ee6c5;
-  --ev-neutral: #8a91a8;
+  /* Surfaces */
+  --bg: light-dark(#f3f4f8, #0b0d14);
+  --bg-2: light-dark(#eceef4, #0f121b);
+  --surface: light-dark(#ffffff, #141824);
+  --surface-2: light-dark(#f1f3f8, #1a1f2e);
+  --surface-3: light-dark(#e3e6ee, #222839);
+  --border: light-dark(#e1e4ec, #252b3d);
+  --border-2: light-dark(#cfd4df, #313850);
+  --border-hover: light-dark(#b6bdcc, #3b4462);
+  --popover: light-dark(#ffffff, #0a0c12);
+  --scrim: light-dark(rgba(20, 24, 36, 0.45), rgba(5, 6, 10, 0.78));
+  --skeleton-a: light-dark(#eceef3, #151a26);
+  --skeleton-b: light-dark(#f7f8fb, #1d2334);
+
+  /* Text */
+  --text: light-dark(#151926, #e9ebf3);
+  --text-2: light-dark(#3e4559, #b4b9cc);
+  --muted: light-dark(#666d83, #7d849b);
+  --faint: light-dark(#a8aec0, #39415a);
+
+  /* Brand */
+  --accent: light-dark(#0d9e89, #2ee6c5);
+  --accent-text: light-dark(#0b7f6f, #2ee6c5);
+  --accent-2: light-dark(#6a4cf5, #7b61ff);
+  --accent-grad: linear-gradient(135deg, #2ee6c5 0%, #7b61ff 100%);
+  --on-accent: #07121a;
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --glow-a: color-mix(in srgb, var(--accent) 9%, transparent);
+  --glow-b: color-mix(in srgb, var(--accent-2) 11%, transparent);
+
+  /* Status */
+  --danger: light-dark(#d92d4c, #ff4d6d);
+  --danger-text: light-dark(#b51f3c, #ff9cb0);
+  --warn: light-dark(#a86a00, #f5b83d);
+  --ok: light-dark(#16894a, #3ddc84);
+  --ok-text: light-dark(#11703c, #7cf0b0);
+  --fav: light-dark(#b98300, #f5c542);
+  --on-fav: #1a1400;
+  --danger-soft: color-mix(in srgb, var(--danger) 14%, transparent);
+  --ok-soft: color-mix(in srgb, var(--ok) 15%, transparent);
+  --warn-soft: color-mix(in srgb, var(--warn) 14%, transparent);
+  --win-close: #e81123;
+
+  /* Timeline event colours (owner spec: kill green, death red, assist blue, ult purple,
+     tower/inhibitor orange, epic monsters gold). Deeper in light mode so markers stand out on
+     white; icons carry identity too, never colour alone. */
+  --ev-kill: light-dark(#1f9d55, #3ddc84);
+  --ev-death: light-dark(#e0294a, #ff4d6d);
+  --ev-assist: light-dark(#2f7fe0, #4da3ff);
+  --ev-ult: light-dark(#8b4dea, #b36bff);
+  --ev-structure: light-dark(#dc6f09, #ff9f43);
+  --ev-epic: light-dark(#b8860b, #f5c542);
+  --ev-marker: light-dark(#5b6275, #d5d9e6);
+  --ev-clip: light-dark(#0f9f8a, #2ee6c5);
+  --ev-neutral: light-dark(#7a8297, #8a91a8);
+  --on-ev: light-dark(#ffffff, #0b0d14);
+
+  /* Video and thumbnails are dark in both themes; text drawn on them stays light. */
+  --media-bg: #000;
+  --media-overlay: rgba(10, 12, 18, 0.65);
+  --media-shade: linear-gradient(180deg, rgba(0, 0, 0, 0.25) 0%, transparent 35%, transparent 60%, rgba(0, 0, 0, 0.55) 100%);
+  --on-media: #fff;
+  --on-media-2: rgba(255, 255, 255, 0.78);
+  --media-win-bg: rgba(22, 137, 74, 0.55);
+  --media-win-text: #dcffe9;
+  --media-win-border: rgba(124, 240, 176, 0.45);
+  --media-loss-bg: rgba(181, 31, 60, 0.55);
+  --media-loss-text: #ffe1e7;
+  --media-loss-border: rgba(255, 156, 176, 0.45);
+  --media-fav: #f5c542;
+  --media-warn: #ffd488;
+  --media-text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  --media-placeholder: linear-gradient(135deg, light-dark(#dfe3ec, #1f2638), light-dark(#eef0f5, #121622));
 
   --radius: 12px;
   --radius-sm: 8px;
-  --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  --shadow: 0 10px 30px light-dark(rgba(22, 28, 45, 0.12), rgba(0, 0, 0, 0.35));
+  --shadow-sm: 0 2px 8px light-dark(rgba(22, 28, 45, 0.08), rgba(0, 0, 0, 0.25));
   --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
   --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+}
+:root[data-theme="dark"] {
   color-scheme: dark;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+/* While the theme flips, skip colour transitions so everything changes in the same frame. */
+:root.theme-switching *,
+:root.theme-switching *::before,
+:root.theme-switching *::after {
+  transition: none !important;
 }
 
 * {
@@ -70,7 +138,7 @@ textarea {
 }
 
 a {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 ::-webkit-scrollbar {
@@ -102,7 +170,7 @@ a {
 }
 .btn:hover {
   background: var(--surface-3);
-  border-color: #3b4462;
+  border-color: var(--border-hover);
 }
 .btn:active {
   transform: translateY(1px);
@@ -114,14 +182,14 @@ a {
 .btn.primary {
   background: var(--accent-grad);
   border: none;
-  color: #081016;
+  color: var(--on-accent);
 }
 .btn.primary:hover {
   filter: brightness(1.08);
 }
 .btn.danger {
-  border-color: rgba(255, 77, 109, 0.4);
-  color: #ff8aa0;
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  color: var(--danger-text);
 }
 .btn.ghost {
   background: transparent;
@@ -155,7 +223,7 @@ select.input {
 }
 .input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(46, 230, 197, 0.15);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .pill {

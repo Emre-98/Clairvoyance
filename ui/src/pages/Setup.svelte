@@ -104,8 +104,8 @@
     display: grid;
     place-items: center;
     background:
-      radial-gradient(800px 400px at 20% 10%, rgba(46, 230, 197, 0.08), transparent 70%),
-      radial-gradient(700px 400px at 90% 90%, rgba(123, 97, 255, 0.12), transparent 70%),
+      radial-gradient(800px 400px at 20% 10%, var(--glow-a), transparent 70%),
+      radial-gradient(700px 400px at 90% 90%, var(--glow-b), transparent 70%),
       var(--bg);
     overflow-y: auto;
     padding: 30px;
@@ -142,10 +142,10 @@
   }
   .st.on span {
     background: var(--accent-grad);
-    color: #081016;
+    color: var(--on-accent);
   }
   .st.done span {
-    background: rgba(61, 220, 132, 0.2);
+    background: var(--ok-soft);
     color: var(--ok);
   }
   .hero {
@@ -225,7 +225,7 @@
     border-radius: 50%;
     display: grid;
     place-items: center;
-    background: rgba(61, 220, 132, 0.15);
+    background: var(--ok-soft);
     color: var(--ok);
   }
   .keys {

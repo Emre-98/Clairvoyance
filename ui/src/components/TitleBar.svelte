@@ -60,7 +60,7 @@
     color: var(--text);
   }
   .controls .close:hover {
-    background: #e81123;
-    color: white;
+    background: var(--win-close);
+    color: var(--on-media);
   }
 </style>

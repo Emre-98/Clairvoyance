@@ -120,7 +120,7 @@
     width: 110px;
     text-align: center;
     font-size: 12px;
-    background: #0a0c12;
+    background: var(--popover);
     border: 1px solid var(--border-2);
     border-radius: 6px;
     padding: 2px 6px;

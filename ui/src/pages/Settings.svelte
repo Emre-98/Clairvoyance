@@ -4,6 +4,7 @@
   import { bytes } from "../lib/format";
   import { KIND, USER_KINDS } from "../lib/eventmeta";
   import type { EventKind, Settings, StorageInfo } from "../lib/types";
+  import { setTheme, type Theme } from "../lib/theme";
   import Icon from "../components/Icon.svelte";
   import HotkeyInput from "../components/HotkeyInput.svelte";
   import BuiltinRecorder from "../components/BuiltinRecorder.svelte";
@@ -18,6 +19,7 @@
     { id: "events", label: "Events & clips", icon: "bolt" },
     { id: "games", label: "Games", icon: "gamepad" },
     { id: "storage", label: "Storage", icon: "folder" },
+    { id: "appearance", label: "Appearance", icon: "palette" },
     { id: "general", label: "General", icon: "settings" },
     { id: "performance", label: "Performance test", icon: "cpu" },
     { id: "advanced", label: "Advanced", icon: "settings" },
@@ -56,6 +58,19 @@
     const i = list.indexOf(k);
     if (i >= 0) list.splice(i, 1);
     else list.push(k);
+  }
+
+  // Theme changes apply and save at once (no "Save changes" needed).
+  const themes: { id: Theme; label: string; icon: string; desc: string }[] = [
+    { id: "system", label: "Match Windows", icon: "monitor", desc: "Follows your Windows light/dark setting" },
+    { id: "dark", label: "Dark", icon: "moon", desc: "The classic Clairvoyance look" },
+    { id: "light", label: "Light", icon: "sun", desc: "Bright and easy on daylight" },
+  ];
+  function chooseTheme(t: Theme) {
+    setTheme(t);
+    if (app.settings) app.settings.theme = t;
+    draft.theme = t;
+    baseline.theme = t;
   }
 
   let storage = $state<StorageInfo | null>(null);
@@ -268,6 +283,25 @@
           <button class="btn" onclick={cleanNow}>Apply clean-up now</button>
         </div>
       {/if}
+    {:else if active === "appearance"}
+      <h2>Appearance</h2>
+      <p class="lead">Changes apply right away.</p>
+      <div class="themes" role="radiogroup" aria-label="Theme">
+        {#each themes as t}
+          <button class="theme-opt" class:on={draft.theme === t.id} role="radio" aria-checked={draft.theme === t.id} onclick={() => chooseTheme(t.id)}>
+            <span class="preview" aria-hidden="true">
+              {#each t.id === "system" ? ["light", "dark"] : [t.id] as scheme}
+                <span class="pv {scheme}" class:half={t.id === "system" && scheme === "dark"}>
+                  <span class="pv-side"></span>
+                  <span class="pv-main"><span class="pv-bar"></span><span class="pv-row"><span></span><span></span></span><span class="pv-dots"><i class="k"></i><i class="d"></i><i class="e"></i></span></span>
+                </span>
+              {/each}
+            </span>
+            <span class="theme-label"><Icon name={t.icon} size={15} />{t.label}</span>
+            <span class="muted theme-desc">{t.desc}</span>
+          </button>
+        {/each}
+      </div>
     {:else if active === "general"}
       <h2>General</h2>
       <div class="card box form">
@@ -474,7 +508,7 @@
   }
   .kind.on .ki {
     background: var(--c);
-    color: #0b0d14;
+    color: var(--on-ev);
   }
   .ffrow {
     display: flex;
@@ -521,6 +555,117 @@
     font-weight: 600;
     font-size: 13px;
   }
+  .themes {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    max-width: 760px;
+  }
+  .theme-opt {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 12px 12px 14px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    text-align: left;
+    transition: border-color 0.15s var(--ease), transform 0.15s var(--ease), box-shadow 0.15s var(--ease);
+  }
+  .theme-opt:hover {
+    border-color: var(--border-hover);
+    transform: translateY(-1px);
+  }
+  .theme-opt:active {
+    transform: translateY(0) scale(0.99);
+  }
+  .theme-opt.on {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .theme-label {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-weight: 650;
+    margin-top: 4px;
+  }
+  .theme-desc {
+    font-size: 12px;
+  }
+  /* Mini previews: each renders the real theme tokens under its own color-scheme, so it shows
+     that theme whatever the current one is. */
+  .preview {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .pv {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    background: var(--bg);
+  }
+  .pv.dark {
+    color-scheme: dark;
+  }
+  .pv.light {
+    color-scheme: light;
+  }
+  .pv.half {
+    clip-path: polygon(100% 0, 100% 100%, 0 100%);
+  }
+  .pv-side {
+    width: 22%;
+    background: var(--bg-2);
+    border-right: 1px solid var(--border);
+  }
+  .pv-main {
+    flex: 1;
+    padding: 9% 8%;
+    display: flex;
+    flex-direction: column;
+    gap: 9%;
+  }
+  .pv-bar {
+    height: 12%;
+    width: 55%;
+    border-radius: 3px;
+    background: var(--surface-3);
+  }
+  .pv-row {
+    display: flex;
+    gap: 8%;
+    flex: 1;
+  }
+  .pv-row span {
+    flex: 1;
+    border-radius: 4px;
+    background: var(--surface);
+    border: 1px solid var(--border-2);
+  }
+  .pv-dots {
+    display: flex;
+    gap: 6%;
+  }
+  .pv-dots i {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+  }
+  .pv-dots .k {
+    background: var(--ev-kill);
+  }
+  .pv-dots .d {
+    background: var(--ev-death);
+  }
+  .pv-dots .e {
+    background: var(--ev-epic);
+  }
   .savebar {
     position: absolute;
     left: 50%;
@@ -530,7 +675,7 @@
     align-items: center;
     gap: 12px;
     padding: 10px 12px 10px 18px;
-    background: #0a0c12;
+    background: var(--popover);
     border: 1px solid var(--border-2);
     border-radius: 12px;
     box-shadow: var(--shadow);

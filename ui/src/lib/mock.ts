@@ -96,6 +96,7 @@ const settings: Settings = {
   start_with_windows: true,
   start_minimized: true,
   show_perf: true,
+  theme: (localStorage.getItem("cv-theme") as any) ?? "system",
   video: { encoder: "auto", quality: "standard", fps: 60, height: 1080, replay_buffer_secs: 30, record_mic: false, display_capture: false },
   events: { clip_kinds: ["multikill", "ace"], clip_before_secs: 10, clip_after_secs: 4, tts_enabled: false, tts_kinds: ["kill", "death", "multikill", "clip"], tts_volume: 70 },
   games: { league: { riot_id: "Tester#EUW", ult_key: "R" } },
@@ -188,6 +189,9 @@ export async function invoke(cmd: string, args: any = {}): Promise<any> {
           },
         ],
       };
+    case "set_theme":
+      settings.theme = args.theme;
+      return;
     case "remove_legacy_app":
       await new Promise((r) => setTimeout(r, 800));
       legacyRemoved = true;

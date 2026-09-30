@@ -1,4 +1,5 @@
 import { api, on, onEngine } from "./api";
+import { initTheme } from "./theme";
 import type { AppInfo, LiveStatus, SessionSummary, SessionView, Settings } from "./types";
 
 export type Route =
@@ -89,6 +90,7 @@ export async function boot() {
   await Promise.all([reloadSettings(), api.status().then((s) => {
       app.status = s;
     }), refreshSessions()]);
+  initTheme(app.settings?.theme);
   await onEngine((e) => {
     if (e.type === "status") {
       const { type: _t, ...s } = e;

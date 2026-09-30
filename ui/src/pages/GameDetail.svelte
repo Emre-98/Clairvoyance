@@ -269,16 +269,16 @@
     color: var(--muted);
   }
   .result.win {
-    color: #7cf0b0;
-    background: rgba(61, 220, 132, 0.14);
+    color: var(--ok-text);
+    background: var(--ok-soft);
   }
   .result.loss {
-    color: #ff9cb0;
-    background: rgba(255, 77, 109, 0.14);
+    color: var(--danger-text);
+    background: var(--danger-soft);
   }
   .favon {
-    color: #f5c542;
-    border-color: rgba(245, 197, 66, 0.4);
+    color: var(--fav);
+    border-color: color-mix(in srgb, var(--fav) 40%, transparent);
   }
   .danger:hover {
     color: var(--danger);
@@ -332,7 +332,7 @@
     border-radius: 50%;
     display: grid;
     place-items: center;
-    color: #0b0d14;
+    color: var(--on-ev);
     flex: none;
   }
   .ev-txt {
@@ -363,8 +363,8 @@
     margin-left: 6px;
     padding: 1px 5px;
     border-radius: 4px;
-    background: #f5c542;
-    color: #1a1400;
+    background: var(--fav);
+    color: var(--on-fav);
     vertical-align: 1px;
   }
   .none {
@@ -490,7 +490,7 @@
   }
   .warnpill {
     color: var(--warn);
-    border-color: rgba(245, 184, 61, 0.35);
+    border-color: color-mix(in srgb, var(--warn) 35%, transparent);
   }
   @media (max-width: 1150px) {
     .main {

@@ -202,6 +202,7 @@ export interface Settings {
   start_with_windows: boolean;
   start_minimized: boolean;
   show_perf: boolean;
+  theme: "system" | "dark" | "light";
   video: VideoSettings;
   events: EventSettings;
   games: Record<string, Record<string, unknown>>;

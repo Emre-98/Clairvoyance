@@ -107,7 +107,7 @@
 <style>
   .editor {
     padding: 14px 16px;
-    border-color: rgba(46, 230, 197, 0.35);
+    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
     margin-top: 14px;
   }
   .head {
