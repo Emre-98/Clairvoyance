@@ -9,24 +9,6 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
-pub struct ObsSettings {
-    pub host: String,
-    pub port: u16,
-    pub password: String,
-    /// Path to obs64.exe (detected on first run).
-    pub exe_path: Option<String>,
-    /// Launch OBS (minimized to tray) when a game starts and it isn't running.
-    pub auto_launch: bool,
-}
-
-impl Default for ObsSettings {
-    fn default() -> Self {
-        Self { host: "127.0.0.1".into(), port: 4455, password: String::new(), exe_path: None, auto_launch: true }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(default)]
 pub struct VideoSettings {
     /// "auto", "nvenc", "amd", "qsv".
     pub encoder: String,
@@ -37,7 +19,7 @@ pub struct VideoSettings {
     pub height: u32,
     pub replay_buffer_secs: u32,
     pub record_mic: bool,
-    /// Use Display Capture instead of Game Capture.
+    /// Capture the whole monitor instead of the game window.
     pub display_capture: bool,
 }
 
@@ -107,7 +89,6 @@ pub struct Settings {
     pub start_minimized: bool,
     /// Show the CPU/RAM debug stat in the UI.
     pub show_perf: bool,
-    pub obs: ObsSettings,
     pub video: VideoSettings,
     pub events: EventSettings,
     /// Per-game settings, keyed by game id (see `GameIntegration::config_fields`).
@@ -116,8 +97,6 @@ pub struct Settings {
     pub disabled_games: Vec<String>,
     /// Path to ffmpeg.exe used for clip export (empty = auto).
     pub ffmpeg_path: String,
-    /// "builtin" (GameRecorder's own recorder) or "obs" (OBS Studio as a backup).
-    pub recorder: String,
 }
 
 impl Default for Settings {
@@ -136,13 +115,11 @@ impl Default for Settings {
             start_with_windows: false,
             start_minimized: false,
             show_perf: true,
-            obs: ObsSettings::default(),
             video: VideoSettings::default(),
             events: EventSettings::default(),
             games: BTreeMap::new(),
             disabled_games: Vec::new(),
             ffmpeg_path: String::new(),
-            recorder: "builtin".into(),
         }
     }
 }
@@ -151,14 +128,33 @@ pub const SETTINGS_VERSION: u32 = 2;
 
 impl Settings {
     pub fn load(path: &Path) -> Self {
-        let mut s = match std::fs::read_to_string(path) {
-            Ok(t) => serde_json::from_str(&t).unwrap_or_else(|e| {
-                log::warn!("settings file unreadable ({e}), using defaults");
-                Settings::default()
-            }),
-            Err(_) => Settings::default(),
+        let (mut s, leftovers) = match std::fs::read_to_string(path) {
+            Ok(t) => match serde_json::from_str::<serde_json::Value>(&t) {
+                Ok(raw) => {
+                    let leftovers = has_removed_fields(&raw);
+                    let s = serde_json::from_value(raw).unwrap_or_else(|e| {
+                        log::warn!("settings file unreadable ({e}), using defaults");
+                        Settings::default()
+                    });
+                    (s, leftovers)
+                }
+                Err(e) => {
+                    log::warn!("settings file unreadable ({e}), using defaults");
+                    (Settings::default(), false)
+                }
+            },
+            Err(_) => (Settings::default(), false),
         };
+        let old_version = s.settings_version;
         s.migrate();
+        // Rewrite the file once if it still has fields from older versions (e.g. the removed
+        // OBS options) or its defaults were migrated. Unknown fields are ignored on load, so
+        // this only tidies the file; nothing breaks if it can't be written.
+        if (leftovers || old_version != s.settings_version) && path.exists() {
+            if let Err(e) = s.save(path) {
+                log::warn!("couldn't tidy the settings file: {e:#}");
+            }
+        }
         s
     }
 
@@ -196,6 +192,13 @@ impl Settings {
         }
         merged
     }
+}
+
+/// Settings that older versions wrote and that no longer exist.
+const REMOVED_FIELDS: &[&str] = &["obs", "recorder"];
+
+fn has_removed_fields(raw: &serde_json::Value) -> bool {
+    raw.as_object().is_some_and(|o| REMOVED_FIELDS.iter().any(|k| o.contains_key(*k)))
 }
 
 /// A hotkey like "Ctrl+Shift+F8".
@@ -261,8 +264,24 @@ mod tests {
         assert_eq!(s.hotkey_clip, "F7");
         assert_eq!(s.video.fps, 30);
         assert_eq!(s.video.replay_buffer_secs, 30);
-        assert_eq!(s.obs.port, 4455);
-        assert_eq!(s.recorder, "builtin");
+    }
+
+    #[test]
+    fn old_obs_settings_are_dropped_and_the_file_is_tidied() {
+        let dir = std::env::temp_dir().join(format!("gr-settings-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.json");
+        std::fs::write(
+            &path,
+            r#"{"hotkey_clip":"F7","recorder":"obs","obs":{"host":"127.0.0.1","port":4455,"password":"x"},"settings_version":2}"#,
+        )
+        .unwrap();
+        let s = Settings::load(&path);
+        assert_eq!(s.hotkey_clip, "F7");
+        let raw: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(raw.get("obs").is_none() && raw.get("recorder").is_none());
+        assert_eq!(raw["hotkey_clip"], "F7");
+        std::fs::remove_dir_all(dir).ok();
     }
 
     #[test]

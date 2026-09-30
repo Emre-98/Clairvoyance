@@ -9,7 +9,6 @@ assists, objectives, steals and ult presses on a clickable timeline.
   (NVENC / AMD AMF / Intel Quick Sync), never the CPU. Records only the game's sound (not
   Discord or Spotify), plus your mic on a separate track if you turn it on.
 - Recordings survive a crash or power cut (fragmented MP4: you only lose the last seconds).
-- OBS Studio can be used instead, as a backup (Settings > Recorder).
 - While you play, GameRecorder itself is a small background process in the tray: below-normal
   priority, no overlay, nothing injected into the game; its window is paused while hidden.
 - Uses only official game APIs (Riot's Live Client Data API, CS2 Game State Integration),
@@ -27,14 +26,6 @@ See **PLAN.md** for the spec, decisions and milestone status.
 
 Windows 11 has everything else built in. On Windows 10 (version 2004 or newer for game-only
 audio) the installer tells you if the Microsoft Edge WebView2 Runtime is missing.
-
-### Using OBS instead (optional)
-
-Settings > Recorder > **OBS Studio (backup)**. Install OBS (https://obsproject.com/download);
-the setup there turns on OBS's WebSocket server (close OBS first when it asks) and tests the
-connection. If OBS opens its "Auto-Configuration Wizard" the very first time, click Cancel:
-GameRecorder configures OBS itself, in its own OBS profile and scene collection called
-"GameRecorder" (your own scenes aren't touched, and your profile is restored after each game).
 
 ## Using it
 
@@ -67,8 +58,7 @@ desktop. You can also start `GameRecorder.exe --simulate` (or `--simulate=90` fo
 - **Performance test in a real game**: Settings > Performance test. Start it, then start a
   League game (Practice Tool is fine) and just play or stand still. It measures FPS (average,
   1% low, frame times, with Intel's PresentMon, which asks for admin once), CPU and GPU use,
-  first without recording and then with the built-in recorder (and OBS, if you tick it),
-  and shows the difference. The report is saved in `<save folder>\perf-tests\`.
+  first without recording and then with the built-in recorder, and shows the difference. The report is saved in `<save folder>\perf-tests\`.
 - The sidebar shows GameRecorder's own CPU and RAM. Every game's page shows the average and
   peak CPU/RAM GameRecorder used during that game. Target: under 1% CPU and ~150 MB RAM
   while recording (without the window open); idle near 0% CPU.
@@ -79,10 +69,9 @@ desktop. You can also start `GameRecorder.exe --simulate` (or `--simulate=90` fo
 
 - **Recording is black:** Settings > Recording > "Capture the whole screen instead of the game window".
 - **"No hardware H.264 encoder found":** update your graphics driver. (Very old GPUs without a
-  video encoder can use OBS instead.)
+  video encoder can't record.)
 - **Discord/music is in the recording:** your Windows is older than Windows 10 2004, so game-only
   audio isn't available and the whole desktop sound is recorded.
-- **OBS (if you use it) isn't reachable:** Settings > Recorder > Test connection.
 - **Nothing happens when a game starts:** check the tray tooltip, then the log file
   (Settings > Advanced > Log file).
 - **CS2 isn't detected as in a match:** restart CS2 once after installing GameRecorder
@@ -95,7 +84,6 @@ Layout:
 ```
 crates/gr-core        game-agnostic core: events, sessions, engine (state machine), settings, library
 crates/gr-capture     built-in recorder: Windows Graphics Capture, hardware H.264, WASAPI, fMP4 muxer
-crates/gr-obs         OBS recorder over obs-websocket v5 (backup)
 crates/gr-mock-league fake League API used by the simulator and tests
 games/league          League of Legends module (Live Client Data API)
 games/cs2             Counter-Strike 2 module (Game State Integration)

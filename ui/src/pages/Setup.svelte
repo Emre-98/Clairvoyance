@@ -3,7 +3,6 @@
   import { api, pickFolder } from "../lib/api";
   import type { Settings } from "../lib/types";
   import Icon from "../components/Icon.svelte";
-  import ObsSetup from "../components/ObsSetup.svelte";
   import BuiltinRecorder from "../components/BuiltinRecorder.svelte";
 
   let step = $state(0);
@@ -11,7 +10,6 @@
   let saveDir = $state(app.settings?.save_dir ?? "");
   let autostart = $state(app.settings?.start_with_windows ?? false);
   const steps = ["Welcome", "Recording", "You", "Done"];
-  let useObs = $state(app.settings?.recorder === "obs");
 
   async function saveYou() {
     const s = structuredClone($state.snapshot(app.settings!)) as Settings;
@@ -19,7 +17,6 @@
     s.save_dir = saveDir.trim();
     s.start_with_windows = autostart;
     s.start_minimized = autostart;
-    s.recorder = useObs ? "obs" : "builtin";
     try {
       await saveSettings(s);
       step = 3;
@@ -57,13 +54,7 @@
     {:else if step === 1}
       <h2>Recording</h2>
       <p class="lead">GameRecorder records on its own, using your graphics card. Try it: it records 5 seconds of your screen.</p>
-      {#if !useObs}
-        <BuiltinRecorder />
-        <button class="btn ghost small obslink" onclick={() => (useObs = true)}>I'd rather use OBS Studio</button>
-      {:else}
-        <ObsSetup />
-        <button class="btn ghost small obslink" onclick={() => (useObs = false)}>Use the built-in recorder instead</button>
-      {/if}
+      <BuiltinRecorder />
       <div class="foot">
         <button class="btn ghost" onclick={() => (step = 0)}>Back</button>
         <div class="spacer"></div>
@@ -188,9 +179,6 @@
   .lead {
     color: var(--text-2);
     margin: 6px 0 12px;
-  }
-  .obslink {
-    margin-top: 12px;
   }
   .form {
     display: flex;

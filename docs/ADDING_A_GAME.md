@@ -23,7 +23,7 @@ Add `"games/mygame"` to `members` in the root `Cargo.toml`, and add the crate to
 | `id()` | Stable id used in settings and session files, e.g. `"valorant"` |
 | `name()` / `short_name()` | Display name / short name for file names (`"Valorant"`) |
 | `process_names()` | Lower-case exe names, e.g. `&["valorant-win64-shipping.exe"]` |
-| `capture()` | The game's exe (the built-in recorder captures its largest window) plus an OBS window spec `"Title:WindowClass:exe"` for the OBS backup; set `display_capture_only: true` to always capture the whole monitor (e.g. if the anti-cheat blocks OBS Game Capture) |
+| `capture()` | The game's exe (the recorder captures its largest window); set `display_capture_only: true` to always capture the whole monitor instead (e.g. games whose fullscreen window comes out black) |
 | `supports_events()` | `false` if the game has no event API (you still get recording, hotkey clips and manual markers) |
 | `poll()` | Called ~once per second while the game runs. Return the phase, the in-game clock (`game_time`), **only new** events, player info, stats and the result |
 | `start()` / `stop()` | Reset per-match state (and start a local server if the game pushes data, like CS2) |
@@ -70,8 +70,8 @@ it up automatically.
 
 - **Counter-Strike 2** (done): official Game State Integration. The module writes
   `gamestate_integration_gamerecorder.cfg` into CS2's cfg folder (found through Steam);
-  restart CS2 once after the first install. Captures the whole monitor, because CS2 blocks OBS
-  Game Capture unless launched with `-allow_third_party_software`.
+  restart CS2 once after the first install. Captures the whole monitor (its exclusive-fullscreen window
+  can come out black with window capture).
 - **Valorant**: no official live event API, and Vanguard forbids reading game data. Add it
   with `supports_events() = false`: you get automatic recording, hotkey clips and manual
   markers.

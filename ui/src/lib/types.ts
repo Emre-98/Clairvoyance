@@ -170,14 +170,6 @@ export interface ClipEntry {
   source: string;
 }
 
-export interface ObsSettings {
-  host: string;
-  port: number;
-  password: string;
-  exe_path?: string | null;
-  auto_launch: boolean;
-}
-
 export interface VideoSettings {
   encoder: string;
   quality: string;
@@ -210,13 +202,11 @@ export interface Settings {
   start_with_windows: boolean;
   start_minimized: boolean;
   show_perf: boolean;
-  obs: ObsSettings;
   video: VideoSettings;
   events: EventSettings;
   games: Record<string, Record<string, unknown>>;
   disabled_games: string[];
   ffmpeg_path: string;
-  recorder: "builtin" | "obs";
 }
 
 export interface ConfigField {
@@ -249,16 +239,6 @@ export interface AppInfo {
   save_dir: string;
   gpu?: GpuInfo | null;
   games: GameMeta[];
-}
-
-export interface ObsInfo {
-  installed: boolean;
-  exe_path?: string | null;
-  running: boolean;
-  websocket_enabled: boolean;
-  websocket_port: number;
-  websocket_auth: boolean;
-  config_found: boolean;
 }
 
 export interface StorageInfo {

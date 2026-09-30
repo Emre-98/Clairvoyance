@@ -45,7 +45,6 @@
   });
   const liveTime = $derived(st?.game_time != null ? st.game_time + (now - statusAt) / 1000 : null);
 
-  const needsObs = $derived(app.settings?.recorder === "obs" && !app.settings.obs.password && !st?.recorder.connected);
   const phaseLabel: Record<string, string> = { waiting: "In client / loading", loading: "Loading screen", in_progress: "In game", ended: "Game over" };
 </script>
 
@@ -56,17 +55,6 @@
       <p class="muted" style="margin:6px 0 0">GameRecorder records automatically when a supported game starts. Just play.</p>
     </div>
   </div>
-
-  {#if needsObs}
-    <div class="card banner">
-      <Icon name="warn" size={20} />
-      <div class="spacer">
-        <strong>Finish connecting OBS</strong>
-        <div class="muted">You chose OBS as the recorder. Connect it, or switch back to the built-in recorder.</div>
-      </div>
-      <button class="btn primary" onclick={() => go({ page: "settings", section: "setup" })}>Set up OBS</button>
-    </div>
-  {/if}
 
   <section class="hero card" class:rec={st?.state === "recording"} class:det={st?.state === "detected"}>
     {#if st && st.state !== "idle"}

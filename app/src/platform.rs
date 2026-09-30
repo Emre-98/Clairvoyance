@@ -191,7 +191,7 @@ mod win {
         }
     }
 
-    /// (vendor name, GPU name, OBS simple-output encoder id) of the main GPU.
+    /// (vendor name, GPU name, encoder family: "nvenc" / "amd" / "qsv") of the main GPU.
     pub fn gpu() -> Option<(String, String, String)> {
         use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory1, DXGI_ADAPTER_FLAG_SOFTWARE};
         unsafe {

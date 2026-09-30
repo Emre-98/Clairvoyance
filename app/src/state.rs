@@ -2,7 +2,6 @@ use crate::ffmpeg::Ffmpeg;
 use crate::platform::WinPlatform;
 use gr_core::engine::{EngineCommand, LiveStatus};
 use gr_core::Settings;
-use gr_obs::ObsRecorder;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 use tokio::sync::mpsc::UnboundedSender;
@@ -27,10 +26,8 @@ pub struct AppState {
     pub settings: Arc<RwLock<Settings>>,
     pub cmd: UnboundedSender<EngineCommand>,
     pub live: Mutex<LiveStatus>,
-    /// OBS (backup recorder).
-    pub recorder: Arc<ObsRecorder>,
-    /// What the engine records with: built-in or OBS, per the settings.
-    pub switch: Arc<crate::recorder_switch::RecorderSwitch>,
+    /// The built-in recorder (the engine records with it; the performance test drives it too).
+    pub recorder: Arc<gr_capture::NativeRecorder>,
     pub ffmpeg: Arc<Ffmpeg>,
     pub platform: Arc<WinPlatform>,
     pub gpu: Option<GpuInfo>,

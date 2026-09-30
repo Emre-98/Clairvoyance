@@ -1,6 +1,5 @@
-//! Recorder abstraction. The real implementation is OBS Studio driven over
-//! obs-websocket (`gr-obs`). OBS is its own process and encodes on the GPU,
-//! so this app stays light while you play.
+//! Recorder abstraction, implemented by the built-in recorder (`gr-capture`: Windows Graphics
+//! Capture + hardware H.264). Keeping it behind a trait lets the engine be tested with a fake.
 
 use crate::game::CaptureTarget;
 use async_trait::async_trait;

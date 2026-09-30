@@ -9,15 +9,12 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-/// What OBS should capture for this game.
+/// What the recorder should capture for this game.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CaptureTarget {
-    /// Executable name, e.g. "League of Legends.exe".
+    /// Executable name, e.g. "League of Legends.exe". The recorder captures its largest window.
     pub exe: String,
-    /// OBS window spec "Title:WindowClass:exe.exe" for Game Capture. Title/class can be
-    /// empty: the recorder matches on the executable.
-    pub window: String,
-    /// Set for games whose anti-cheat blocks Game Capture: use Display Capture instead.
+    /// Always capture the whole monitor instead of the game window.
     pub display_capture_only: bool,
 }
 

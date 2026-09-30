@@ -1,6 +1,5 @@
 //! Commands the UI can call (`invoke("name", {...})`).
 
-use crate::obs_setup;
 use crate::state::{AppState, GpuInfo};
 use gr_core::engine::{EngineCommand, LiveStatus};
 use gr_core::library::{self, ClipEntry, SessionSummary};
@@ -74,10 +73,6 @@ pub async fn save_settings(app: AppHandle, st: St<'_>, settings: Settings) -> R<
             log::warn!("autostart: {e:#}");
         }
     }
-    st.switch.set_mode(&settings.recorder);
-    st.recorder
-        .set_config(gr_obs::ObsConfig { host: settings.obs.host.clone(), port: settings.obs.port, password: settings.obs.password.clone() })
-        .await;
     st.ffmpeg.set_configured(settings.ffmpeg_path.clone());
     let _ = app.asset_protocol_scope().allow_directory(st.save_dir(), true);
     let _ = st.cmd.send(EngineCommand::ReloadSettings(Box::new(st.engine_settings(&settings))));
@@ -237,56 +232,9 @@ pub async fn open_path(path: String) -> R<()> {
 }
 
 #[tauri::command]
-pub async fn obs_detect(st: St<'_>) -> R<obs_setup::ObsInfo> {
-    let exe = st.settings.read().unwrap().obs.exe_path.clone();
-    Ok(obs_setup::detect(exe.as_deref()))
-}
-
-#[derive(Serialize)]
-pub struct WsSetup {
-    port: u16,
-    password: String,
-}
-
-/// Enables OBS's WebSocket server (OBS must be closed) and stores the password.
-#[tauri::command]
-pub async fn obs_enable_websocket(app: AppHandle, st: St<'_>) -> R<WsSetup> {
-    let (port, password) = obs_setup::enable_websocket().map_err(err)?;
-    let mut s = st.settings();
-    s.obs.port = port;
-    s.obs.password = password.clone();
-    if s.obs.exe_path.is_none() {
-        s.obs.exe_path = obs_setup::find_obs_exe(None).map(|p| p.to_string_lossy().to_string());
-    }
-    save_settings(app, st, s).await?;
-    Ok(WsSetup { port, password })
-}
-
-#[tauri::command]
-pub async fn obs_test(st: St<'_>) -> R<String> {
-    let s = st.settings();
-    st.recorder.set_config(gr_obs::ObsConfig { host: s.obs.host, port: s.obs.port, password: s.obs.password }).await;
-    st.recorder.test_connection().await.map_err(|e| format!("{e:#}"))
-}
-
-#[tauri::command]
-pub fn obs_launch(st: St) -> R<()> {
-    let exe = st.settings.read().unwrap().obs.exe_path.clone();
-    let path = obs_setup::find_obs_exe(exe.as_deref()).ok_or("OBS wasn't found. Install it from obsproject.com.")?;
-    if crate::platform::is_process_running("obs64.exe") {
-        return Ok(());
-    }
-    if obs_setup::launch(&path) {
-        Ok(())
-    } else {
-        Err("OBS couldn't be started.".into())
-    }
-}
-
-#[tauri::command]
 pub async fn recorder_status(st: St<'_>) -> R<gr_core::recorder::RecorderStatus> {
     use gr_core::Recorder;
-    Ok(st.switch.status().await)
+    Ok(st.recorder.status().await)
 }
 
 #[derive(Serialize)]
@@ -365,8 +313,8 @@ pub async fn finish_first_run(app: AppHandle, st: St<'_>) -> R<()> {
     Ok(())
 }
 
-/// Plays a scripted League match against a fake game API, recording the desktop with
-/// OBS, so everything can be tested without playing. `speed` = game seconds per second.
+/// Plays a scripted League match against a fake game API, recording the desktop with the
+/// built-in recorder, so everything can be tested without playing. `speed` = game seconds per second.
 #[tauri::command]
 pub fn simulate_game(st: St, speed: f64, length: f64) -> R<()> {
     start_simulation(st.inner().clone(), speed, length)
@@ -472,14 +420,14 @@ fn run_selftest(_dir: &std::path::Path, _secs: u64) -> R<(PathBuf, u64, u64)> {
 
 /// Starts the performance test (see perftest.rs). Poll `perf_test_status`.
 #[tauri::command]
-pub fn perf_test_start(st: St, phase_secs: u64, include_obs: bool) -> R<()> {
+pub fn perf_test_start(st: St, phase_secs: u64) -> R<()> {
     let state = st.perf.lock().unwrap().state.clone();
     if matches!(state.as_str(), "preparing" | "waiting_for_game" | "running" | "analyzing") {
         return Err("A performance test is already running.".into());
     }
     st.perf_cancel.store(false, std::sync::atomic::Ordering::SeqCst);
     let s = st.inner().clone();
-    tauri::async_runtime::spawn(crate::perftest::run(s, phase_secs.clamp(20, 300), include_obs));
+    tauri::async_runtime::spawn(crate::perftest::run(s, phase_secs.clamp(20, 300)));
     Ok(())
 }
 
@@ -517,10 +465,6 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static 
         reveal_path,
         open_path,
         open_url,
-        obs_detect,
-        obs_enable_websocket,
-        obs_test,
-        obs_launch,
         recorder_status,
         ffmpeg_status,
         ffmpeg_download,

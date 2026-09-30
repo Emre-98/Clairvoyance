@@ -413,7 +413,7 @@ impl Recorder for NativeRecorder {
 /// Returns the file and the frame statistics.
 pub fn self_test(out_dir: &Path, secs: u64, exe: Option<&str>, mic: bool) -> Result<(PathBuf, u64, u64)> {
     let rec = NativeRecorder::new();
-    let target = CaptureTarget { exe: exe.unwrap_or("explorer.exe").to_string(), window: String::new(), display_capture_only: exe.is_none() };
+    let target = CaptureTarget { exe: exe.unwrap_or("explorer.exe").to_string(), display_capture_only: exe.is_none() };
     let opts = RecordOptions {
         output_dir: out_dir.to_path_buf(),
         encoder: "auto".into(),

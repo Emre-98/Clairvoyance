@@ -65,7 +65,7 @@
         {/if}
       {:else}
         <div class="sub">
-          {#if app.settings?.recorder === "obs"}OBS: {#if st.recorder.connected}<span class="ok">connected</span>{:else}<span class="muted">starts with your game</span>{/if}{:else}Recorder: <span class="ok">built-in, ready</span>{/if}
+          Recorder: <span class="ok">ready</span>
         </div>
       {/if}
     </div>

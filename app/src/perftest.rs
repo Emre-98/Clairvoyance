@@ -3,7 +3,6 @@
 //! Phases (each `phase_secs` long, back to back, while you play):
 //!   1. Baseline: nothing recording.
 //!   2. Built-in recorder recording.
-//!   3. (optional) OBS recording.
 //! Measured per phase: League FPS and 1% lows (PresentMon, Intel's open-source frame-time tool,
 //! which reads Windows' present events: no game access), League CPU, whole-PC CPU,
 //! GameRecorder's CPU and RAM, GPU 3D load and the video-encode engine load.
@@ -264,8 +263,8 @@ mod run {
         app_ram: f64,
     }
 
-    pub async fn run(st: Arc<AppState>, phase_secs: u64, include_obs: bool) {
-        let result = run_inner(&st, phase_secs, include_obs).await;
+    pub async fn run(st: Arc<AppState>, phase_secs: u64) {
+        let result = run_inner(&st, phase_secs).await;
         // Always restore normal recording.
         let _ = st.cmd.send(EngineCommand::ReloadSettings(Box::new(st.engine_settings(&st.settings()))));
         if let Err(e) = result {
@@ -279,7 +278,7 @@ mod run {
         }
     }
 
-    async fn run_inner(st: &Arc<AppState>, phase_secs: u64, include_obs: bool) -> anyhow::Result<()> {
+    async fn run_inner(st: &Arc<AppState>, phase_secs: u64) -> anyhow::Result<()> {
         let started = chrono::Local::now();
         let out_dir = st.save_dir().join("perf-tests");
         std::fs::create_dir_all(&out_dir)?;
@@ -324,7 +323,7 @@ mod run {
             }
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
-        let total_min = ((phase_secs + 6) * if include_obs { 3 } else { 2 } + 10) as f64 / 60.0;
+        let total_min = ((phase_secs + 6) * 2 + 10) as f64 / 60.0;
         st.platform.speak(
             &format!("Performance test starts in 10 seconds. Keep playing for about {} minutes, until you hear: performance test finished.", total_min.ceil() as u64),
             70,
@@ -332,7 +331,7 @@ mod run {
         tokio::time::sleep(Duration::from_secs(10)).await;
 
         let settings = st.engine_settings(&st.settings());
-        let target = CaptureTarget { exe: GAME_EXE.into(), window: "League of Legends (TM) Client:RiotWindowClass:League of Legends.exe".into(), display_capture_only: false };
+        let target = CaptureTarget { exe: GAME_EXE.into(), display_capture_only: false };
         let rec_dir = out_dir.join("_recordings");
         let opts = RecordOptions {
             output_dir: rec_dir.clone(),
@@ -344,10 +343,7 @@ mod run {
             record_mic: settings.video.record_mic,
             display_capture: settings.video.display_capture,
         };
-        let mut phases: Vec<(&str, Option<Arc<dyn Recorder>>)> = vec![("Not recording", None), ("Built-in recorder", Some(st.switch.builtin.clone() as Arc<dyn Recorder>))];
-        if include_obs {
-            phases.push(("OBS", Some(st.recorder.clone() as Arc<dyn Recorder>)));
-        }
+        let phases: Vec<(&str, Option<Arc<dyn Recorder>>)> = vec![("Not recording", None), ("Built-in recorder", Some(st.recorder.clone() as Arc<dyn Recorder>))];
         let mut windows: Vec<(String, f64, f64, Acc)> = Vec::new();
         let mut encoder = String::new();
         for (name, rec) in phases {
@@ -517,7 +513,7 @@ mod run {
 pub use run::run;
 
 #[cfg(not(windows))]
-pub async fn run(st: std::sync::Arc<crate::state::AppState>, _phase_secs: u64, _include_obs: bool) {
+pub async fn run(st: std::sync::Arc<crate::state::AppState>, _phase_secs: u64) {
     st.perf.lock().unwrap().state = "error".into();
     st.perf.lock().unwrap().message = Some("The performance test only runs on Windows.".into());
 }

@@ -1,12 +1,11 @@
 <script lang="ts">
   import { app, saveSettings, toast } from "../lib/store.svelte";
-  import { api, on, pickFolder, pickFile, isTauri } from "../lib/api";
+  import { api, on, pickFolder } from "../lib/api";
   import { bytes } from "../lib/format";
   import { KIND, USER_KINDS } from "../lib/eventmeta";
   import type { EventKind, Settings, StorageInfo } from "../lib/types";
   import Icon from "../components/Icon.svelte";
   import HotkeyInput from "../components/HotkeyInput.svelte";
-  import ObsSetup from "../components/ObsSetup.svelte";
   import BuiltinRecorder from "../components/BuiltinRecorder.svelte";
   import PerfTest from "../components/PerfTest.svelte";
 
@@ -99,7 +98,7 @@
   async function simulate() {
     try {
       await api.simulateGame(simSpeed, simLength);
-      toast("Simulated League game started. It records your desktop through OBS.", "ok", 7000);
+      toast("Simulated League game started. It records your desktop.", "ok", 7000);
     } catch (e) {
       toast(String(e), "error");
     }
@@ -117,30 +116,8 @@
   <div class="content page">
     {#if active === "setup"}
       <h2>Recorder</h2>
-      <p class="lead">GameRecorder records by itself, on your graphics card, so your game stays smooth. OBS Studio can be used instead as a backup.</p>
-      <div class="choice">
-        <button class="opt" class:on={draft.recorder !== "obs"} onclick={() => (draft.recorder = "builtin")}>
-          <span class="radio"></span>
-          <div><strong>Built-in recorder</strong> <span class="pill rec">Recommended</span><div class="muted">Nothing else to install. Game audio only, optional mic track.</div></div>
-        </button>
-        <button class="opt" class:on={draft.recorder === "obs"} onclick={() => (draft.recorder = "obs")}>
-          <span class="radio"></span>
-          <div><strong>OBS Studio</strong> <span class="pill">Backup</span><div class="muted">Uses your installed OBS (in its own profile, your scenes stay untouched).</div></div>
-        </button>
-      </div>
-      {#if draft.recorder !== "obs"}
-        <div class="card box"><BuiltinRecorder /></div>
-      {:else}
-        <div class="card box"><ObsSetup /></div>
-        <h3 class="sub">OBS connection</h3>
-        <div class="card box form">
-          <label>Host<input class="input" bind:value={draft.obs.host} /></label>
-          <label>Port<input class="input" type="number" bind:value={draft.obs.port} /></label>
-          <label>Password<input class="input" type="password" bind:value={draft.obs.password} placeholder="OBS WebSocket password" /></label>
-          <label class="wide">OBS program<div class="row"><input class="input grow" bind:value={draft.obs.exe_path} placeholder="Detected automatically" />{#if isTauri}<button class="btn small" onclick={async () => { const f = await pickFile([{ name: "OBS", extensions: ["exe"] }]); if (f) draft.obs.exe_path = f; }}>Browse</button>{/if}</div></label>
-          <label class="check wide"><input type="checkbox" bind:checked={draft.obs.auto_launch} />Start OBS automatically (minimized to tray) when a game starts</label>
-        </div>
-      {/if}
+      <p class="lead">Records by itself on your graphics card, so your game stays smooth. Nothing else to install: game audio only, with an optional mic track.</p>
+      <div class="card box"><BuiltinRecorder /></div>
     {:else if active === "recording"}
       <h2>Recording</h2>
       <div class="card box form">
@@ -543,45 +520,6 @@
     gap: 8px;
     font-weight: 600;
     font-size: 13px;
-  }
-  .choice {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    margin-bottom: 12px;
-  }
-  .opt {
-    display: flex;
-    gap: 12px;
-    align-items: flex-start;
-    text-align: left;
-    padding: 14px 16px;
-    border-radius: var(--radius);
-    border: 1px solid var(--border);
-    background: var(--surface);
-  }
-  .opt .muted {
-    font-size: 12.5px;
-    margin-top: 4px;
-  }
-  .opt.on {
-    border-color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 7%, var(--surface));
-  }
-  .radio {
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    border: 2px solid var(--border-2);
-    flex: none;
-    margin-top: 2px;
-  }
-  .opt.on .radio {
-    border: 5px solid var(--accent);
-  }
-  .pill.rec {
-    color: var(--accent);
-    border-color: color-mix(in srgb, var(--accent) 40%, transparent);
   }
   .savebar {
     position: absolute;

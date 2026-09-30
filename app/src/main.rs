@@ -13,17 +13,14 @@ mod ffmpeg;
 mod games;
 mod input;
 mod logger;
-mod obs_setup;
 mod perftest;
 mod platform;
-mod recorder_switch;
 mod state;
 mod tray;
 mod webview_power;
 
 use gr_core::engine::{Engine, EngineCommand, EngineEvent};
 use gr_core::Settings;
-use gr_obs::{ObsConfig, ObsRecorder};
 use state::{AppState, GpuInfo, Paths};
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
@@ -176,16 +173,7 @@ fn main() {
     log::info!("GameRecorder {} starting", env!("CARGO_PKG_VERSION"));
     platform::lower_priority();
 
-    let mut settings = Settings::load(&paths.config_file);
-    // Pick up an existing OBS WebSocket password automatically.
-    if settings.obs.password.is_empty() {
-        if let Some(pw) = obs_setup::existing_password() {
-            settings.obs.password = pw;
-        }
-    }
-    if settings.obs.exe_path.is_none() {
-        settings.obs.exe_path = obs_setup::find_obs_exe(None).map(|p| p.to_string_lossy().to_string());
-    }
+    let settings = Settings::load(&paths.config_file);
     let paths = Paths { log_file, ..paths };
 
     let app = tauri::Builder::default()
@@ -226,35 +214,15 @@ fn main() {
             log::info!("GPU: {gpu:?}");
             let shared = Arc::new(RwLock::new(settings.clone()));
 
-            // Launch OBS on demand (only if it's installed and auto-launch is on).
-            let launch_settings = shared.clone();
-            let launcher: gr_obs::Launcher = Arc::new(move || {
-                if platform::is_process_running("obs64.exe") {
-                    return true; // Still starting up: wait for its WebSocket server.
-                }
-                let s = launch_settings.read().unwrap().obs.clone();
-                if !s.auto_launch {
-                    return false;
-                }
-                match obs_setup::find_obs_exe(s.exe_path.as_deref()) {
-                    Some(exe) => obs_setup::launch(&exe),
-                    None => false,
-                }
-            });
-            let recorder = Arc::new(ObsRecorder::new(
-                ObsConfig { host: settings.obs.host.clone(), port: settings.obs.port, password: settings.obs.password.clone() },
-                Some(launcher),
-            ));
             let ffmpeg = Arc::new(ffmpeg::Ffmpeg::new(
                 settings.ffmpeg_path.clone(),
                 paths.data_dir.join("ffmpeg"),
                 gpu.as_ref().map(|g| g.encoder.clone()).unwrap_or_default(),
             ));
-            let builtin = Arc::new(gr_capture::NativeRecorder::new());
-            let switch = Arc::new(recorder_switch::RecorderSwitch::new(builtin, recorder.clone(), &settings.recorder));
+            let recorder = Arc::new(gr_capture::NativeRecorder::new());
             let engine = Engine::new(
                 games::all(),
-                switch.clone(),
+                recorder.clone(),
                 platform.clone(),
                 Some(ffmpeg.clone()),
                 state::resolve_encoder(&settings, gpu.as_ref()),
@@ -269,7 +237,6 @@ fn main() {
                 cmd: cmd_tx,
                 live: Mutex::new(Default::default()),
                 recorder,
-                switch,
                 ffmpeg,
                 platform,
                 gpu,

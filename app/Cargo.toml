@@ -12,7 +12,6 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 gr-core.workspace = true
-gr-obs.workspace = true
 gr-capture = { path = "../crates/gr-capture" }
 gr-game-league.workspace = true
 gr-game-cs2 = { path = "../games/cs2" }

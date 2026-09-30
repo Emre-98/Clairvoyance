@@ -6,7 +6,6 @@
 
   let status = $state<PerfTestStatus | null>(null);
   let secs = $state(60);
-  let includeObs = $state(false);
 
   $effect(() => {
     let alive = true;
@@ -28,7 +27,7 @@
 
   async function start() {
     try {
-      await api.perfTestStart(secs, includeObs);
+      await api.perfTestStart(secs);
       toast("Performance test armed. Accept the Windows prompt (it lets PresentMon measure FPS), then start a Practice Tool game.", "info", 9000);
     } catch (e) {
       toast(String(e), "error");
@@ -48,12 +47,12 @@
 
 <div class="pt">
   <p class="lead">
-    Measures what recording costs in a real game: League FPS (average and 1% lows), CPU and GPU, first without recording, then with the built-in recorder{includeObs ? ", then with OBS" : ""}. About {Math.round((secs * (includeObs ? 3 : 2)) / 60 + 1)} minutes of play.
+    Measures what recording costs in a real game: League FPS (average and 1% lows), CPU and GPU, first without recording, then with the built-in recorder. About {Math.round((secs * 2) / 60 + 1)} minutes of play.
   </p>
   <ol class="steps">
     <li>Click <strong>Start test</strong> and accept the Windows prompt (PresentMon, Intel's free frame-time tool, needs it to read FPS; it never touches the game).</li>
     <li>Start a <strong>Practice Tool</strong> game and play normally (walk around, fight minions). You'll hear each phase start.</li>
-    <li><strong>Stay in the game until you hear “Performance test finished”</strong> (about {Math.round((secs * (includeObs ? 3 : 2)) / 60 + 1)} minutes). Leaving earlier stops the test. Then leave the game: the results appear here.</li>
+    <li><strong>Stay in the game until you hear “Performance test finished”</strong> (about {Math.round((secs * 2) / 60 + 1)} minutes). Leaving earlier stops the test. Then leave the game: the results appear here.</li>
     <li>For a fair comparison, do the same thing in every phase (for example, stand in lane and last-hit). Big fights in one phase and not the other change the FPS more than recording does.</li>
   </ol>
   <div class="row controls">
@@ -65,7 +64,6 @@
         <option value={120}>2 min</option>
       </select>
     </label>
-    <label class="check"><input type="checkbox" bind:checked={includeObs} disabled={busy || !app.settings?.obs.password} />Also test OBS</label>
     <div class="spacer"></div>
     {#if busy}
       <button class="btn danger" onclick={() => api.perfTestCancel()}>Cancel</button>
@@ -138,15 +136,6 @@
     gap: 8px;
     font-weight: 600;
     font-size: 13px;
-  }
-  .check {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-  }
-  .check input {
-    accent-color: var(--accent);
   }
   .state {
     margin-top: 14px;

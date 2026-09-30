@@ -96,13 +96,11 @@ const settings: Settings = {
   start_with_windows: true,
   start_minimized: true,
   show_perf: true,
-  obs: { host: "127.0.0.1", port: 4455, password: "x", exe_path: "C:\\Program Files\\obs-studio\\bin\\64bit\\obs64.exe", auto_launch: true },
   video: { encoder: "auto", quality: "standard", fps: 60, height: 1080, replay_buffer_secs: 30, record_mic: false, display_capture: false },
   events: { clip_kinds: ["multikill", "ace"], clip_before_secs: 10, clip_after_secs: 4, tts_enabled: false, tts_kinds: ["kill", "death", "multikill", "clip"], tts_volume: 70 },
   games: { league: { riot_id: "Tester#EUW", ult_key: "R" } },
   disabled_games: [],
   ffmpeg_path: "",
-  recorder: "builtin",
 };
 
 const live: LiveStatus =
@@ -211,10 +209,6 @@ export async function invoke(cmd: string, args: any = {}): Promise<any> {
       return { cpu: 0.2, ram_mb: 38 };
     case "storage_info":
       return { save_dir: "C:\\Users\\you\\Videos\\GameRecorder", used_bytes: 23.4e9, free_bytes: 812e9, games: sessions.length };
-    case "obs_detect":
-      return { installed: true, exe_path: settings.obs.exe_path, running: false, websocket_enabled: true, websocket_port: 4455, websocket_auth: true, config_found: true };
-    case "obs_test":
-      return "32.0.1";
     case "builtin_encoders":
       return { gpu: "NVIDIA GeForce RTX 5080", encoders: ["NVIDIA H.264 Encoder MFT (NVIDIA)"] };
     case "recorder_selftest":

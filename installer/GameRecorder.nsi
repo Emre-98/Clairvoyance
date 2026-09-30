@@ -39,7 +39,7 @@ VIAddVersionKey "LegalCopyright" "MIT License"
 !define MUI_UNICON "..\app\icons\icon.ico"
 !define MUI_ABORTWARNING
 !define MUI_WELCOMEPAGE_TITLE "Install ${APPNAME}"
-!define MUI_WELCOMEPAGE_TEXT "${APPNAME} records your games automatically with an event timeline.$\r$\n$\r$\nIt uses OBS Studio (free) to record on your graphics card. After installing, the app walks you through connecting OBS.$\r$\n$\r$\nIf ${APPNAME} is already running, quit it from the tray icon first."
+!define MUI_WELCOMEPAGE_TEXT "${APPNAME} records your games automatically with an event timeline.$\r$\n$\r$\nIt records on your graphics card, with nothing else to install.$\r$\n$\r$\nIf ${APPNAME} is already running, quit it from the tray icon first."
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${EXE}"
 !define MUI_FINISHPAGE_RUN_TEXT "Start ${APPNAME}"
 

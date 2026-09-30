@@ -257,7 +257,6 @@ impl GameIntegration for LeagueIntegration {
     fn capture(&self) -> CaptureTarget {
         CaptureTarget {
             exe: "League of Legends.exe".into(),
-            window: "League of Legends (TM) Client:RiotWindowClass:League of Legends.exe".into(),
             display_capture_only: false,
         }
     }

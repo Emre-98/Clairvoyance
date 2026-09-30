@@ -44,7 +44,7 @@
         {#if enc.encoders.length}
           <div class="muted">Hardware encoder: {enc.encoders[0]}{enc.encoders.length > 1 ? ` (+${enc.encoders.length - 1} more)` : ""}</div>
         {:else}
-          <div class="warn">No hardware video encoder found. Update your graphics driver, or use OBS below.</div>
+          <div class="warn">No hardware video encoder found. Update your graphics driver.</div>
         {/if}
       </div>
     </div>

@@ -5,12 +5,12 @@
 
 ## Current status
 - **Stack chosen: Tauri 2 (Rust + Svelte web UI).** The C#/WPF skeleton is replaced (see Decisions).
-- **Recording no longer needs OBS.** GameRecorder has its own built-in recorder (milestones 9–13):
+- **The built-in recorder is the only recorder** (OBS support was removed on 2026-09-30, see Decisions):
   Windows Graphics Capture + the GPU's hardware H.264 encoder (NVENC / AMF / Quick Sync) +
   per-process game audio + an optional mic track, written as crash-safe fragmented MP4, with an
-  in-memory replay buffer for clips. OBS is still supported as a backup (Settings > Recorder).
+  in-memory replay buffer for clips.
 - Milestones 1–13 are code-complete. Tested on Claude's build machine: unit tests, the engine
-  end-to-end against a fake League API, the OBS path against a real OBS 30, the MP4 muxer
+  end-to-end against a fake League API, the MP4 muxer
   (decoded with ffmpeg, including a file cut off mid-write), and the UI in a browser.
   The built-in recorder's Windows code compiles but **has not run on real Windows hardware yet**.
 - The Windows installer, the portable zip and `dist\tools\recorder-selftest.exe` are in `dist\`.
@@ -54,7 +54,6 @@ Owner's PC: RTX 5080, i9-9900K, 32 GB RAM, Windows 11.
 ## Performance rules (hard requirements)
 - Recording is done by GameRecorder's **built-in recorder** (see "Built-in recorder" below). No
   injection into the game: capture uses Windows Graphics Capture, which is Vanguard-safe.
-  **OBS Studio** (controlled through obs-websocket, never forked or modified) is an optional backup.
 - Always use hardware encoding (NVENC on NVIDIA; AMF on AMD; Quick Sync on Intel), never x264.
 - No in-game overlay. Nothing that injects into or reads game memory.
 - In game, the app polls the game API about once per second, runs at below-normal process priority,
@@ -117,8 +116,7 @@ Rules:
 - A Windows installer, or a single self-contained .exe, that works on a fresh PC.
 - No hardcoded paths, usernames or Riot ID. Nothing else to install: the built-in recorder picks
   the friend's GPU encoder automatically. First-run setup offers a 5-second recording test and asks
-  for the Riot ID. OBS is only needed if someone chooses it as their recorder.
-- If OBS is used, it's the user's installed OBS (don't bundle a modified one; OBS is GPL).
+  for the Riot ID.
 - Auto-update via GitHub Releases is a nice-to-have. No accounts, cloud or telemetry.
 
 ## Decisions made
@@ -134,7 +132,7 @@ Compared:
 - **Qt (C++/QML)**: fast, but a heavy toolkit, LGPL packaging hassle and slower development.
 - **Electron**: excluded (ships a whole Chromium, heavy in RAM).
 - **Chosen: Tauri 2.** Best in-game footprint (window closed = only a small Rust process), best
-  UI tooling, smallest download for friends, and a small JSON WebSocket client is all OBS needs.
+  UI tooling, smallest download for friends.
   (Practical bonus: it can be cross-built and tested end to end on Claude's Linux build machine.)
 
 ### Architecture (ideas kept from the C# skeleton)
@@ -143,13 +141,10 @@ Compared:
   library/retention, and the **engine** (state machine: idle → game detected → recording → saved).
   No game-specific code.
 - `games/league`, `games/cs2`: one crate per game. `app/src/games.rs` registers them.
-- `crates/gr-obs`: `Recorder` implementation over obs-websocket v5 (own ~200-line JSON client;
-  no obws dependency).
 - `app`: Tauri shell (tray, windows, commands for the UI, Win32 bits). `ui`: Svelte front end.
 
 ### Built-in recorder (crate `gr-capture`, default)
-- Same `Recorder` trait as OBS. `RecorderSwitch` (app) picks built-in or OBS from
-  `settings.recorder` (`"builtin"` default, `"obs"`); the choice is fixed per game when it starts.
+- Implements the `Recorder` trait from `gr-core`, so the engine can be tested with a fake.
 - **Capture: Windows Graphics Capture** of the game window (free-threaded frame pool, no yellow
   border, cursor on), with monitor capture as fallback (setting, window not found in 8 s, or no
   frames for 6 s). No hooks, no DLLs, nothing in the game process. Frames are capped at the target
@@ -183,7 +178,7 @@ Compared:
 
 ### Performance test (Settings > Performance test)
 - Runs in a real game: waits until League is in game, then records phases of N seconds each
-  ("Not recording", "Built-in recorder", optionally "OBS") with voice callouts, and compares them.
+  ("Not recording", "Built-in recorder") with voice callouts, and compares them.
 - FPS from **PresentMon** (downloaded on demand from its GitHub releases, runs elevated, only
   watches `League of Legends.exe`): average, 1% low, 99th percentile frame time.
 - CPU/GPU from Windows performance counters (PDH): total and game CPU, GPU 3D and video-encode
@@ -191,25 +186,15 @@ Compared:
 - Report saved as JSON + text in `<save folder>\perf-tests\`; test recordings are deleted and
   settings restored afterwards.
 
-### Recording / OBS (backup recorder)
-- GameRecorder uses **its own OBS profile and scene collection ("GameRecorder")** and switches
-  back to the user's profile/collection after each game. If OBS is already recording or
-  streaming, it's left alone.
-- Simple output mode, hardware encoder only (`nvenc` / `amd` / `qsv`, picked from the GPU
-  vendor via DXGI; refuses x264). Quality "Standard" = OBS "Small", "High" = OBS "HQ".
-- Format: **hybrid MP4** (OBS ≥ 30.2; crash-safe and plays in WebView2), fragmented MP4 on older OBS.
-- The profile is switched away and back after setting parameters, because OBS only builds its
-  encoders when a profile loads (found while testing against a real OBS).
-- Scene "Game": Game Capture of the game window (matched by exe) + Display Capture as fallback
-  (setting, or per game: CS2 always uses Display Capture).
-- OBS is launched automatically (minimized to tray) when a game starts, if it isn't running.
-- First run writes OBS's WebSocket settings (both OBS 31+ `plugin_config/obs-websocket/config.json`
-  and OBS 28–30 `global.ini`) with a random password; OBS must be closed for that.
-- Replay buffer always on while recording; the clip hotkey saves it into the game's `clips\`.
+### OBS removed (2026-09-30, owner's request)
+- The OBS backup (obs-websocket client `gr-obs`, OBS setup, `RecorderSwitch`, Settings > Recorder
+  choice) is gone; the built-in recorder is the only recorder. Old settings files still load
+  (unknown fields are ignored) and the leftover `obs` / `recorder` fields are removed from the
+  file on the first start.
 
 ### Game-clock ↔ video offset
 - `video position = game time + video_offset`. Each poll right after reading `gameTime`, the
-  engine asks OBS for its own recorded duration; `offset = recorded - gameTime`. The median of
+  engine asks the recorder for its own recorded duration; `offset = recorded - gameTime`. The median of
   the first 9 samples is used (robust against one slow request). Key presses use the same clock.
 
 ### Events
@@ -232,7 +217,7 @@ Compared:
 ### Storage
 - `Videos\GameRecorder\<date>_<time>_<Game>\` per game: video
   (`2026-09-30_League_Ahri_Win.mp4`, renamed after the match), `session.json`, `thumb.jpg`
-  (OBS screenshot at 1:30 game time), `clips\`.
+  (screenshot at 1:30 game time), `clips\`.
 - Settings: `%APPDATA%\GameRecorder\settings.json`. Logs: `%LOCALAPPDATA%\GameRecorder\logs\`.
   ffmpeg (downloaded on demand): `%LOCALAPPDATA%\GameRecorder\ffmpeg\`.
 - Retention: delete games older than X days and/or keep under X GB, oldest first; favorites
@@ -262,27 +247,25 @@ Compared:
   `-Zbuild-std` for `x86_64-pc-windows-gnu`. The exe needs `WebView2Loader.dll` next to it,
   so the "portable" build is a zip of the exe + dll. Main download: the NSIS installer
   (per-user, no admin, Start menu + desktop shortcut, uninstaller that keeps recordings).
-- OBS is never bundled (GPL); if chosen, the user's installed OBS is used.
-- Dev tools: `GameRecorder.exe --simulate` / Settings > Advanced plays a fake League match;
-  `crates/gr-obs/examples/` drive a real OBS from the command line.
+- Dev tools: `GameRecorder.exe --simulate` / Settings > Advanced plays a fake League match.
 
 ## Milestones
 - [x] 0. Project setup: solution, projects, core interfaces, this plan
 - [x] Choose the language/stack: Tauri 2 (see Decisions made)
 - [x] 1. Detect League start/end (process + API), shown live in the app
-- [x] 2. Control OBS through obs-websocket: connect, start/stop recording, replay buffer, NVENC check
+- [x] 2. Control OBS through obs-websocket (removed later: the built-in recorder replaced it)
 - [x] 3. Event tracking + EventID dedupe + game-clock offset + ult keypress (Raw Input)
 - [x] 4. Timeline UI: player, colored markers, hover, click-to-jump, filters
 - [x] 5. Clips + clip editor + library grid + post-game summary
-- [x] 6. Settings + first-run setup (OBS detection, Riot ID, encoder auto-config) + tray icon
+- [x] 6. Settings + first-run setup (Riot ID, encoder auto-config) + tray icon
 - [x] 7. Installer / portable build for friends (`dist\`)
 - [x] 8. Game-module guide (`docs/ADDING_A_GAME.md`) + a second game (CS2)
 - [x] 9. Built-in recorder: Windows Graphics Capture + GPU colour conversion + hardware H.264
       (NVENC / AMF / Quick Sync via Media Foundation), window → monitor fallback
 - [x] 10. Built-in audio: per-process game audio (WASAPI process loopback) + optional mic track (AAC)
 - [x] 11. Crash-safe fragmented MP4 muxer + in-memory replay buffer for clips + screenshots
-- [x] 12. OBS optional: `RecorderSwitch` behind the same `Recorder` trait, Settings > Recorder,
-      first-run setup without OBS, self-test (`recorder-selftest.exe` + in-app 5 s test)
+- [x] 12. Recorder self-test (`recorder-selftest.exe` + in-app 5 s test), first-run setup
+      without OBS
 - [x] 13. Performance test in a real game: FPS (PresentMon), CPU and GPU, not recording vs recording
 - [ ] Owner's test on Windows: self-test + performance test in a real League game (see README)
 - [ ] Nice-to-have: auto-update via GitHub Releases

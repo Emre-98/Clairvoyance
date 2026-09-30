@@ -13,7 +13,7 @@ impl GameIntegration for FakeGame {
     fn name(&self) -> &'static str { "Fake Game" }
     fn short_name(&self) -> &'static str { "Fake" }
     fn process_names(&self) -> &'static [&'static str] { &["fake.exe"] }
-    fn capture(&self) -> CaptureTarget { CaptureTarget { exe: "fake.exe".into(), window: String::new(), display_capture_only: false } }
+    fn capture(&self) -> CaptureTarget { CaptureTarget { exe: "fake.exe".into(), display_capture_only: false } }
     fn supports_events(&self) -> bool { true }
     fn end_grace(&self) -> Duration { Duration::from_millis(0) }
     async fn poll(&mut self) -> anyhow::Result<PollUpdate> {
@@ -207,7 +207,7 @@ impl GameIntegration for MatchGame {
     fn name(&self) -> &'static str { "Match Game" }
     fn short_name(&self) -> &'static str { "MG" }
     fn process_names(&self) -> &'static [&'static str] { &["mg.exe"] }
-    fn capture(&self) -> CaptureTarget { CaptureTarget { exe: "mg.exe".into(), window: String::new(), display_capture_only: true } }
+    fn capture(&self) -> CaptureTarget { CaptureTarget { exe: "mg.exe".into(), display_capture_only: true } }
     fn supports_events(&self) -> bool { true }
     fn match_only(&self) -> bool { true }
     fn end_grace(&self) -> Duration { Duration::from_secs(1) }

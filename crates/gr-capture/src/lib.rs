@@ -1,7 +1,6 @@
 //! Built-in game recorder: Windows Graphics Capture + hardware H.264 (NVENC / AMF / Quick Sync
 //! through Media Foundation) + per-process WASAPI loopback audio, written as crash-safe
-//! fragmented MP4, with an in-memory replay buffer. Implements `gr_core::Recorder`, so OBS
-//! remains a drop-in alternative.
+//! fragmented MP4, with an in-memory replay buffer. Implements `gr_core::Recorder`.
 //!
 //! `mp4` and `replay` are portable (tested anywhere); everything touching Windows lives in `win`.
 

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/gr-core", "crates/gr-obs", "crates/gr-capture", "crates/gr-mock-league", "games/league", "games/cs2", "app"]
+members = ["crates/gr-core", "crates/gr-capture", "crates/gr-mock-league", "games/league", "games/cs2", "app"]
 
 [workspace.package]
 version = "0.1.0"
@@ -10,7 +10,6 @@ license = "MIT"
 
 [workspace.dependencies]
 gr-core = { path = "crates/gr-core" }
-gr-obs = { path = "crates/gr-obs" }
 gr-game-league = { path = "games/league" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

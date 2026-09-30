@@ -4,8 +4,8 @@
 //! POSTs its state (map, round, the local player's stats) to a local HTTP endpoint.
 //! No memory reading, no injection. The module installs the cfg file itself.
 //!
-//! Recording: CS2's anti-cheat blocks OBS Game Capture unless the game is started with
-//! `-allow_third_party_software`, so this module asks for Display Capture.
+//! Recording: CS2 is captured as the whole monitor (its exclusive-fullscreen window can come
+//! out black with window capture).
 
 mod gsi;
 
@@ -207,7 +207,7 @@ impl GameIntegration for Cs2Integration {
         &["cs2.exe"]
     }
     fn capture(&self) -> CaptureTarget {
-        CaptureTarget { exe: "cs2.exe".into(), window: "Counter-Strike 2:SDL_app:cs2.exe".into(), display_capture_only: true }
+        CaptureTarget { exe: "cs2.exe".into(), display_capture_only: true }
     }
     fn supports_events(&self) -> bool {
         true
