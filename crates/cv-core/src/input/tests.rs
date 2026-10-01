@@ -199,11 +199,16 @@ fn gaps_break_the_trail_and_payload_layout() {
     let b = ui_payload(&an, Some(&h), 250);
     assert_eq!(&b[..4], b"CVIV");
     let rd = |i: usize| u32::from_le_bytes(b[i..i + 4].try_into().unwrap());
-    let (nm, nc, nk, ng, nw, hw, hh, rate) = (rd(8), rd(12), rd(16), rd(20), rd(24), rd(28), rd(32), rd(36));
+    assert_eq!(rd(4), 2, "version");
+    let (nm, nc, nk, ng, nw, hw, hh, rate, nb) = (rd(8), rd(12), rd(16), rd(20), rd(24), rd(28), rd(32), rd(36), rd(40));
     assert_eq!((nm as usize, nc as usize, nk as usize, nw, hw, hh, rate), (an.moves.len(), an.clicks.len(), an.keys.len(), 1, 8, 4, 250));
     assert_eq!(ng, 2, "before focus, and 9.0-9.5");
+    assert_eq!(nb as usize, an.moves.iter().filter(|m| m.brk).count());
     let pad = |n: usize| (n + 3) / 4 * 4;
-    let len = 40 + nm as usize * 12 + pad(nm as usize) + nc as usize * 12 + pad(nc as usize) + nk as usize * 4 + pad(nk as usize * 2) + ng as usize * 8 + nw as usize * 28 + (hw * hh) as usize * 4;
+    // First sample's x (0.2 + 0) in i16 units.
+    let x0 = i16::from_le_bytes(b[44 + nm as usize * 4..44 + nm as usize * 4 + 2].try_into().unwrap());
+    assert_eq!(x0, (0.2 * POS_SCALE).round() as i16);
+    let len = 44 + nm as usize * 4 + pad(nm as usize * 4) + nb as usize * 4 + nc as usize * 12 + pad(nc as usize) + nk as usize * 4 + pad(nk as usize * 2) + ng as usize * 8 + nw as usize * 28 + (hw * hh) as usize * 4;
     assert_eq!(b.len(), len);
 }
 

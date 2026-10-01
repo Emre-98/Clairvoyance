@@ -362,15 +362,19 @@ pub fn heatmap(an: &Analysis, a: f64, b: f64, w: u32, h: u32) -> super::Heatmap 
 /// arrays (times = video seconds as f32, positions 0..1 of the game's client area).
 ///
 /// ```text
-/// "CVIV" u32 version
-/// u32 moves, clicks, keys, gaps, windows, heat_w, heat_h, rate
-/// moves:   t[f32] x[f32] y[f32] brk[u8, padded to 4]
+/// "CVIV" u32 version (2)
+/// u32 moves, clicks, keys, gaps, windows, heat_w, heat_h, rate, breaks
+/// moves:   t[f32] x[i16] y[i16] (1/16384 of the client size, padded to 4) breaks[u32]
+///          (indices of samples that start a new stroke)
 /// clicks:  t[f32] x[f32] y[f32] code[u8: button | 0x80 if down, padded]
 /// keys:    t[f32] code[u16: vk | 0x8000 if down, padded]
 /// gaps:    start[f32] end[f32]           (not focused)
 /// windows: t[f32] ox oy sx sy fw fh[f32] (client inside the captured frame, frame size px)
 /// heat:    [f32; w*h]
 /// ```
+/// Position scale of the overlay data (i16 units per client width/height).
+pub const POS_SCALE: f64 = 16384.0;
+
 pub fn ui_payload(an: &Analysis, heat: Option<&super::Heatmap>, rate: u32) -> Vec<u8> {
     let mut gaps = Vec::new();
     let mut prev = 0.0;
@@ -395,22 +399,28 @@ pub fn ui_payload(an: &Analysis, heat: Option<&super::Heatmap>, rate: u32) -> Ve
         }
     };
     b.extend_from_slice(b"CVIV");
-    u32le(&mut b, 1);
+    let breaks: Vec<u32> = an.moves.iter().enumerate().filter(|(_, m)| m.brk).map(|(i, _)| i as u32).collect();
+    u32le(&mut b, 2);
     for v in [n, an.clicks.len(), an.keys.len(), gaps.len(), an.windows.len(), heat.w as usize, heat.h as usize] {
         u32le(&mut b, v as u32);
     }
     u32le(&mut b, rate);
+    u32le(&mut b, breaks.len() as u32);
     for m in &an.moves {
         f32le(&mut b, m.t);
     }
+    // Positions in 1/16384 of the client area (−2..2: the cursor can be just outside it).
+    let q = |v: f32| ((v as f64 * POS_SCALE).round().clamp(-32768.0, 32767.0) as i16).to_le_bytes();
     for m in &an.moves {
-        f32le(&mut b, m.x as f64);
+        b.extend_from_slice(&q(m.x));
     }
     for m in &an.moves {
-        f32le(&mut b, m.y as f64);
+        b.extend_from_slice(&q(m.y));
     }
-    b.extend(an.moves.iter().map(|m| m.brk as u8));
     pad(&mut b);
+    for i in &breaks {
+        u32le(&mut b, *i);
+    }
     for c in &an.clicks {
         f32le(&mut b, c.t);
     }

@@ -86,8 +86,9 @@ export function parse(buf: ArrayBuffer): InputData {
   const magic = String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3));
   if (magic !== "CVIV") throw new Error("not input overlay data");
   const u = (i: number) => dv.getUint32(i, true);
-  const [nm, nc, nk, ng, nw, hw, hh, rate] = [u(8), u(12), u(16), u(20), u(24), u(28), u(32), u(36)];
-  let o = 40;
+  if (u(4) !== 2) throw new Error("input overlay data: unknown version");
+  const [nm, nc, nk, ng, nw, hw, hh, rate, nb] = [u(8), u(12), u(16), u(20), u(24), u(28), u(32), u(36), u(40)];
+  let o = 44;
   const pad = (n: number) => (n + 3) & ~3;
   const f32 = (n: number) => {
     const a = new Float32Array(buf, o, n);
@@ -99,7 +100,21 @@ export function parse(buf: ArrayBuffer): InputData {
     o += pad(n);
     return a;
   };
-  const mt = f32(nm), mx = f32(nm), my = f32(nm), mb = u8(nm);
+  const mt = f32(nm);
+  // Positions arrive as i16 (1/16384 of the client size): half the bytes of f32.
+  const q = (n: number) => {
+    const a = new Int16Array(buf, o, n);
+    o += n * 2;
+    const f = new Float32Array(n);
+    for (let i = 0; i < n; i++) f[i] = a[i] * (1 / 16384);
+    return f;
+  };
+  const mx = q(nm), my = q(nm);
+  o = (o + 3) & ~3;
+  const mb = new Uint8Array(nm);
+  const br = new Uint32Array(buf, o, nb);
+  o += nb * 4;
+  for (const i of br) if (i < nm) mb[i] = 1;
   const ct = f32(nc), cx = f32(nc), cy = f32(nc), cc = u8(nc);
   const kt = f32(nk);
   const kc = new Uint16Array(buf, o, nk);
@@ -472,21 +487,24 @@ export function synthetic(dur = 120, rate = 250): ArrayBuffer {
     keys.push([s + 0.42, vk]);
   }
   const pad = (k: number) => (k + 3) & ~3;
-  const size = 40 + n * 12 + pad(n) + clicks.length * 12 + pad(clicks.length) + keys.length * 4 + pad(keys.length * 2) + 0 + 7 * 4;
+  const size = 44 + n * 4 + pad(n * 4) + 4 + clicks.length * 12 + pad(clicks.length) + keys.length * 4 + pad(keys.length * 2) + 0 + 7 * 4;
   const buf = new ArrayBuffer(size);
   const dv = new DataView(buf);
   [0x43, 0x56, 0x49, 0x56].forEach((c, i) => dv.setUint8(i, c));
-  [1, n, clicks.length, keys.length, 0, 1, 0, 0, rate].forEach((v, i) => dv.setUint32(4 + i * 4, v, true));
-  let o = 40;
+  [2, n, clicks.length, keys.length, 0, 1, 0, 0, rate, 1].forEach((v, i) => dv.setUint32(4 + i * 4, v, true));
+  let o = 44;
   const f = (v: number) => {
     dv.setFloat32(o, v, true);
     o += 4;
   };
   for (let i = 0; i < n; i++) f(i / rate);
-  for (let i = 0; i < n; i++) f(pos(i / rate)[0]);
-  for (let i = 0; i < n; i++) f(pos(i / rate)[1]);
-  dv.setUint8(o, 1);
-  o += pad(n);
+  for (let i = 0; i < n; i++) dv.setInt16(o + i * 2, Math.round(pos(i / rate)[0] * 16384), true);
+  o += n * 2;
+  for (let i = 0; i < n; i++) dv.setInt16(o + i * 2, Math.round(pos(i / rate)[1] * 16384), true);
+  o += n * 2;
+  o = (o + 3) & ~3;
+  dv.setUint32(o, 0, true); // one stroke break: the first sample
+  o += 4;
   for (const c of clicks) f(c[0]);
   for (const c of clicks) f(c[1]);
   for (const c of clicks) f(c[2]);

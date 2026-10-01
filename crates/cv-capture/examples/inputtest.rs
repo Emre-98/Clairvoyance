@@ -171,6 +171,106 @@ mod win {
         }
     }
 
+    /// `--micro`: cost of each candidate Windows call while the mouse moves (SendInput at
+    /// 500 Hz from another thread), called 250 times a second from a per-monitor-aware thread.
+    fn micro() {
+        use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
+        use windows::Win32::UI::Input::{GetRawInputBuffer, GetRawInputData, RegisterRawInputDevices, HRAWINPUT, RAWINPUT, RAWINPUTDEVICE, RAWINPUTHEADER, RIDEV_INPUTSINK, RID_INPUT};
+        unsafe {
+            let _ = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        }
+        let tsc = || unsafe { core::arch::x86_64::_rdtsc() };
+        let (t0, q0) = (tsc(), qpc_hns());
+        std::thread::sleep(Duration::from_millis(200));
+        let hz = (tsc() - t0) as f64 / ((qpc_hns() - q0) as f64 / 1e7);
+        let us = |c: u64| c as f64 / hz * 1e6;
+        // The mouse driver: circles in the middle of the screen at 500 Hz.
+        let stop = Arc::new(AtomicBool::new(false));
+        let st = stop.clone();
+        let drv = std::thread::spawn(move || {
+            unsafe {
+                let _ = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+            }
+            let (cx, cy) = unsafe { (GetSystemMetrics(SM_CXSCREEN) / 2, GetSystemMetrics(SM_CYSCREEN) / 2) };
+            let t0 = Instant::now();
+            let mut k = 0u64;
+            while !st.load(Ordering::Relaxed) {
+                let t = t0.elapsed().as_secs_f64();
+                send_mouse(MOUSE_EVENT_FLAGS(0), cx + (300.0 * t.cos()) as i32, cy + (200.0 * t.sin()) as i32, 0);
+                k += 1;
+                wait_until(t0, k as f64 / 500.0);
+            }
+        });
+        // Raw Input on a message-only window of this thread.
+        let hwnd = unsafe {
+            let hinst = GetModuleHandleW(None).unwrap();
+            let class = w!("CvMicroRaw");
+            let wc = WNDCLASSW { lpfnWndProc: Some(wndproc), hInstance: hinst.into(), lpszClassName: class, ..Default::default() };
+            RegisterClassW(&wc);
+            CreateWindowExW(WINDOW_EX_STYLE(0), class, w!(""), WINDOW_STYLE(0), 0, 0, 0, 0, Some(HWND_MESSAGE), None, Some(hinst.into()), None).unwrap()
+        };
+        let reg = |on: bool| unsafe {
+            let dev = RAWINPUTDEVICE { usUsagePage: 1, usUsage: 2, dwFlags: if on { RIDEV_INPUTSINK } else { windows::Win32::UI::Input::RIDEV_REMOVE }, hwndTarget: if on { hwnd } else { HWND::default() } };
+            let _ = RegisterRawInputDevices(&[dev], std::mem::size_of::<RAWINPUTDEVICE>() as u32);
+        };
+        let hdr = std::mem::size_of::<RAWINPUTHEADER>() as u32;
+        let mut buf = vec![0u64; 2048];
+        let mut report = Vec::new();
+        let mut run = |name: &str, f: &mut dyn FnMut() -> u64| {
+            let t0 = Instant::now();
+            let (mut cyc, mut n, mut msgs) = (0u64, 0u64, 0u64);
+            while t0.elapsed() < Duration::from_secs(4) {
+                std::thread::sleep(Duration::from_millis(4));
+                let a = tsc();
+                msgs += f();
+                cyc += tsc() - a;
+                n += 1;
+            }
+            let line = format!("{name}: {:.2} us per call ({n} calls{})", us(cyc) / n as f64, if msgs > 0 { format!(", {msgs} messages, {:.2} us per message", us(cyc) / msgs as f64) } else { String::new() });
+            println!("MICRO {line}");
+            report.push(line);
+        };
+        let mut p = POINT::default();
+        run("GetCursorPos", &mut || unsafe { let _ = GetCursorPos(&mut p); 0 });
+        run("GetPhysicalCursorPos", &mut || unsafe { let _ = GetPhysicalCursorPos(&mut p); 0 });
+        run("GetForegroundWindow", &mut || unsafe { std::hint::black_box(GetForegroundWindow()); 0 });
+        run("GetAsyncKeyState x5 (L R M X1 X2)", &mut || unsafe {
+            for vk in [1, 2, 4, 5, 6] {
+                std::hint::black_box(GetAsyncKeyState(vk));
+            }
+            0
+        });
+        reg(true);
+        std::thread::sleep(Duration::from_millis(100));
+        run("GetRawInputBuffer (mouse registered)", &mut || unsafe {
+            let mut total = 0u64;
+            loop {
+                let mut cb = (buf.len() * 8) as u32;
+                let n = GetRawInputBuffer(Some(buf.as_mut_ptr() as *mut RAWINPUT), &mut cb, hdr);
+                if n == 0 || n == u32::MAX {
+                    break;
+                }
+                total += n as u64;
+            }
+            total
+        });
+        run("PeekMessage + GetRawInputData (mouse registered)", &mut || unsafe {
+            let mut msg = MSG::default();
+            let mut total = 0;
+            while PeekMessageW(&mut msg, Some(hwnd), WM_INPUT, WM_INPUT, PM_REMOVE).as_bool() {
+                let mut ri = RAWINPUT::default();
+                let mut size = std::mem::size_of::<RAWINPUT>() as u32;
+                GetRawInputData(HRAWINPUT(msg.lParam.0 as *mut _), RID_INPUT, Some(&mut ri as *mut _ as *mut _), &mut size, hdr);
+                total += 1;
+            }
+            total
+        });
+        run("GetCursorPos (mouse registered)", &mut || unsafe { let _ = GetCursorPos(&mut p); 0 });
+        reg(false);
+        stop.store(true, Ordering::Relaxed);
+        let _ = drv.join();
+    }
+
     pub fn main() {
         let argv: Vec<String> = std::env::args().collect();
         if let Some(i) = argv.iter().position(|a| a == "--other") {
@@ -178,6 +278,10 @@ mod win {
             if v.len() == 5 {
                 other_window_process(&v);
             }
+            return;
+        }
+        if argv.iter().any(|a| a == "--micro") {
+            micro();
             return;
         }
         let idle = argv.iter().any(|a| a == "--idle");
@@ -472,7 +576,7 @@ mod win {
             format!("{matched}/{} matched, time error median {:.2} ms, max {:.2} ms (tick {:.1} ms; target 1 frame = 16.7 ms)", expected.len(), pct(&btn_err, 0.5), pct(&btn_err, 1.0), 1000.0 / rate as f64),
         );
         let wheel = f.records.iter().filter(|r| matches!(r, Record::Wheel { delta: -120, .. })).count();
-        check("wheel", wheel == 1, format!("{wheel} wheel record(s)"));
+        check("wheel not recorded (no mouse Raw Input, by design)", wheel == 0, format!("{wheel} wheel record(s)"));
         // Focus gap.
         let gap = an.focus.windows(2).map(|w| (w[0].1, w[1].0)).find(|g| g.1 - g.0 > 0.3);
         let (fl0, fl1) = (us(truth.focus_lost.0) as f64 / 1e6, us(truth.focus_lost.1) as f64 / 1e6);

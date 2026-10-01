@@ -1,17 +1,20 @@
-//! Cursor and mouse recording for the replay's input overlay. Nothing here touches the game:
-//! no hooks (never `SetWindowsHookEx`), no injection, no game memory. It reads what Windows
-//! offers every program:
+//! Cursor and mouse-button recording for the replay's input overlay. Nothing here touches the
+//! game: no hooks (never `SetWindowsHookEx`), no injection, no game memory. One below-normal-
+//! priority thread reads what Windows offers every program:
 //!
-//! - the cursor position (`GetCursorPos`) polled at the chosen rate (125 / 250 / 500 Hz) by one
-//!   below-normal-priority thread, woken by a high-resolution waitable timer (no change to the
-//!   system timer resolution); a sample is stored only when the cursor moved;
-//! - mouse buttons and the wheel through **Raw Input** (`RIDEV_INPUTSINK`, a copy of the input,
-//!   it can't delay or block anything). The same thread reads them in batches on each tick with
-//!   `GetRawInputBuffer`, instead of waking for every mouse report (a 1000-8000 Hz mouse would
-//!   otherwise wake it thousands of times a second). Button times are the middle of the tick in
-//!   which they arrived (within half a tick: 2 ms at 250 Hz);
-//! - the game window's client area, frame and DPI (checked every 100 ms) and whether it's the
-//!   foreground window (every tick). Nothing is recorded while it isn't focused.
+//! - the cursor position (`GetCursorPos`) at the chosen rate (125 / 250 / 500 Hz) while the
+//!   cursor moves, woken by a high-resolution periodic waitable timer (no change to the system
+//!   timer resolution); a sample is stored only when the cursor moved. When the mouse rests for
+//!   250 ms it drops to a 30 Hz check of `GetLastInputInfo` until something moves again;
+//! - the mouse buttons (L R M X1 X2) with `GetAsyncKeyState` on the same tick (the physical
+//!   button state, plus the "pressed since the last call" bit so a click shorter than a tick
+//!   isn't missed). A button's time is the middle of the tick it changed in.
+//!   Measured on the owner's PC (2026-10-01): reading the mouse through Raw Input
+//!   (`RIDEV_INPUTSINK`) costs 7.7 µs per mouse report, i.e. ~0.8 % of a core with a 1000 Hz
+//!   mouse in motion, because every movement report must be read; the five button states cost
+//!   0.46 µs per tick. So mouse Raw Input isn't used (the wheel isn't recorded);
+//! - the game window's client area, frame and DPI (every 500 ms, and when it gets the focus back)
+//!   and whether it's the foreground window (every tick). Nothing is recorded while it isn't.
 //!
 //! The thread is DPI-aware per monitor (v2), so every position is in physical pixels whatever the
 //! scaling (100 %, 150 %...) and whatever the game's own DPI awareness.
@@ -23,25 +26,16 @@ use cv_core::input::{to_client_units, CaptureRequest, CaptureStats, Record, Rect
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
-use windows::core::w;
 use windows::Win32::Foundation::{CloseHandle, FILETIME, HANDLE, HWND, POINT, RECT, WAIT_OBJECT_0};
 use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
 use windows::Win32::Graphics::Gdi::ClientToScreen;
-use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::{
     CreateWaitableTimerExW, GetCurrentThread, GetThreadTimes, SetThreadPriority, SetWaitableTimer, WaitForSingleObject, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
     THREAD_PRIORITY_BELOW_NORMAL, TIMER_ALL_ACCESS,
 };
 use windows::Win32::UI::HiDpi::{GetDpiForWindow, SetThreadDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
-use windows::Win32::UI::Input::{
-    GetRawInputBuffer, GetRawInputData, RegisterRawInputDevices, HRAWINPUT, RAWINPUT, RAWINPUTDEVICE, RAWINPUTHEADER, RIDEV_INPUTSINK, RIDEV_REMOVE, RID_INPUT,
-    RIM_TYPEMOUSE,
-};
-use windows::Win32::UI::WindowsAndMessaging::{
-    MsgWaitForMultipleObjectsEx, MWMO_INPUTAVAILABLE, QS_RAWINPUT,
-    CreateWindowExW, DefWindowProcW, DestroyWindow, GetClientRect, GetCursorPos, GetForegroundWindow, GetWindowThreadProcessId, IsWindow, PeekMessageW,
-    RegisterClassW, HWND_MESSAGE, MSG, PM_REMOVE, WINDOW_EX_STYLE, WINDOW_STYLE, WM_INPUT, WNDCLASSW,
-};
+use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, GetLastInputInfo, LASTINPUTINFO};
+use windows::Win32::UI::WindowsAndMessaging::{GetClientRect, GetCursorPos, GetForegroundWindow, GetWindowThreadProcessId, IsWindow};
 
 /// A running capture; [`InputCapture::stop`] ends it and returns what it cost.
 pub struct InputCapture {
@@ -115,121 +109,6 @@ pub fn window_info(hwnd: HWND) -> Option<WindowInfo> {
     }
 }
 
-unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: windows::Win32::Foundation::WPARAM, lp: windows::Win32::Foundation::LPARAM) -> windows::Win32::Foundation::LRESULT {
-    unsafe { DefWindowProcW(hwnd, msg, wp, lp) }
-}
-
-struct Mouse {
-    hwnd: HWND,
-    buf: Vec<u64>,
-    msgs: u64,
-    leftover: u64,
-}
-
-impl Mouse {
-    fn register() -> Option<Mouse> {
-        unsafe {
-            let hinst = GetModuleHandleW(None).ok()?;
-            let class = w!("ClairvoyanceInputCapture");
-            let wc = WNDCLASSW { lpfnWndProc: Some(wndproc), hInstance: hinst.into(), lpszClassName: class, ..Default::default() };
-            RegisterClassW(&wc);
-            let hwnd = CreateWindowExW(WINDOW_EX_STYLE(0), class, w!(""), WINDOW_STYLE(0), 0, 0, 0, 0, Some(HWND_MESSAGE), None, Some(hinst.into()), None).ok()?;
-            let dev = RAWINPUTDEVICE { usUsagePage: 0x01, usUsage: 0x02, dwFlags: RIDEV_INPUTSINK, hwndTarget: hwnd };
-            if let Err(e) = RegisterRawInputDevices(&[dev], std::mem::size_of::<RAWINPUTDEVICE>() as u32) {
-                log::warn!("input capture: raw mouse input: {e}");
-                let _ = DestroyWindow(hwnd);
-                return None;
-            }
-            Some(Mouse { hwnd, buf: vec![0u64; 2048], msgs: 0, leftover: 0 })
-        }
-    }
-
-    /// Reads every pending mouse report: (button, down) changes and wheel deltas.
-    fn drain(&mut self, out: &mut Vec<MouseEv>) {
-        let hdr = std::mem::size_of::<RAWINPUTHEADER>() as u32;
-        unsafe {
-            loop {
-                let mut cb = (self.buf.len() * 8) as u32;
-                let n = GetRawInputBuffer(Some(self.buf.as_mut_ptr() as *mut RAWINPUT), &mut cb, hdr);
-                if n == 0 || n == u32::MAX {
-                    break;
-                }
-                let full = (n as usize) * 48 > self.buf.len() * 8 / 2;
-                let mut p = self.buf.as_ptr() as *const u8;
-                for _ in 0..n {
-                    let ri = &*(p as *const RAWINPUT);
-                    handle(ri, out);
-                    self.msgs += 1;
-                    // NEXTRAWINPUTBLOCK: 8-byte aligned on 64-bit.
-                    let next = p as usize + ri.header.dwSize as usize;
-                    p = ((next + 7) & !7) as *const u8;
-                }
-                // Only ask again when the buffer may have been too small for everything.
-                if !full {
-                    break;
-                }
-            }
-        }
-    }
-
-    /// WM_INPUT messages GetRawInputBuffer didn't take (keeps the queue empty either way).
-    fn sweep(&mut self, out: &mut Vec<MouseEv>) {
-        let hdr = std::mem::size_of::<RAWINPUTHEADER>() as u32;
-        unsafe {
-            let mut msg = MSG::default();
-            while PeekMessageW(&mut msg, Some(self.hwnd), WM_INPUT, WM_INPUT, PM_REMOVE).as_bool() {
-                let mut ri = RAWINPUT::default();
-                let mut size = std::mem::size_of::<RAWINPUT>() as u32;
-                let r = GetRawInputData(HRAWINPUT(msg.lParam.0 as *mut _), RID_INPUT, Some(&mut ri as *mut _ as *mut _), &mut size, hdr);
-                if r != u32::MAX && r != 0 {
-                    handle(&ri, out);
-                    self.msgs += 1;
-                    self.leftover += 1;
-                }
-            }
-        }
-    }
-}
-
-impl Drop for Mouse {
-    fn drop(&mut self) {
-        unsafe {
-            let dev = RAWINPUTDEVICE { usUsagePage: 0x01, usUsage: 0x02, dwFlags: RIDEV_REMOVE, hwndTarget: HWND::default() };
-            let _ = RegisterRawInputDevices(&[dev], std::mem::size_of::<RAWINPUTDEVICE>() as u32);
-            let _ = DestroyWindow(self.hwnd);
-        }
-    }
-}
-
-enum MouseEv {
-    Button(u8, bool),
-    Wheel(i32),
-}
-
-fn handle(ri: &RAWINPUT, out: &mut Vec<MouseEv>) {
-    if ri.header.dwType != RIM_TYPEMOUSE.0 {
-        return;
-    }
-    let (flags, data) = unsafe {
-        let m = ri.data.mouse;
-        (m.Anonymous.Anonymous.usButtonFlags, m.Anonymous.Anonymous.usButtonData)
-    };
-    if flags == 0 {
-        return; // movement only
-    }
-    for (down, up, b) in [(0x1, 0x2, BTN_LEFT), (0x4, 0x8, BTN_RIGHT), (0x10, 0x20, BTN_MIDDLE), (0x40, 0x80, BTN_X1), (0x100, 0x200, BTN_X2)] {
-        if flags & down != 0 {
-            out.push(MouseEv::Button(b, true));
-        }
-        if flags & up != 0 {
-            out.push(MouseEv::Button(b, false));
-        }
-    }
-    if flags & 0x400 != 0 {
-        out.push(MouseEv::Wheel(data as i16 as i32));
-    }
-}
-
 struct Timer(HANDLE, bool);
 
 impl Timer {
@@ -270,10 +149,45 @@ fn pid_of(h: HWND) -> u32 {
     pid
 }
 
+/// Mouse buttons from the asynchronous key state (physical buttons, like Raw Input).
+struct Buttons {
+    down: [bool; 5],
+}
+
+const BUTTON_VK: [(i32, u8); 5] = [(0x01, BTN_LEFT), (0x02, BTN_RIGHT), (0x04, BTN_MIDDLE), (0x05, BTN_X1), (0x06, BTN_X2)];
+
+impl Buttons {
+    fn new() -> Buttons {
+        let mut b = Buttons { down: [false; 5] };
+        // Current state, and clear the "pressed since" bits.
+        for (i, (vk, _)) in BUTTON_VK.iter().enumerate() {
+            b.down[i] = unsafe { GetAsyncKeyState(*vk) } as u16 & 0x8000 != 0;
+        }
+        b
+    }
+    /// Changes since the last call: (button, down).
+    fn poll(&mut self, out: &mut Vec<(u8, bool)>) {
+        for (i, (vk, b)) in BUTTON_VK.iter().enumerate() {
+            let s = unsafe { GetAsyncKeyState(*vk) } as u16;
+            let now = s & 0x8000 != 0;
+            let pressed_since = s & 1 != 0;
+            let was = self.down[i];
+            if now != was {
+                out.push((*b, now));
+            } else if !now && pressed_since {
+                // Pressed and released between two ticks.
+                out.push((*b, true));
+                out.push((*b, false));
+            }
+            self.down[i] = now;
+        }
+    }
+}
+
 /// Per-section time (TSC cycles) inside the loop, for the cost report.
 #[derive(Default)]
 struct Sections {
-    drain: u64,
+    buttons: u64,
     focus: u64,
     cursor: u64,
     window: u64,
@@ -289,14 +203,14 @@ fn run(req: CaptureRequest, stop: Arc<AtomicBool>) -> CaptureStats {
     let rate = w.rate().clamp(60, 1000);
     // Whole milliseconds (the periodic timer's unit): 125 Hz = 8 ms, 250 Hz = 4 ms, 500 Hz = 2 ms.
     let period_ms = (1000 / rate as i32).max(1);
-    let Some(timer) = Timer::new().filter(|t| t.start(period_ms)) else {
+    let (Some(fast), Some(slow)) = (Timer::new().filter(|t| t.start(period_ms)), Timer::new().filter(|t| t.start(33))) else {
         log::warn!("input capture: no timer");
         return CaptureStats::default();
     };
-    if !timer.1 {
+    if !fast.1 {
         log::warn!("input capture: high-resolution timer not available (Windows older than 10 1803); ~64 Hz");
     }
-    let mut mouse = Mouse::register();
+    let mut buttons = Buttons::new();
     let cpu0 = thread_cpu_ms();
     let cyc0 = thread_cycles();
     let (tsc0, qpc0) = (tsc(), qpc_hns());
@@ -310,50 +224,28 @@ fn run(req: CaptureRequest, stop: Arc<AtomicBool>) -> CaptureStats {
     let mut last_pt: Option<(i32, i32)> = None;
     let mut next_find = 0i64;
     let mut next_rect = 0i64;
-    let mut next_sweep = 0i64;
     let mut prev_t = w.video_us(qpc_hns());
-    // Active = the mouse moved recently: sample at the chosen rate. Otherwise the thread sleeps
-    // until Raw Input says the mouse moved (or 100 ms pass, for focus and window checks).
+    // Active = the cursor moved (or a button changed) in the last 250 ms: full rate. Otherwise
+    // 30 Hz in the game (and only GetLastInputInfo unless something happened), 10 Hz outside it.
     let mut quiet_until = 0i64;
-    let mut evs = Vec::with_capacity(64);
-    log::info!("input capture: {rate} Hz, raw mouse {}", if mouse.is_some() { "on" } else { "off" });
+    let mut changes: Vec<(u8, bool)> = Vec::with_capacity(16);
+    let mut last_input = 0u32;
+    log::info!("input capture: {rate} Hz (cursor + buttons, no hooks, no mouse Raw Input)");
     while !stop.load(Ordering::Relaxed) {
         let now0 = qpc_hns();
-        let active = focused && now0 < quiet_until;
-        let mut woke_by_input = false;
-        if active {
-            timer.wait();
+        if focused && now0 < quiet_until {
+            fast.wait();
             st.active_ticks += 1;
-        } else if focused && mouse.is_some() {
-            // Mouse idle in the game: wake on the next raw mouse report.
-            woke_by_input = unsafe { MsgWaitForMultipleObjectsEx(None, 100, QS_RAWINPUT, MWMO_INPUTAVAILABLE) } == WAIT_OBJECT_0;
+        } else if focused {
+            slow.wait(); // 30 Hz
             st.idle_wakes += 1;
         } else {
-            // Not in the game window (or no Raw Input): look every 100 ms.
             std::thread::sleep(std::time::Duration::from_millis(100));
             st.idle_wakes += 1;
         }
         st.ticks += 1;
         let now = qpc_hns();
         let t = w.video_us(now);
-
-        let c0 = tsc();
-        evs.clear();
-        let before = mouse.as_ref().map(|m| m.msgs).unwrap_or(0);
-        if let Some(m) = mouse.as_mut() {
-            m.drain(&mut evs);
-            // Messages left after GetRawInputBuffer: swept once a second.
-            if now >= next_sweep || (woke_by_input && m.msgs == before) {
-                next_sweep = now + 10_000_000;
-                m.sweep(&mut evs);
-            }
-        }
-        let got_input = mouse.as_ref().map(|m| m.msgs).unwrap_or(0) > before;
-        if got_input {
-            quiet_until = now + 2_500_000; // stay active 250 ms after the last mouse report
-        }
-        let c1 = tsc();
-        sec.drain += c1 - c0;
 
         // The game window: looked up every 2 s until found; its rect/DPI every 500 ms.
         if game.is_none() && now >= next_find {
@@ -398,38 +290,47 @@ fn run(req: CaptureRequest, stop: Arc<AtomicBool>) -> CaptureStats {
         }
         let c4 = tsc();
         sec.focus += c4 - c3;
-        if focused {
-            // Buttons/wheel that arrived since the last tick: the middle of the interval.
-            let tb = (prev_t + t) / 2;
-            for e in evs.drain(..) {
-                match e {
-                    MouseEv::Button(button, down) => {
-                        st.buttons += down as u64;
-                        w.push(Record::Button { t: tb, button, down });
-                    }
-                    MouseEv::Wheel(delta) => w.push(Record::Wheel { t: tb, delta }),
-                }
-            }
-            let mut p = POINT::default();
-            if unsafe { GetCursorPos(&mut p) }.is_ok() && last_pt != Some((p.x, p.y)) {
-                last_pt = Some((p.x, p.y));
-                let (x, y) = to_client_units(p.x, p.y, info.unwrap().client);
-                w.push(Record::Cursor { t, x, y });
-                st.cursor_samples += 1;
-                quiet_until = quiet_until.max(now + 2_500_000);
+        if !focused {
+            prev_t = t;
+            continue;
+        }
+        if now >= quiet_until {
+            // Resting: only look at the mouse when Windows saw any input since the last check.
+            let mut li = LASTINPUTINFO { cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32, dwTime: 0 };
+            let input = unsafe { GetLastInputInfo(&mut li) }.as_bool() && li.dwTime != last_input;
+            last_input = li.dwTime;
+            if !input {
+                prev_t = t;
+                continue;
             }
         }
+        changes.clear();
+        buttons.poll(&mut changes);
         let c5 = tsc();
-        sec.cursor += c5 - c4;
+        sec.buttons += c5 - c4;
+        if !changes.is_empty() {
+            // The middle of the interval it happened in.
+            let tb = (prev_t + t) / 2;
+            for &(button, down) in &changes {
+                st.buttons += down as u64;
+                w.push(Record::Button { t: tb, button, down });
+            }
+            quiet_until = now + 2_500_000;
+        }
+        let mut p = POINT::default();
+        if unsafe { GetCursorPos(&mut p) }.is_ok() && last_pt != Some((p.x, p.y)) {
+            last_pt = Some((p.x, p.y));
+            let (x, y) = to_client_units(p.x, p.y, info.unwrap().client);
+            w.push(Record::Cursor { t, x, y });
+            st.cursor_samples += 1;
+            quiet_until = now + 2_500_000;
+        }
+        let c6 = tsc();
+        sec.cursor += c6 - c5;
         w.flush_if_due(t);
-        sec.write += tsc() - c5;
+        sec.write += tsc() - c6;
         prev_t = t;
     }
-    if let Some(m) = &mouse {
-        st.raw_mouse_msgs = m.msgs;
-        st.leftover_msgs = m.leftover;
-    }
-    drop(mouse.take());
     if focused {
         w.push(Record::Focus { t: w.video_us(qpc_hns()), focused: false });
     }
@@ -440,7 +341,7 @@ fn run(req: CaptureRequest, stop: Arc<AtomicBool>) -> CaptureStats {
     let ms = |c: u64| if hz > 0.0 { c as f64 / hz * 1000.0 } else { 0.0 };
     st.cpu_ms = if hz > 0.0 { ms(thread_cycles() - cyc0) } else { st.cpu_ms_sampled };
     st.sections_ms = vec![
-        ("raw input".into(), ms(sec.drain)),
+        ("buttons".into(), ms(sec.buttons)),
         ("foreground".into(), ms(sec.focus)),
         ("cursor".into(), ms(sec.cursor)),
         ("window".into(), ms(sec.window)),
