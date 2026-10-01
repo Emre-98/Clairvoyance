@@ -3,6 +3,16 @@
 Newest first. `scripts/release.ps1` adds a section for each release; the section becomes the
 release notes on GitHub and in the in-app "Update available" card.
 
+## [1.2.0] - 2026-10-01
+
+- Replays open instantly: the first frame shows in about 0.1 s instead of up to 30 s; recordings are finalized for instant playback after each game (older ones too)
+- Marker jumps land in under 0.2 s; markers clicked while the video is still loading are remembered
+- Thumbnail shown while a replay loads; games start loading when you hover them
+- Keyframes every second in new recordings
+- A game interrupted by a crash or power cut keeps its video
+- Settings > Advanced: Save test report; the simulator can play any game mode
+- Clash is grouped with events, not Ranked
+
 ## [1.1.0] - 2026-10-01
 
 - Game modes: choose per League mode (Ranked, Normal, ARAM, Arena, rotating modes, TFT...) whether it's recorded: Record, Clips only or Off (Settings > Game modes).
