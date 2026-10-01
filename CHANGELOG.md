@@ -3,6 +3,14 @@
 Newest first. `scripts/release.ps1` adds a section for each release; the section becomes the
 release notes on GitHub and in the in-app "Update available" card.
 
+## [1.4.0] - 2026-10-02
+
+- Input overlay: press I (or the button under the video) to see your cursor trail, clicks (left blue, right red), the keys you pressed and a cursor heatmap on top of the replay. Options next to the button
+- Mechanics on the game page: APM (and per minute), right-clicks per second, cursor distance, path efficiency and idle time; drag across the APM chart for a part of the game
+- Mouse and keyboard are recorded only while League is focused, never while the chat is open, as key codes (never text), and stay on your PC. Turn it off or change the sample rate in Settings > Games > League
+- An ult bound to a mouse side button is now matched to its press
+- Performance test: a third phase with input recording, and it no longer fails when a game is already being recorded
+
 ## [1.3.0] - 2026-10-01
 
 - Accurate ult tracking: your ult keys are read from League's settings (quick cast, indicator, self-cast), and presses before level 6, while dead, in chat or on cooldown are ignored
