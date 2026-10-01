@@ -374,18 +374,21 @@ impl GameIntegration for LeagueIntegration {
                 label: "Riot ID",
                 kind: "text",
                 help: "Your Riot ID, e.g. Name#EUW. Used as a fallback; the app normally detects you automatically.",
+                options: &[],
             },
             ConfigField {
                 key: "ult_key",
                 label: "Ult key",
                 kind: "key",
                 help: "Leave empty: your ult keys are read from League's own settings (normal, quick and self cast). Set a key only to override them. After the game, casts are confirmed from the recording.",
+                options: &[],
             },
             ConfigField {
                 key: "client_dir",
                 label: "League install folder",
                 kind: "text",
                 help: "Only if game modes aren't detected: the folder with LeagueClient.exe, e.g. C:\\Riot Games\\League of Legends. Found automatically otherwise.",
+                options: &[],
             },
         ]
     }
@@ -625,6 +628,18 @@ impl GameIntegration for LeagueIntegration {
 
     fn take_key_marks(&mut self) -> Vec<cv_core::game::KeyMark> {
         self.ult.take_marks()
+    }
+
+    fn input_tracking(&self) -> bool {
+        true
+    }
+
+    fn chat_open(&self) -> bool {
+        self.ult.chat_open
+    }
+
+    fn mouse_marks(&self, presses: &[(f64, u8)]) -> Vec<cv_core::game::KeyMark> {
+        self.ult.mouse_marks(presses)
     }
 
     fn verify_recording(

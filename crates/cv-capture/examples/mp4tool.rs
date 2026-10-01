@@ -9,6 +9,10 @@
 //!   mp4tool fromes <in.h264> <in.aac> <fps> <w> <h> <out.mp4>
 //!                                                 Annex-B H.264 (with AUDs) + ADTS AAC -> a
 //!                                                 recording written by the recorder's own muxer
+//!   mp4tool fakeinput <session dir> [rate]        a realistic input recording (cursor moving the
+//!                                                 whole game, clicks, keys) for the overlay
+//!                                                 benchmark, compressed + stats, linked in session.json
+//!   mp4tool inputinfo <file.input>               summary of an input recording (no positions)
 //!   mp4tool ultcheck <session dir> [--write] [--offset <s>]
 //!                                                 League ult check of a recorded game (Windows):
 //!                                                 the same code the maintenance pass runs
@@ -34,6 +38,10 @@ fn main() {
             .map_err(|e| e.to_string()),
         Some("benchsession") if a.len() == 6 => bench_session(&a[2], &a[3], &a[4], a[5].parse().unwrap_or(300.0)),
         Some("fromes") if a.len() == 8 => from_es(&a[2], &a[3], a[4].parse().unwrap(), a[5].parse().unwrap(), a[6].parse().unwrap(), &a[7]),
+        Some("fakeinput") if a.len() >= 3 => fake_input(Path::new(&a[2]), a.get(3).and_then(|r| r.parse().ok()).unwrap_or(250)),
+        Some("inputinfo") if a.len() == 3 => cv_core::input::read(Path::new(&a[2]))
+            .map(|f| serde_json::to_string_pretty(&cv_core::input::stats::summarize(&f, std::fs::metadata(&a[2]).map(|m| m.len()).unwrap_or(0))).unwrap())
+            .map_err(|e| e.to_string()),
         Some("ultcheck") if a.len() >= 3 => {
             let offset = a.iter().position(|x| x == "--offset").and_then(|i| a.get(i + 1)).and_then(|x| x.parse().ok());
             ult_check(Path::new(&a[2]), a.iter().any(|x| x == "--write"), offset)
@@ -113,6 +121,81 @@ fn from_es(h264: &str, aac: &str, fps: i64, w: u32, h: u32, out: &str) -> Result
     }
     wr.finish().map_err(|e| e.to_string())?;
     Ok(format!("{n} frames, {k} audio packets"))
+}
+
+/// A worst-case-like input recording for a benchmark game: the cursor moves the whole time at
+/// `rate` Hz (random walk with flicks), ~2.5 right-clicks/s, ~1.5 keys/s, a 4K client area.
+fn fake_input(dir: &Path, rate: u32) -> Result<String, String> {
+    use cv_core::input::{self, stats, Record, Rect, WindowInfo};
+    let mut s = cv_core::session::GameSession::load(dir).map_err(|e| e.to_string())?;
+    let dur = s.video_duration.ok_or("no video duration")?;
+    let mut seed = 0x2545F4914F6CDD1Du64;
+    let mut rnd = move || {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        (seed >> 11) as f64 / (1u64 << 53) as f64
+    };
+    let full = Rect { x: 0, y: 0, w: 3840, h: 2160 };
+    let mut r = vec![Record::Window { t: 0, info: WindowInfo { client: full, frame: full, dpi: 144 } }, Record::Focus { t: 0, focused: true }];
+    let (mut x, mut y, mut vx, mut vy) = (0.5f64, 0.5f64, 0.0f64, 0.0f64);
+    let step = 1_000_000 / rate as i64;
+    let n = (dur * rate as f64) as i64;
+    let keys = [b'Q', b'W', b'E', b'R', b'D', b'F', b'1', b'4', b'B'];
+    for i in 0..n {
+        let t = i * step;
+        if rnd() < 0.01 {
+            vx = (rnd() - 0.5) * 0.04;
+            vy = (rnd() - 0.5) * 0.04;
+        }
+        vx *= 0.97;
+        vy *= 0.97;
+        x = (x + vx + (rnd() - 0.5) * 0.002).clamp(0.02, 0.98);
+        y = (y + vy + (rnd() - 0.5) * 0.002).clamp(0.02, 0.98);
+        r.push(Record::Cursor { t, x: (x * input::UNIT) as i32, y: (y * input::UNIT) as i32 });
+        if rnd() < 2.5 / rate as f64 {
+            r.push(Record::Button { t: t + 100, button: input::BTN_RIGHT, down: true });
+            r.push(Record::Button { t: t + 60_000, button: input::BTN_RIGHT, down: false });
+        }
+        if rnd() < 0.3 / rate as f64 {
+            r.push(Record::Button { t: t + 200, button: input::BTN_LEFT, down: true });
+            r.push(Record::Button { t: t + 70_000, button: input::BTN_LEFT, down: false });
+        }
+        if rnd() < 1.5 / rate as f64 {
+            let k = keys[(rnd() * keys.len() as f64) as usize % keys.len()];
+            r.push(Record::Key { t: t + 300, vk: k, down: true });
+            r.push(Record::Key { t: t + 90_000, vk: k, down: false });
+        }
+    }
+    r.push(Record::End { t: (dur * 1e6) as i64 });
+    let name = format!("{}.input", s.id);
+    let path = dir.join(&name);
+    input::write_file(&path, rate, &input::Meta { game_id: "league".into(), rate, app_version: "bench".into() }, &r).map_err(|e| e.to_string())?;
+    let raw = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+    let t = Instant::now();
+    let f = input::read(&path).map_err(|e| e.to_string())?;
+    let an = stats::Analysis::from_file(&f);
+    let mech = stats::mechanics_whole(&an, s.video_offset);
+    let heat = stats::heatmap(&an, 0.0, an.end, stats::HEAT_W, stats::HEAT_H);
+    let (_, comp) = input::compress_in_place(&path, Some(&heat)).map_err(|e| e.to_string())?;
+    let post_ms = t.elapsed().as_millis();
+    let t = Instant::now();
+    let f2 = input::read(&path).map_err(|e| e.to_string())?;
+    let an2 = stats::Analysis::from_file(&f2);
+    let payload = stats::ui_payload(&an2, f2.heatmap.as_ref(), f2.rate);
+    let load_ms = t.elapsed().as_millis();
+    s.input_file = Some(name);
+    s.mechanics = Some(mech.clone());
+    s.save(dir).map_err(|e| e.to_string())?;
+    Ok(format!(
+        "{:.0} s at {rate} Hz: {} records, raw {:.2} MB, compressed {:.2} MB; stats + heatmap + compress {post_ms} ms; overlay load (read + decode + payload {:.1} MB) {load_ms} ms; APM {:.0}",
+        dur,
+        r.len(),
+        raw as f64 / 1e6,
+        comp as f64 / 1e6,
+        payload.len() as f64 / 1e6,
+        mech.apm
+    ))
 }
 
 fn bench_session(src: &str, dst_dir: &str, video: &str, secs: f64) -> Result<String, String> {

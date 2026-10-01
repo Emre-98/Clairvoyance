@@ -129,6 +129,12 @@ pub struct GameSession {
     /// Result of checking the live events against the recording after the game.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verification: Option<Verification>,
+    /// Mouse and keyboard recording (`<id>.input` in the game folder), for the replay overlay.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_file: Option<String>,
+    /// Mechanics stats from the input recording (computed after the game).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mechanics: Option<crate::input::stats::Mechanics>,
 }
 
 /// Outcome of the post-game check of key-press events against the recording (League: ult
@@ -175,6 +181,8 @@ impl GameSession {
             ended_at: None,
             key_presses: Vec::new(),
             verification: None,
+            input_file: None,
+            mechanics: None,
             video_file: None,
             video_offset: 0.0,
             video_duration: None,

@@ -62,4 +62,9 @@ pub trait Recorder: Send + Sync {
     /// Called after a game so the recorder can restore the user's own setup.
     async fn finish(&self) -> anyhow::Result<()>;
     async fn status(&self) -> RecorderStatus;
+    /// The recording's video clock: QPC (100 ns units) at video time 0, the base its frame
+    /// timestamps use. Input recorded with the same clock lines up with the frames.
+    fn clock_base_hns(&self) -> Option<i64> {
+        None
+    }
 }

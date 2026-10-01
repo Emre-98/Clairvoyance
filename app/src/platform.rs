@@ -13,11 +13,21 @@ pub struct WinPlatform {
     input: crate::input::InputControl,
     /// Game simulator: this process name counts as running while the flag is set.
     fake_process: Mutex<Option<(String, Arc<AtomicBool>)>>,
+    /// Cursor / mouse recording for the replay overlay (during a game).
+    #[cfg(windows)]
+    capture: Mutex<Option<cv_capture::win::input::InputCapture>>,
 }
 
 impl WinPlatform {
     pub fn new(input: crate::input::InputControl) -> Self {
-        Self { tts: Mutex::new(None), perf: Mutex::new(None), input, fake_process: Mutex::new(None) }
+        Self {
+            tts: Mutex::new(None),
+            perf: Mutex::new(None),
+            input,
+            fake_process: Mutex::new(None),
+            #[cfg(windows)]
+            capture: Mutex::new(None),
+        }
     }
 
     pub fn set_fake_process(&self, fake: Option<(String, Arc<AtomicBool>)>) {
@@ -85,6 +95,29 @@ impl Platform for WinPlatform {
 
     fn set_input_enabled(&self, enabled: bool) {
         self.input.set_enabled(enabled);
+    }
+
+    fn start_input_capture(&self, req: cv_core::input::CaptureRequest) {
+        #[cfg(windows)]
+        {
+            let mut g = self.capture.lock().unwrap();
+            if let Some(old) = g.take() {
+                old.stop();
+            }
+            *g = Some(cv_capture::win::input::InputCapture::start(req));
+        }
+        #[cfg(not(windows))]
+        drop(req);
+    }
+
+    fn stop_input_capture(&self) -> Option<cv_core::input::CaptureStats> {
+        #[cfg(windows)]
+        {
+            let c = self.capture.lock().unwrap().take();
+            c.map(|c| c.stop())
+        }
+        #[cfg(not(windows))]
+        None
     }
 }
 

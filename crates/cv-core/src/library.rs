@@ -41,6 +41,9 @@ pub struct SessionSummary {
     pub size_bytes: u64,
     #[serde(default)]
     pub video_bytes: u64,
+    /// Size of the mouse/keyboard recording (replay overlay); 0 = none.
+    #[serde(default)]
+    pub input_bytes: u64,
     pub event_count: usize,
     pub clip_count: usize,
     /// Where in the video a thumbnail should be taken (seconds).
@@ -251,6 +254,7 @@ fn read_entry(dir: &Path, s: &GameSession, thumbs: &ThumbStore) -> Entry {
         video_removed: s.video_removed_at.is_some(),
         size_bytes: dir_size(dir),
         video_bytes,
+        input_bytes: s.input_file.as_ref().and_then(|f| std::fs::metadata(dir.join(f)).ok()).map(|m| m.len()).unwrap_or(0),
         event_count: s.events.len(),
         clip_count: clips.len(),
         thumb_at,
@@ -490,7 +494,7 @@ pub fn plan_cleanup(games: &[SessionSummary], limit_bytes: u64, max_age_days: u3
     let deletable = |g: &SessionSummary| !g.favorite && Some(g.id.as_str()) != protect;
     let step_for = |g: &SessionSummary, reason: String| -> Option<CleanupStep> {
         if g.kept_clips > 0 {
-            (g.video_bytes > 0 && !g.video_removed).then(|| CleanupStep { id: g.id.clone(), action: CleanupAction::DeleteVideo, bytes: g.video_bytes, reason })
+            (g.video_bytes > 0 && !g.video_removed).then(|| CleanupStep { id: g.id.clone(), action: CleanupAction::DeleteVideo, bytes: g.video_bytes + g.input_bytes, reason })
         } else {
             Some(CleanupStep { id: g.id.clone(), action: CleanupAction::DeleteGame, bytes: g.size_bytes, reason })
         }
@@ -585,6 +589,13 @@ pub fn remove_video_keep_clips(dir: &Path) -> anyhow::Result<()> {
             std::fs::remove_file(&p)?;
         }
     }
+    // The input recording only makes sense over the video: it goes too (its stats stay).
+    if let Some(f) = s.input_file.take() {
+        let p = dir.join(&f);
+        if p.exists() {
+            std::fs::remove_file(&p)?;
+        }
+    }
     s.video_removed_at = Some(Local::now());
     s.save(dir)
 }
@@ -600,6 +611,10 @@ mod tests {
         let mut s = GameSession::new(id.into(), "league", "League of Legends", Local::now() - Duration::days(age_days));
         s.favorite = fav;
         s.video_file = Some("v.mp4".into());
+        // Every game also has its input recording (replay overlay).
+        s.input_file = Some(format!("{id}.input"));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(format!("{id}.input")), vec![0u8; 1000]).unwrap();
         if kept_clip {
             std::fs::create_dir_all(dir.join(CLIPS_DIR)).unwrap();
             std::fs::write(dir.join(CLIPS_DIR).join("c.mp4"), vec![0u8; 10]).unwrap();
@@ -662,6 +677,7 @@ mod tests {
         let plan = plan_cleanup(&idx.summaries(), total - 150_000, 0, Local::now(), Some("new"));
         let ids: Vec<_> = plan.steps.iter().map(|s| (s.id.as_str(), s.action)).collect();
         assert_eq!(ids, vec![("old", CleanupAction::DeleteGame), ("keptclip", CleanupAction::DeleteVideo)]);
+        assert_eq!(plan.steps[1].bytes, 101_000, "video + input recording");
         assert!(!plan.still_over);
 
         let done = apply_cleanup(&idx, &plan, || true);
@@ -670,8 +686,12 @@ mod tests {
         assert!(!idx.thumbs().session("old").exists() && !idx.thumbs().clip("old", "c.mp4").exists(), "thumbnails go too");
         assert!(games.join("keptclip").join(CLIPS_DIR).join("c.mp4").exists(), "kept clip survives");
         assert!(!games.join("keptclip").join("v.mp4").exists());
+        assert!(!games.join("keptclip").join("keptclip.input").exists(), "the input recording goes with the video");
+        assert!(games.join("oldfav").join("oldfav.input").exists(), "favorites keep everything");
         idx.refresh(&games);
         assert!(idx.summary("keptclip").unwrap().video_removed);
+        assert_eq!(idx.summary("keptclip").unwrap().input_bytes, 0);
+        assert_eq!(idx.summary("mid").unwrap().input_bytes, 1000);
 
         // Only protected games left and still over: nothing to do, and it says so.
         let plan = plan_cleanup(&idx.summaries(), 10, 0, Local::now(), Some("new"));

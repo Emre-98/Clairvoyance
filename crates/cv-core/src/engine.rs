@@ -32,6 +32,14 @@ pub trait Platform: Send + Sync {
     fn perf_sample(&self) -> Option<(f64, f64)>;
     /// Tells the input layer whether key events are wanted (only during games).
     fn set_input_enabled(&self, _enabled: bool) {}
+    /// Starts recording the cursor, mouse buttons, wheel, window position and focus of the game
+    /// window into `req.writer` (cursor-based games, while a video records). Must not affect the
+    /// game: no hooks, low-priority thread.
+    fn start_input_capture(&self, _req: crate::input::CaptureRequest) {}
+    /// Stops it (waits for the capture thread) and says what it cost.
+    fn stop_input_capture(&self) -> Option<crate::input::CaptureStats> {
+        None
+    }
 }
 
 /// Cuts a clip out of a recording (implemented with ffmpeg in the app).
@@ -50,10 +58,24 @@ pub enum EngineCommand {
     Shutdown,
 }
 
+/// A key going down or up (auto-repeat is filtered out by the input layer).
 #[derive(Debug, Clone)]
 pub struct InputEvent {
-    pub key: KeyPress,
+    /// Named key with modifiers (None for modifiers themselves and unnamed keys).
+    pub key: Option<KeyPress>,
+    /// Windows virtual-key code.
+    pub vk: u16,
+    pub down: bool,
     pub at: Instant,
+    /// QPC timestamp in 100 ns units (the recorder's video clock base is in the same units).
+    pub qpc_hns: i64,
+}
+
+impl InputEvent {
+    /// A key press as older code paths saw it (tests, simulator).
+    pub fn press(key: KeyPress, vk: u16, at: Instant, qpc_hns: i64) -> Self {
+        InputEvent { key: Some(key), vk, down: true, at, qpc_hns }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
@@ -126,6 +148,8 @@ struct Active {
     rule: ModeRule,
     /// Clips-only mode: event clips waiting for their "seconds after".
     pending_clips: Vec<PendingClip>,
+    /// Mouse and keyboard recording (cursor-based games, full recordings only).
+    input: Option<Arc<crate::input::InputWriter>>,
 }
 
 /// An automatic event clip in clips-only mode, saved from the replay buffer once `due`.
@@ -445,6 +469,7 @@ impl Engine {
             last_event: None,
             rule,
             pending_clips: Vec::new(),
+            input: None,
         };
         self.message = None;
         if rule == ModeRule::Off {
@@ -464,6 +489,9 @@ impl Engine {
                 Ok(()) => {
                     active.recording = true;
                     active.rec_started = Some(Instant::now());
+                    if rule == ModeRule::Record {
+                        active.input = self.start_input(idx, &mut active.session, &dir);
+                    }
                 }
                 Err(e) => {
                     let msg = format!("Recording couldn't start: {e:#}");
@@ -478,6 +506,50 @@ impl Engine {
         self.active = Some(active);
         self.emit(EngineEvent::GameStarted { game_name: gname.into() });
         self.emit_status();
+    }
+
+    /// Starts the mouse/keyboard recording for a cursor-based game whose video records, if the
+    /// game's setting allows it. The file is named after the recording and set in the session
+    /// at once, so a crash keeps it linked.
+    fn start_input(&self, idx: usize, session: &mut GameSession, dir: &Path) -> Option<Arc<crate::input::InputWriter>> {
+        let g = &self.games[idx];
+        if !g.input_tracking() {
+            return None;
+        }
+        let mut def = crate::input::default_config();
+        if let (Some(d), Some(o)) = (def.as_object_mut(), g.default_config().as_object()) {
+            for (k, v) in o {
+                d.insert(k.clone(), v.clone());
+            }
+        }
+        let (on, rate) = crate::input::settings_from(&self.settings.game_config(g.id(), def));
+        if !on {
+            log::info!("input recording off for {}", g.name());
+            return None;
+        }
+        let Some(base) = self.recorder.clock_base_hns() else {
+            log::warn!("input recording: the recorder has no video clock");
+            return None;
+        };
+        let name = format!("{}.{}", session.id, crate::input::EXT);
+        let meta = crate::input::Meta { game_id: g.id().into(), rate, app_version: env!("CARGO_PKG_VERSION").into() };
+        match crate::input::InputWriter::create(&dir.join(&name), base, rate, &meta) {
+            Ok(w) => {
+                let w = Arc::new(w);
+                session.input_file = Some(name);
+                let _ = session.save(dir);
+                self.platform.start_input_capture(crate::input::CaptureRequest {
+                    writer: w.clone(),
+                    process_names: g.process_names().iter().map(|p| p.to_lowercase()).collect(),
+                });
+                log::info!("input recording on ({rate} Hz cursor)");
+                Some(w)
+            }
+            Err(e) => {
+                log::warn!("input recording: can't create {name}: {e}");
+                None
+            }
+        }
     }
 
     /// Best estimate of the in-game clock at `at`.
@@ -661,12 +733,36 @@ impl Engine {
 
     async fn handle_input(&mut self, ev: InputEvent) {
         let Some(a) = &self.active else { return };
-        if self.hk_clip.as_ref().is_some_and(|h| h.matches(&ev.key)) {
+        let idx = a.game;
+        let writer = a.input.clone();
+        let chat_before = writer.is_some() && self.games[idx].chat_open();
+        // Hotkeys, game keys (ult): key-downs with a name, exactly as before input recording.
+        if ev.down {
+            if let Some(key) = &ev.key {
+                self.handle_key(key.clone(), ev.at).await;
+            }
+        }
+        // Input recording: every key down/up while the game window is focused, except while
+        // the chat is open (key codes only, never text).
+        let Some(w) = writer else { return };
+        let chat_after = self.games[idx].chat_open();
+        let t = w.video_us(ev.qpc_hns);
+        if chat_after != chat_before {
+            w.push(crate::input::Record::Chat { t, open: chat_after });
+        }
+        if w.is_focused() && !chat_before && !chat_after && ev.vk > 0 && ev.vk < 256 {
+            w.push(crate::input::Record::Key { t, vk: ev.vk as u8, down: ev.down });
+        }
+    }
+
+    async fn handle_key(&mut self, key: KeyPress, at: Instant) {
+        let Some(a) = &self.active else { return };
+        if self.hk_clip.as_ref().is_some_and(|h| h.matches(&key)) {
             self.save_clip().await;
             return;
         }
-        if self.hk_marker.as_ref().is_some_and(|h| h.matches(&ev.key)) {
-            self.add_marker(ev.at);
+        if self.hk_marker.as_ref().is_some_and(|h| h.matches(&key)) {
+            self.add_marker(at);
             return;
         }
         if a.phase != MatchPhase::InProgress {
@@ -679,8 +775,8 @@ impl Engine {
         if !focused {
             return;
         }
-        let gt = self.game_time_at(ev.at);
-        let event = self.games[idx].on_key(&ev.key, gt);
+        let gt = self.game_time_at(at);
+        let event = self.games[idx].on_key(&key, gt);
         let marks = self.games[idx].take_key_marks();
         if let Some(a) = self.active.as_mut() {
             a.session.key_presses.extend(marks);
@@ -805,6 +901,33 @@ impl Engine {
         self.platform.set_input_enabled(false);
         let idx = a.game;
         let short = self.games[idx].short_name();
+        if let Some(w) = a.input.take() {
+            let end_us = match self.recorder.record_elapsed().await {
+                Ok(Some(d)) => d.as_micros() as i64,
+                _ => a.rec_started.map(|r| r.elapsed().as_micros() as i64).unwrap_or(0),
+            };
+            let cost = self.platform.stop_input_capture();
+            let (bytes, n) = w.finish(end_us);
+            match &cost {
+                Some(c) => log::info!(
+                    "input recording: {n} records, {:.0} KB; capture thread {:.0} ms CPU in {:.0} s ({:.3}% of one core), {} cursor samples, {} raw mouse messages",
+                    bytes as f64 / 1024.0,
+                    c.cpu_ms,
+                    c.wall_secs,
+                    c.core_percent(),
+                    c.cursor_samples,
+                    c.raw_mouse_msgs
+                ),
+                None => log::info!("input recording: {n} records, {:.0} KB", bytes as f64 / 1024.0),
+            }
+            // Mouse buttons bound to a tracked game key (League: ult on a side button).
+            let presses: Vec<(f64, u8)> = w.button_downs().into_iter().map(|(t, b)| (t - a.session.video_offset, b)).collect();
+            let marks = self.games[idx].mouse_marks(&presses);
+            if !marks.is_empty() {
+                log::info!("{} mouse presses on tracked binds", marks.len());
+                a.session.key_presses.extend(marks);
+            }
+        }
         if a.recording {
             let elapsed = a.rec_started.map(|r| r.elapsed().as_secs_f64());
             match self.recorder.stop_recording().await {

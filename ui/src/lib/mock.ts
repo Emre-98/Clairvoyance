@@ -1,5 +1,6 @@
 // Fake backend for `npm run dev` in a normal browser (UI work and screenshots only).
 // Never included in the production build.
+import { synthetic } from "./inputoverlay";
 import type { ClipEntry, GameEvent, GameSession, LiveStatus, SessionSummary, Settings } from "./types";
 
 const listeners: Record<string, ((p: any) => void)[]> = {};
@@ -84,6 +85,8 @@ function makeSummary(i: number): SessionSummary {
     event_count: 18 + i,
     clip_count: i % 4,
     thumb_at: 110,
+    // Games 2, 5, 8 were recorded before input tracking.
+    input_bytes: i % 3 === 2 ? 0 : 1.4e6,
   };
 }
 
@@ -162,6 +165,10 @@ function session(id: string): GameSession {
     perf: { samples: 312, cpu_avg: 0.18, cpu_max: 0.9, ram_avg_mb: 41, ram_max_mb: 47 },
     favorite: s.favorite,
     warnings: [],
+    input_file: s.input_bytes ? `${s.id}.input` : null,
+    mechanics: s.input_bytes
+      ? { version: 1, from: 20, to: 150, focused_secs: 128, clicks: 260, right_clicks: 212, key_presses: 141, apm: 188, apm_per_min: [151, 204, 176], right_click_hz: 1.66, cursor_distance: 214, path_efficiency: 0.83, idle_secs: 9.4, cursor_samples: 31000 }
+      : null,
   };
 }
 
@@ -244,8 +251,11 @@ export async function invoke(cmd: string, args: any = {}): Promise<any> {
             config_fields: [
               { key: "riot_id", label: "Riot ID", kind: "text", help: "Your Riot ID, e.g. Name#EUW. Used as a fallback; the app normally detects you automatically." },
               { key: "ult_key", label: "Ult key", kind: "key", help: 'The key you cast your ultimate with. Presses are marked as "Ult pressed" (the game can\'t confirm the cast).' },
+              { key: "record_input", label: "Record mouse & keyboard input", kind: "bool", help: "For the replay's input overlay and the Mechanics stats." },
+              { key: "input_rate", label: "Cursor sample rate", kind: "select", help: "How often the cursor position is read.", options: [["125", "125 Hz"], ["250", "250 Hz (default)"], ["500", "500 Hz"]] },
             ],
-            default_config: { riot_id: "", ult_key: "R" },
+            default_config: { riot_id: "", ult_key: "R", record_input: true, input_rate: "250" },
+            input_tracking: true,
           },
         ],
       };
@@ -311,9 +321,15 @@ export async function invoke(cmd: string, args: any = {}): Promise<any> {
         video_path: "/dev-assets/sample.webm",
         thumb_path: null,
         clips: session(args.id).clips.map((c) => ({ ...c, path: "/dev-assets/sample.webm", exists: true })),
+        input_bytes: sessions.find((x) => x.id === args.id)?.input_bytes || null,
       };
     case "list_clips":
       return clips;
+    case "input_load":
+      await new Promise((r) => setTimeout(r, 30));
+      return synthetic(150);
+    case "input_stats":
+      return { version: 1, from: args.from, to: args.to, focused_secs: args.to - args.from, clicks: 99, right_clicks: 80, key_presses: 40, apm: 205, apm_per_min: [], right_click_hz: 1.9, cursor_distance: 70, path_efficiency: 0.79, idle_secs: 2, cursor_samples: 9000 };
     case "perf_now":
       return { cpu: 0.2, ram_mb: 38 };
     case "storage_info":

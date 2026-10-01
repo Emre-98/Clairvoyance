@@ -43,6 +43,14 @@ games, clips and downloaded tools over; the Home page then offers to uninstall t
 - Afterwards open the game from **Games**: click any marker (or event in the list) to jump
   to 5 seconds before it; **N / P** = next / previous event, **Space** play/pause,
   **← / →** ±5 s, **F** fullscreen. Filter chips hide or show event types.
+- **Input overlay** (button under the video, or **I**): your cursor trail, clicks (left blue,
+  right red), cursor dot, the keys you pressed and a cursor heatmap, drawn over the replay. Off
+  every time a replay opens; options next to the button. The game page also shows
+  **Mechanics**: APM (and per minute), right-clicks per second, cursor distance, path
+  efficiency and idle time; drag across the APM chart for a part of the game. Mouse and
+  keyboard are recorded only while the game window is focused, never while the chat is open,
+  as key codes (never text), and stay on your PC. Nothing is shown during the game. Turn it
+  off in Settings > Games > League.
 - **Create clip** opens the clip editor: drag the handles on the timeline and save. The first
   export downloads ffmpeg (about 100 MB, once).
 - Files: `Videos\Clairvoyance\<date>_<time>_League\` holds the video

@@ -29,7 +29,10 @@ Add `"games/mygame"` to `members` in the root `Cargo.toml`, and add the crate to
 | `start()` / `stop()` | Reset per-match state (and start a local server if the game pushes data, like CS2) |
 | `match_only()` | `true` for games you keep open between matches (CS2): recording then starts when a match starts, not when the exe starts |
 | `on_key()` | Optional: turn key presses (made while the game is focused) into events, like League's "Ult pressed" |
-| `config_fields()` / `default_config()` / `configure()` | Optional settings shown in Settings > Games (text, single key, or checkbox) |
+| `input_tracking()` | `true` for games played with the cursor (League): mouse and keyboard input is recorded for the replay's input overlay and the Mechanics stats (the core adds the "Record mouse & keyboard input" and sample-rate settings). `false` for mouse-look games (CS2) |
+| `chat_open()` | With `input_tracking`: whether the game's chat is open right now (from the keys `on_key` saw); no keys are recorded meanwhile |
+| `mouse_marks()` | Optional: after the game, turn recorded mouse-button presses into key marks for `verify_recording` (League: ult bound to a side button) |
+| `config_fields()` / `default_config()` / `configure()` | Optional settings shown in Settings > Games (text, single key, checkbox or a select list) |
 
 Rules that keep the rest of the app working:
 

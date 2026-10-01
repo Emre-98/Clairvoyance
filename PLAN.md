@@ -50,6 +50,16 @@
   presses kept as hidden "no cast" (on cooldown 88, dead 12, chat 7). Owner's 3 real games: 24/24
   casts, the shop-typed "r" marked no cast (before: precision 96%). A 33 min game is checked in
   2.7–3.3 s inside the app (target ≤ 15 s). Details in "Ult tracking".
+- **Input tracking + replay overlay (2026-10-01, built, v1.4.0 pending):** mouse/keyboard
+  recorded during cursor-based games (League) and drawn over the replay (trail, clicks, cursor
+  dot, keys, heatmap; toggle "Input overlay" / I), plus post-game "Mechanics" stats. Tested in
+  the cloud: format/stats/engine/library unit tests; the ult check on the saved clips is
+  unchanged (9/9 casts, 0 missed, 0 extra); overlay in Chromium against a test video: cursor dot
+  within 0.4-0.7 px of the video's cursor (normal + fullscreen, double letterbox), draw time
+  median 0.1 ms / p95 0.3 ms, no stalls toggling at 0.25x/1x/2x; 35 min worst case 3.6 MB raw /
+  1.8 MB compressed. **Pending on the owner's PC** (job 36: SendInput + DPI + video alignment
+  test, replay benchmark before/after, ult check on the owner's games), then the performance
+  test in League and the owner's Practice Tool test. Details in "Input tracking".
 - **Waiting for the owner**: a performance test (Settings > Performance test) with the ult build;
   play a real League game with v1.2.x and check the timeline,
   thumbnail and Settings > Advanced > Responsiveness numbers (see "Known issues").
@@ -495,6 +505,86 @@ in game.
   dead); the check runs only after the game. Previous in-game numbers: 140.7 → 140.3 FPS, 1% low
   102.5 → 100.2 (recording on vs off). A performance test with the ult build is still to do.
 
+### Input tracking + replay overlay (2026-10-01, owner's request, MicroLab-style)
+Rules: nothing in or near the game process (no hooks, no injection, no memory reading); nothing
+shown during the game; heavy work only after the game; privacy (focused window only, no keys
+while the chat is open, key codes only, local only).
+- **Core, game-agnostic (`cv-core/src/input/`):** `GameIntegration::input_tracking()` (League
+  true, CS2 false), `chat_open()` (League: the ult tracker's Enter/Escape chat state) and
+  `mouse_marks()`. The core adds the settings "Record mouse & keyboard input" (default on) and
+  "Cursor sample rate" 125 / 250 (default) / 500 Hz to Settings > Games for cursor-based games
+  (`input::config_fields`, new config field kind "select").
+- **Clock:** `Recorder::clock_base_hns()` = the QPC (100 ns) the recorder subtracts from frame
+  times (`rec_start`), so input time = QPC - base = video time. App started mid-game (negative
+  offset) needs nothing special: the input never uses the game clock (only the per-minute APM
+  chart converts to game minutes).
+- **Capture (`cv-capture/src/win/input.rs`, thread "input-capture", below-normal priority, DPI
+  aware per monitor v2):** a high-resolution waitable timer (no change to the system timer)
+  wakes it at the sample rate: `GetCursorPos` (stored only when it moved, in 1/65536 of the
+  client area), foreground check every tick (`GetForegroundWindow` vs the game window/pid:
+  focus records = gaps), client rect / DWM frame / DPI every 100 ms (window records). Mouse
+  buttons (L R M X1 X2) and wheel come from **Raw Input** (`RIDEV_INPUTSINK` on a message-only
+  window) drained in batches with `GetRawInputBuffer` on each tick instead of one wake-up per
+  mouse report (a 1000-8000 Hz mouse would wake it thousands of times a second); a button gets
+  the middle of its tick as time (±half a tick). The game window is found once (every 2 s until
+  found), no process snapshots per tick.
+- **Keys:** the existing Raw Input keyboard thread now sends every key down/up (auto-repeat
+  filtered, QPC timestamp) to the engine. Hotkeys and `on_key` see exactly what they saw before
+  (named key-downs), so the ult tracking and `key_presses` are unchanged. The engine records a
+  key only while the game window is focused and the game's chat is closed before and after it
+  (so the Enter that opens/closes chat and everything typed are never stored; a "chat" record
+  marks the interval); a release is only stored after its press.
+- **File `<recording id>.input`** (game folder, linked in `session.json` `input_file` at once):
+  header `CVINPUT\0` + version + flags + rate, then blocks (kind, length, CRC-32): records
+  written every 10 s (each block self-contained: absolute time + position, then varint deltas),
+  so a crash keeps everything but the last seconds and a torn block is skipped. After the game
+  the maintenance pass (after the ult check, newest first, stops when a game starts, background
+  priority) computes the Mechanics stats (`session.json` `mechanics`) and the whole-game
+  heatmap and rewrites the file deflate-compressed with the heatmap block (checked, then
+  swapped in). Worst case 35 min (cursor moving the whole time at 250 Hz, 2.5 clicks + 1.5
+  keys/s): 3.57 MB raw, 1.77 MB compressed; stats 143 ms (debug build). RAM while recording:
+  the 10 s buffer + the list of button presses (tens of KB).
+- **Ult tie-in:** at the end of the game the mouse-button presses go to
+  `GameIntegration::mouse_marks`; League keeps those on buttons bound to the ult (from
+  `PersistedSettings.json`, "Button 4/5") as ult key marks (`key` "Mouse 5", reason "mouse",
+  not accepted live), so the recording check matches them to casts. `verify::VERSION` not
+  bumped: results of existing recordings can't change (they have no input file).
+- **Storage:** the file is in the game folder, so deleting a game, the age/size clean-up and
+  favorites handle it; "delete the video, keep the clips" also deletes the input file (its
+  stats stay) and counts its bytes; interrupted games keep their raw file (torn tail ignored)
+  and get it processed like any other; "Save test report" lists each recent game's input file
+  summary and stats, never the file.
+- **Replay overlay (`ui/src/lib/inputoverlay.ts`, `InputOverlay.svelte`, `Player.svelte`):**
+  "Input overlay" chip in the player controls + **I** (works anywhere on the page except text
+  fields), options popover (trail 0.25-3 s, clicks, cursor dot, keys strip, heatmap whole game /
+  selected range; remembered in localStorage; the toggle itself always starts off). Disabled
+  with "No input recorded for this game" for older games. The recording is loaded only on the
+  first switch-on (`input_load`: Rust decodes it and sends flat typed arrays, cached for the open
+  replay, freed when it closes); the canvas exists only while on; rAF loop redraws only when the
+  time/size/options change. Mapping: client -> captured frame (window record) -> the recorder's
+  letterbox in the video -> object-fit in the player. Heatmap: one-hue ramp, blurred, cached per
+  range.
+- **Mechanics (`Mechanics.svelte`):** APM, right-clicks/s, cursor distance (screen widths),
+  path efficiency (straight line between consecutive clicks ÷ path, clicks ≤ 3 s apart on one
+  stroke), idle time (no input > 1 s, focused time only); per-minute APM bars; drag across them
+  for a range (`input_stats`, computed from the recording) which also drives the overlay's
+  "selected range" heatmap.
+- **Performance test:** three phases now: not recording, recording, recording + input (the
+  capture thread's own CPU time, samples, raw mouse messages and file size are added to the
+  report notes).
+- **Tests:** `cargo test -p cv-core` (format round trip, torn tail, chat/keys, stats, idle,
+  efficiency, negative offset, payload layout, 35 min size targets, library clean-up of input
+  files, engine end to end with chat + mouse marks); League (mouse marks, matching);
+  `ui/tests/overlay.test.mjs` (Chromium + mock backend + a 4:3 test video with the game
+  letterboxed: alignment, toggling while playing, draw time, options, shortcut, fullscreen,
+  ranges, disabled state); `cv-capture/examples/inputtest.rs` on Windows (SendInput along a
+  known path into a fake game window recorded by the real recorder: file contents, DPI aware /
+  unaware windows at the monitor's scaling, click timing, focus gap, window move, cursor in the
+  video frames vs the recorded cursor and the best-fit time shift, capture cost);
+  `--bench-replays` with `"overlay": true` (first switch-on, re-on, toggling while playing,
+  draw time, marker jumps with the overlay on); `mp4tool fakeinput` makes a realistic recording
+  for a benchmark game.
+
 ### Replay benchmark and end-to-end tests (developer tools)
 - `Clairvoyance.exe --bench-replays=<config.json>`: opens the given games N times in the real
   window and measures page / first frame / playable / marker jumps / "marker clicked right away"
@@ -547,6 +637,8 @@ in game.
 - [x] 24. Accurate ult tracking: League keybinds + live gates, post-game check from the recording
 - [x] Owner's scripted Practice Tool ult test (34/34 casts, 0 false)
 - [ ] Performance test with the ult build
+- [x] 25. Input tracking (mouse + keyboard, Raw Input + cursor polling) + replay overlay + Mechanics stats (built; cloud tests pass)
+- [ ] Input tracking: Windows tests on the owner's PC (job 36), performance test in League, owner's Practice Tool test, release v1.4.0
 
 ## Known issues
 - The Windows-only parts added on 2026-10-01 (Media Foundation thumbnails, updater install,

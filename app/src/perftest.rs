@@ -3,6 +3,7 @@
 //! Phases (each `phase_secs` long, back to back, while you play):
 //!   1. Baseline: nothing recording.
 //!   2. Built-in recorder recording.
+//!   3. Recording + mouse/keyboard input recording (replay overlay).
 //! Measured per phase: League FPS and 1% lows (PresentMon, Intel's open-source frame-time tool,
 //! which reads Windows' present events: no game access), League CPU, whole-PC CPU,
 //! Clairvoyance's CPU and RAM, GPU 3D load and the video-encode engine load.
@@ -323,7 +324,7 @@ mod run {
             }
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
-        let total_min = ((phase_secs + 6) * 2 + 10) as f64 / 60.0;
+        let total_min = ((phase_secs + 6) * 3 + 10) as f64 / 60.0;
         st.platform.speak(
             &format!("Performance test starts in 10 seconds. Keep playing for about {} minutes, until you hear: performance test finished.", total_min.ceil() as u64),
             70,
@@ -344,10 +345,12 @@ mod run {
             display_capture: settings.video.display_capture,
             full_video: true,
         };
-        let phases: Vec<(&str, Option<Arc<dyn Recorder>>)> = vec![("Not recording", None), ("Built-in recorder", Some(st.recorder.clone() as Arc<dyn Recorder>))];
+        let rec: Arc<dyn Recorder> = st.recorder.clone();
+        let phases: Vec<(&str, Option<Arc<dyn Recorder>>, bool)> =
+            vec![("Not recording", None, false), ("Recording", Some(rec.clone()), false), ("Recording + input", Some(rec), true)];
         let mut windows: Vec<(String, f64, f64, Acc)> = Vec::new();
         let mut encoder = String::new();
-        for (name, rec) in phases {
+        for (name, rec, with_input) in phases {
             if st.perf_cancel.load(std::sync::atomic::Ordering::SeqCst) {
                 anyhow::bail!("cancelled");
             }
@@ -360,6 +363,26 @@ mod run {
                         encoder = e;
                     }
                 }
+            }
+            // Mouse/keyboard recording exactly as in a game (keys come through the engine, which
+            // isn't recording during the test: the cursor/mouse thread is what costs anything).
+            let mut input_writer = None;
+            if with_input {
+                if let Some(base) = st.recorder.clock_base_hns() {
+                    let _ = std::fs::create_dir_all(&rec_dir);
+                    let rate = cv_core::input::settings_from(&settings.game_config("league", cv_core::input::default_config())).1;
+                    let meta = cv_core::input::Meta { game_id: "league".into(), rate, app_version: env!("CARGO_PKG_VERSION").into() };
+                    match cv_core::input::InputWriter::create(&rec_dir.join("perf-test.input"), base, rate, &meta) {
+                        Ok(w) => {
+                            let w = Arc::new(w);
+                            st.platform.start_input_capture(cv_core::input::CaptureRequest { writer: w.clone(), process_names: vec![GAME_EXE.to_lowercase()] });
+                            input_writer = Some(w);
+                        }
+                        Err(e) => notes.push(format!("Input recording couldn't start: {e}")),
+                    }
+                }
+            }
+            if rec.is_some() {
                 tokio::time::sleep(Duration::from_secs(3)).await; // let it settle
             }
             st.platform.speak(&format!("Test phase: {name}"), 70);
@@ -414,6 +437,23 @@ mod run {
                 acc.n += 1.0;
             }
             let t1 = pm_started.map(|p| p.elapsed().as_secs_f64()).unwrap_or(0.0);
+            if let Some(w) = input_writer.take() {
+                let c = st.platform.stop_input_capture().unwrap_or_default();
+                let (bytes, n) = w.finish(w.video_us(cv_capture::win::d3d::qpc_hns()));
+                let text = format!(
+                    "Input recording: capture thread {:.3}% of one CPU core ({:.0} ms CPU in {:.0} s), {} cursor samples, {} raw mouse messages, {} records, {:.0} KB ({:.1} KB/min)",
+                    c.core_percent(),
+                    c.cpu_ms,
+                    c.wall_secs,
+                    c.cursor_samples,
+                    c.raw_mouse_msgs,
+                    n,
+                    bytes as f64 / 1024.0,
+                    bytes as f64 / 1024.0 / (c.wall_secs.max(1.0) / 60.0)
+                );
+                log::info!("performance test: {text}");
+                notes.push(text);
+            }
             if let Some(r) = &rec {
                 if let Ok(path) = r.stop_recording().await {
                     let _ = std::fs::remove_file(path);

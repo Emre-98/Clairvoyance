@@ -11,7 +11,7 @@ import { api, fileSrc } from "./api";
 import { go, app } from "./store.svelte";
 import { nextPaint } from "./perfmarks";
 
-type Cfg = { sessions: string[]; runs?: number; early_runs?: number; label?: string; finalize?: boolean };
+type Cfg = { sessions: string[]; runs?: number; early_runs?: number; label?: string; finalize?: boolean; overlay?: boolean };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -162,6 +162,128 @@ async function decodingInfo(codec: string | null, w: number, h: number) {
   }
 }
 
+const overlayCanvas = () => document.querySelector<HTMLCanvasElement>('[data-testid="input-overlay"]');
+const overlayToggle = () => document.querySelector<HTMLButtonElement>('[data-testid="overlay-toggle"]');
+const drawTimes = (): number[] => [...((window as any).__cvOverlayDrawMs ?? [])];
+const pressI = () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "i" }));
+function pct(a: number[], p: number) {
+  const s = [...a].sort((x, y) => x - y);
+  return s.length ? Math.round(s[Math.min(s.length - 1, Math.floor(p * s.length))] * 1000) / 1000 : null;
+}
+
+/** Plays `secs` at `rate` while switching the overlay every 300 ms: stalls and progress. */
+async function playToggling(v: HTMLVideoElement, rate: number, secs: number) {
+  let waiting = 0;
+  const onw = () => waiting++;
+  v.addEventListener("waiting", onw);
+  v.playbackRate = rate;
+  await v.play().catch(() => {});
+  await waitFor(() => !v.paused && v.readyState >= 3, 5000);
+  const c0 = v.currentTime;
+  const w0 = performance.now();
+  let toggles = 0;
+  while (performance.now() - w0 < secs * 1000) {
+    await sleep(300);
+    pressI();
+    toggles++;
+  }
+  const adv = v.currentTime - c0;
+  const wall = (performance.now() - w0) / 1000;
+  v.pause();
+  v.playbackRate = 1;
+  v.removeEventListener("waiting", onw);
+  return { rate, toggles, advanced: Math.round(adv * 100) / 100, expected: Math.round(wall * rate * 100) / 100, stalls: waiting };
+}
+
+/** The input overlay in the real window: off on open, first switch-on (loads the recording),
+ * switching on again, toggling while playing at 1x/2x/0.25x, draw time per frame with the default
+ * options and with everything on, marker jumps with the overlay on. */
+async function overlayBench(id: string) {
+  const r: Record<string, unknown> = {};
+  go({ page: "games" });
+  await sleep(900);
+  go({ page: "game", id });
+  const v = await waitFor(() => video(), 30000);
+  const tg = await waitFor(() => overlayToggle(), 10000);
+  if (!v || !tg) return { error: "no player" };
+  await waitFor(() => v.readyState >= 3, 30000);
+  r.offOnOpen = tg.getAttribute("aria-pressed") === "false" && !overlayCanvas();
+  r.disabled = tg.disabled;
+  if (tg.disabled) return r;
+  // Default options for the first part.
+  localStorage.removeItem("cv.inputOverlay");
+  // First switch-on: load + first frame drawn.
+  const n0 = drawTimes().length;
+  let t0 = performance.now();
+  tg.click();
+  await waitFor(() => overlayCanvas() && (drawTimes().length > n0 || (window as any).__cvOverlayLoadMs), 30000);
+  await nextPaint();
+  r.firstOnMs = Math.round(performance.now() - t0);
+  r.loadMs = Math.round((window as any).__cvOverlayLoadMs ?? -1);
+  // Off and on again (already loaded).
+  const again: number[] = [];
+  for (let i = 0; i < 5; i++) {
+    pressI();
+    await sleep(200);
+    t0 = performance.now();
+    pressI();
+    await waitFor(() => overlayCanvas(), 5000);
+    await nextPaint();
+    again.push(Math.round(performance.now() - t0));
+    await sleep(100);
+  }
+  r.againOnMs = again;
+  // Toggling during playback.
+  v.currentTime = Math.min(v.duration * 0.4, 600);
+  await nextEvent(v, "seeked", 10000);
+  r.playing = [await playToggling(v, 1, 3), await playToggling(v, 2, 3), await playToggling(v, 0.25, 2)];
+  // Draw times while playing, overlay on: default options, then everything on.
+  for (const [label, opts] of [
+    ["default", null],
+    ["everything", { trail: true, trailSecs: 3, clicks: true, dot: true, keys: true, heat: true, heatRange: "game" }],
+  ] as const) {
+    if (opts) {
+      // Options apply on the next open of the popover / effect; set them and re-open the page.
+      localStorage.setItem("cv.inputOverlay", JSON.stringify(opts));
+      go({ page: "games" });
+      await sleep(600);
+      go({ page: "game", id });
+      await waitFor(() => video()?.readyState! >= 3 && overlayToggle(), 30000);
+      overlayToggle()!.click();
+      await waitFor(() => overlayCanvas(), 30000);
+    }
+    if (!overlayCanvas()) pressI();
+    const vv = video()!;
+    vv.currentTime = Math.min(vv.duration * 0.5, 900);
+    await nextEvent(vv, "seeked", 10000);
+    await vv.play().catch(() => {});
+    await sleep(4000);
+    vv.pause();
+    const d = drawTimes().slice(-200);
+    r[`draw_${label}`] = { frames: d.length, median: pct(d, 0.5), p95: pct(d, 0.95), max: pct(d, 1) };
+  }
+  // Marker jumps with the overlay on.
+  const seeks: number[] = [];
+  for (const f of [0.2, 0.5, 0.8]) {
+    const list = markers();
+    const m = list[Math.min(list.length - 1, Math.floor(list.length * f))];
+    const s = m ? await seekVia(m) : null;
+    if (s != null) seeks.push(s);
+    await sleep(300);
+  }
+  r.seeksWithOverlay = seeks;
+  localStorage.removeItem("cv.inputOverlay");
+  // Reopening: off again.
+  go({ page: "games" });
+  await sleep(600);
+  go({ page: "game", id });
+  const tg2 = await waitFor(() => overlayToggle(), 10000);
+  await sleep(300);
+  r.offOnReopen = tg2?.getAttribute("aria-pressed") === "false" && !overlayCanvas();
+  video()?.pause();
+  return r;
+}
+
 export async function runBench(cfg: Cfg) {
   const log = (s: string) => api.benchLog(s).catch(() => {});
   const runs = cfg.runs ?? 5;
@@ -199,7 +321,16 @@ export async function runBench(cfg: Cfg) {
       early.push(r);
       await log(`${id} early ${i + 1}: ${JSON.stringify(r)}`);
     }
-    (out.results as any)[id] = { opens, early };
+    let overlay: unknown = undefined;
+    if (cfg.overlay) {
+      try {
+        overlay = await overlayBench(id);
+      } catch (e) {
+        overlay = { error: String(e) };
+      }
+      await log(`${id} overlay: ${JSON.stringify(overlay)}`);
+    }
+    (out.results as any)[id] = { opens, early, overlay };
   }
   go({ page: "home" });
   void app;

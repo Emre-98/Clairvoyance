@@ -3,6 +3,7 @@
 pub mod engine;
 pub mod events;
 pub mod game;
+pub mod input;
 pub mod library;
 pub mod modes;
 pub mod recorder;

@@ -70,6 +70,8 @@ export const USER_KINDS: EventKind[] = [
 
 // 24x24 stroke icons (own artwork).
 export const ICONS: Record<string, string> = {
+  mouse: "M12 3a6 6 0 0 0-6 6v6a6 6 0 0 0 12 0V9a6 6 0 0 0-6-6zM12 7v4",
+  sliders: "M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M15 4v4M9 10v4M17 16v4",
   crosshair: "M12 3v4M12 17v4M3 12h4M17 12h4M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z",
   burst: "M12 2l2.2 5.6L20 6l-3.3 5 4.3 4-5.8.4L14 21l-2-5.2L10 21l-1.2-5.6L3 15l4.3-4L4 6l5.8 1.6z",
   drop: "M12 3c3 4.2 6 7.4 6 10.5A6 6 0 0 1 6 13.5C6 10.4 9 7.2 12 3z",

@@ -415,6 +415,19 @@ mod tests {
     }
 
     #[test]
+    fn mouse_presses_match_casts_and_stay_hidden_otherwise() {
+        // A mouse-bound ult press (from the input recording) next to a cast: "Ult used" with a
+        // press instead of "cast without a logged press".
+        let o = match_up(&[40.2], &[40.0], 0.5, false);
+        assert_eq!(o, vec![Outcome::Used { cast: 40.2, press: Some(0) }]);
+        // Unchecked recording: mouse marks (not accepted live) never become "Ult pressed".
+        let mut s = GameSession::new("x".into(), "league", "League of Legends", chrono::Local::now());
+        s.key_presses.push(KeyMark { game_time: 40.0, action: "ult".into(), key: "Mouse 5".into(), accepted: false, reason: Some("mouse".into()) });
+        keep_live(&mut s, "skipped", "test".into(), 0.0, serde_json::json!({}), Instant::now());
+        assert!(s.events.is_empty());
+    }
+
+    #[test]
     fn stun_is_not_a_cast() {
         let ready = RLook { blue: 0.16, dark: 0.23, digits: 0.01 };
         let cd = |b| RLook { blue: b, dark: 0.15, digits: 0.15 };

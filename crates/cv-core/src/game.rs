@@ -208,9 +208,12 @@ pub trait FrameSource {
 pub struct ConfigField {
     pub key: &'static str,
     pub label: &'static str,
-    /// "text", "key" (single key picker) or "bool".
+    /// "text", "key" (single key picker), "bool" or "select" (one of `options`).
     pub kind: &'static str,
     pub help: &'static str,
+    /// Choices for "select": (value, label).
+    #[serde(skip_serializing_if = "<[_]>::is_empty")]
+    pub options: &'static [(&'static str, &'static str)],
 }
 
 #[async_trait]
@@ -267,6 +270,25 @@ pub trait GameIntegration: Send + Sync {
     }
     /// Presses of tracked keys since the last call (accepted or filtered), kept in the session.
     fn take_key_marks(&mut self) -> Vec<KeyMark> {
+        Vec::new()
+    }
+
+    /// True for games played with the cursor (League): mouse and keyboard input is recorded for
+    /// the replay overlay and the Mechanics stats (Settings > Games: "Record mouse & keyboard
+    /// input"). False (e.g. CS2: mouse-look, no cursor) = never recorded.
+    fn input_tracking(&self) -> bool {
+        false
+    }
+    /// The game's chat is open right now (from the keys seen by [`Self::on_key`]): no keys are
+    /// recorded meanwhile.
+    fn chat_open(&self) -> bool {
+        false
+    }
+    /// After the game, before `stop()`: the mouse-button presses of the input recording (game
+    /// time, button 1 = left, 2 = right, 3 = middle, 4/5 = side buttons). Return marks for the
+    /// ones bound to a tracked action (League: ult on a mouse button), kept with the session for
+    /// the check against the recording.
+    fn mouse_marks(&self, _presses: &[(f64, u8)]) -> Vec<KeyMark> {
         Vec::new()
     }
 

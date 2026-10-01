@@ -179,6 +179,8 @@ pub struct SessionView {
     video_bytes: Option<u64>,
     thumb_path: Option<String>,
     clips: Vec<ClipView>,
+    /// Size of the input recording (replay overlay), if this game has one.
+    input_bytes: Option<u64>,
 }
 
 #[tauri::command]
@@ -204,6 +206,7 @@ pub async fn get_session(st: St<'_>, id: String) -> R<SessionView> {
         video_bytes,
         thumb_path: thumb.exists().then(|| thumb.to_string_lossy().to_string()),
         clips,
+        input_bytes: s.input_file.as_ref().and_then(|f| std::fs::metadata(dir.join(f)).ok()).map(|m| m.len()),
         session: s,
     })
 }
@@ -212,7 +215,68 @@ pub async fn get_session(st: St<'_>, id: String) -> R<SessionView> {
 /// while it's open.
 #[tauri::command]
 pub fn player_open(st: St<'_>, path: Option<String>) {
+    if path.is_none() {
+        // The replay closed: free the decoded input recording.
+        *INPUT_CACHE.lock().unwrap() = None;
+    }
     *st.maintenance.open_video.lock().unwrap() = path.map(PathBuf::from);
+}
+
+/// The decoded input recording of the replay that's open (only one at a time).
+struct InputCached {
+    path: PathBuf,
+    len: u64,
+    analysis: Arc<cv_core::input::stats::Analysis>,
+    heat: Option<cv_core::input::Heatmap>,
+    rate: u32,
+}
+static INPUT_CACHE: std::sync::Mutex<Option<InputCached>> = std::sync::Mutex::new(None);
+
+fn input_cached(dir: &Path) -> R<(Arc<cv_core::input::stats::Analysis>, Option<cv_core::input::Heatmap>, u32)> {
+    use cv_core::input::{self, stats};
+    let s = GameSession::load(dir).map_err(err)?;
+    let path = dir.join(s.input_file.as_deref().ok_or("No input recorded for this game")?);
+    let len = std::fs::metadata(&path).map_err(|_| "The input recording of this game is missing.".to_string())?.len();
+    if let Some(c) = INPUT_CACHE.lock().unwrap().as_ref() {
+        if c.path == path && c.len == len {
+            return Ok((c.analysis.clone(), c.heat.clone(), c.rate));
+        }
+    }
+    let f = input::read(&path).map_err(err)?;
+    let an = Arc::new(stats::Analysis::from_file(&f));
+    // Compressed files carry the whole-game heatmap; a raw one (just after the game) gets it now.
+    let heat = f.heatmap.clone().or_else(|| Some(stats::heatmap(&an, 0.0, an.end, stats::HEAT_W, stats::HEAT_H)));
+    *INPUT_CACHE.lock().unwrap() = Some(InputCached { path, len, analysis: an.clone(), heat: heat.clone(), rate: f.rate });
+    Ok((an, heat, f.rate))
+}
+
+/// The replay overlay's data (binary, see `cv_core::input::stats::ui_payload`). Only loaded when
+/// the overlay is first switched on for a replay.
+#[tauri::command]
+pub async fn input_load(st: St<'_>, id: String) -> R<tauri::ipc::Response> {
+    let dir = session_dir(&st, &id)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let t = std::time::Instant::now();
+        let (an, heat, rate) = input_cached(&dir)?;
+        let b = cv_core::input::stats::ui_payload(&an, heat.as_ref(), rate);
+        log::debug!("input overlay data for {}: {} samples, {} KB in {} ms", dir.display(), an.moves.len(), b.len() / 1024, t.elapsed().as_millis());
+        Ok(tauri::ipc::Response::new(b))
+    })
+    .await
+    .map_err(err)?
+}
+
+/// Mechanics stats for a time range (video seconds).
+#[tauri::command]
+pub async fn input_stats(st: St<'_>, id: String, from: f64, to: f64) -> R<cv_core::input::stats::Mechanics> {
+    let dir = session_dir(&st, &id)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let offset = GameSession::load(&dir).map_err(err)?.video_offset;
+        let (an, _, _) = input_cached(&dir)?;
+        Ok(cv_core::input::stats::mechanics(&an, from.max(0.0), to, offset))
+    })
+    .await
+    .map_err(err)?
 }
 
 /// Layout, codec and keyframe spacing of a video (Settings > Advanced, test report).
@@ -803,6 +867,8 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static 
         video_info,
         test_report,
         video_keyframes,
+        input_load,
+        input_stats,
         crate::bench::bench_config,
         crate::bench::bench_prepare,
         crate::bench::bench_finish,

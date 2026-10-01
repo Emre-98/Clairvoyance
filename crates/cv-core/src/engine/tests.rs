@@ -70,16 +70,22 @@ impl Recorder for FakeRecorder {
     async fn save_replay(&self, _secs: Option<u32>) -> anyhow::Result<PathBuf> { anyhow::bail!("no") }
     async fn finish(&self) -> anyhow::Result<()> { Ok(()) }
     async fn status(&self) -> RecorderStatus { RecorderStatus { connected: true, ..Default::default() } }
+    fn clock_base_hns(&self) -> Option<i64> { Some(0) }
 }
 
 struct FakePlatform {
     procs: Mutex<Vec<String>>,
+    capture: Mutex<Option<crate::input::CaptureRequest>>,
 }
 impl Platform for FakePlatform {
     fn running_processes(&self) -> Vec<String> { self.procs.lock().unwrap().clone() }
     fn foreground_process(&self) -> Option<String> { Some("fake.exe".into()) }
     fn speak(&self, _t: &str, _v: u8) {}
     fn perf_sample(&self) -> Option<(f64, f64)> { Some((0.2, 40.0)) }
+    fn start_input_capture(&self, req: crate::input::CaptureRequest) { *self.capture.lock().unwrap() = Some(req); }
+    fn stop_input_capture(&self) -> Option<crate::input::CaptureStats> {
+        self.capture.lock().unwrap().take().map(|_| crate::input::CaptureStats::default())
+    }
 }
 
 /// Game clock seen by the fake recorder follows the fake game's clock (poll n -> n-3 s).
@@ -113,7 +119,7 @@ async fn full_session_lifecycle() {
     let clock = Arc::new(Mutex::new(0.0));
     let game = ClockGame { inner: FakeGame { polls: 0, end_after: 12 }, clock: clock.clone() };
     let recorder = Arc::new(FakeRecorder { game_clock: clock.clone(), ..Default::default() });
-    let platform = Arc::new(FakePlatform { procs: Mutex::new(vec![]) });
+    let platform = Arc::new(FakePlatform { procs: Mutex::new(vec![]), capture: Mutex::new(None) });
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let (ctx, crx) = tokio::sync::mpsc::unbounded_channel();
     let (itx, irx) = tokio::sync::mpsc::unbounded_channel();
@@ -129,7 +135,7 @@ async fn full_session_lifecycle() {
     tokio::time::sleep(Duration::from_secs(6)).await;
     assert!(*recorder.started.lock().unwrap(), "recording started when the game appeared");
     // Ult key press while in game.
-    itx.send(InputEvent { key: KeyPress { key: "R".into(), ctrl: false, shift: false, alt: false }, at: Instant::now() }).unwrap();
+    itx.send(InputEvent::press(KeyPress { key: "R".into(), ctrl: false, shift: false, alt: false }, 0x52, Instant::now(), 0)).unwrap();
 
     let mut ended = None;
     let mut kills = 0;
@@ -224,7 +230,7 @@ async fn match_only_games_record_per_match() {
     let _ = std::fs::remove_dir_all(&root);
     let phase = Arc::new(Mutex::new(MatchPhase::Waiting));
     let recorder = Arc::new(FakeRecorder::default());
-    let platform = Arc::new(FakePlatform { procs: Mutex::new(vec!["mg.exe".into()]) });
+    let platform = Arc::new(FakePlatform { procs: Mutex::new(vec!["mg.exe".into()]), capture: Mutex::new(None) });
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let (ctx, crx) = tokio::sync::mpsc::unbounded_channel();
     let (_itx, irx) = tokio::sync::mpsc::unbounded_channel();
@@ -296,7 +302,7 @@ async fn modes_switched_off_are_never_recorded() {
     std::fs::create_dir_all(&root).unwrap();
     let game = ModeGame { inner: FakeGame { polls: 0, end_after: 1000 }, mode: mode("q450", "ARAM") };
     let recorder = Arc::new(FakeRecorder::default());
-    let platform = Arc::new(FakePlatform { procs: Mutex::new(vec!["fake.exe".into()]) });
+    let platform = Arc::new(FakePlatform { procs: Mutex::new(vec!["fake.exe".into()]), capture: Mutex::new(None) });
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let (_ctx, crx) = tokio::sync::mpsc::unbounded_channel();
     let (_itx, irx) = tokio::sync::mpsc::unbounded_channel();
@@ -332,7 +338,7 @@ async fn new_modes_are_added_and_follow_the_unknown_rule() {
     let _ = std::fs::remove_dir_all(&root);
     let game = ModeGame { inner: FakeGame { polls: 0, end_after: 1000 }, mode: mode("q31337", "Brand New Mode") };
     let recorder = Arc::new(FakeRecorder::default());
-    let platform = Arc::new(FakePlatform { procs: Mutex::new(vec!["fake.exe".into()]) });
+    let platform = Arc::new(FakePlatform { procs: Mutex::new(vec!["fake.exe".into()]), capture: Mutex::new(None) });
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let (_ctx, crx) = tokio::sync::mpsc::unbounded_channel();
     let (_itx, irx) = tokio::sync::mpsc::unbounded_channel();
@@ -354,5 +360,115 @@ async fn new_modes_are_added_and_follow_the_unknown_rule() {
     assert!(m.entries["q31337"].is_new);
     assert_eq!(m.entries["q31337"].rule, ModeRule::ClipsOnly);
     handle.abort();
+    std::fs::remove_dir_all(root).ok();
+}
+
+/// A cursor-based game with a chat (Enter toggles it) and the ult on mouse button 5.
+struct InputGame {
+    inner: ClockGame,
+    chat: bool,
+}
+#[async_trait]
+impl GameIntegration for InputGame {
+    fn id(&self) -> &'static str { self.inner.id() }
+    fn name(&self) -> &'static str { self.inner.name() }
+    fn short_name(&self) -> &'static str { self.inner.short_name() }
+    fn process_names(&self) -> &'static [&'static str] { self.inner.process_names() }
+    fn capture(&self) -> CaptureTarget { self.inner.capture() }
+    fn supports_events(&self) -> bool { true }
+    fn end_grace(&self) -> Duration { Duration::from_millis(0) }
+    async fn poll(&mut self) -> anyhow::Result<PollUpdate> { self.inner.poll().await }
+    fn on_key(&mut self, key: &KeyPress, gt: f64) -> Option<GameEvent> {
+        if key.key == "Enter" {
+            self.chat = !self.chat;
+            return None;
+        }
+        self.inner.on_key(key, gt)
+    }
+    fn input_tracking(&self) -> bool { true }
+    fn chat_open(&self) -> bool { self.chat }
+    fn mouse_marks(&self, presses: &[(f64, u8)]) -> Vec<crate::game::KeyMark> {
+        presses
+            .iter()
+            .filter(|p| p.1 == 5)
+            .map(|p| crate::game::KeyMark { game_time: p.0, action: "ult".into(), key: "Mouse 5".into(), accepted: false, reason: Some("mouse".into()) })
+            .collect()
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn input_recording_keys_chat_and_mouse_marks() {
+    use crate::input::{self, Record};
+    let root = std::env::temp_dir().join(format!("cv-engine-input-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let clock = Arc::new(Mutex::new(0.0));
+    let game = InputGame { inner: ClockGame { inner: FakeGame { polls: 0, end_after: 14 }, clock: clock.clone() }, chat: false };
+    let recorder = Arc::new(FakeRecorder { game_clock: clock.clone(), ..Default::default() });
+    let platform = Arc::new(FakePlatform { procs: Mutex::new(vec!["fake.exe".into()]), capture: Mutex::new(None) });
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let (ctx, crx) = tokio::sync::mpsc::unbounded_channel();
+    let (itx, irx) = tokio::sync::mpsc::unbounded_channel();
+    let mut settings = Settings::default();
+    settings.save_dir = root.to_string_lossy().to_string();
+    settings.events.clip_kinds.clear();
+    let engine = Engine::new(vec![Box::new(game)], recorder.clone(), platform.clone(), None, settings, root.clone(), tx);
+    let handle = tokio::spawn(engine.run(crx, irx));
+    tokio::time::sleep(Duration::from_secs(7)).await;
+    let req = platform.capture.lock().unwrap().clone().expect("input capture started with the recording");
+    assert_eq!(req.process_names, vec!["fake.exe".to_string()]);
+    let w = req.writer.clone();
+    // What the cursor thread would record.
+    w.push(Record::Focus { t: 30_000_000, focused: true });
+    w.push(Record::Cursor { t: 30_000_000, x: 1000, y: 2000 });
+    w.push(Record::Button { t: 31_000_000, button: 5, down: true });
+    let key = |name: &str, vk: u16, down: bool, us: i64| InputEvent {
+        key: Some(KeyPress { key: name.into(), ctrl: false, shift: false, alt: false }),
+        vk,
+        down,
+        at: Instant::now(),
+        qpc_hns: us * 10,
+    };
+    for ev in [
+        key("Q", 0x51, true, 32_000_000),
+        key("Q", 0x51, false, 32_100_000),
+        key("Enter", 0x0D, true, 33_000_000), // chat opens
+        key("Enter", 0x0D, false, 33_050_000),
+        key("H", 0x48, true, 33_500_000), // typed: never recorded
+        key("H", 0x48, false, 33_600_000),
+        key("Enter", 0x0D, true, 34_000_000), // chat closes
+        key("Enter", 0x0D, false, 34_050_000),
+        key("W", 0x57, true, 35_000_000),
+    ] {
+        itx.send(ev).unwrap();
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let mut ended = None;
+    for _ in 0..100 {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        while let Ok(ev) = rx.try_recv() {
+            if let EngineEvent::GameEnded { session_id } = ev {
+                ended = Some(session_id);
+            }
+        }
+        if ended.is_some() {
+            break;
+        }
+    }
+    let sid = ended.expect("game ended");
+    assert!(platform.capture.lock().unwrap().is_none(), "capture stopped");
+    let s = GameSession::load(&root.join(&sid)).unwrap();
+    let file = root.join(&sid).join(s.input_file.as_deref().expect("input file in the session"));
+    assert_eq!(file.file_name().unwrap().to_string_lossy(), format!("{sid}.input"));
+    let f = input::read(&file).unwrap();
+    let keys: Vec<(u8, bool)> = f.records.iter().filter_map(|r| if let Record::Key { vk, down, .. } = r { Some((*vk, *down)) } else { None }).collect();
+    assert_eq!(keys, vec![(0x51, true), (0x51, false), (0x57, true)], "no Enter, nothing typed in chat");
+    let chats: Vec<bool> = f.records.iter().filter_map(|r| if let Record::Chat { open, .. } = r { Some(*open) } else { None }).collect();
+    assert_eq!(chats, vec![true, false]);
+    assert!(matches!(f.records.last(), Some(Record::End { .. })));
+    // The side-button press became an ult mark at its game time (video 31 s - offset 25 s).
+    let m = s.key_presses.iter().find(|m| m.key == "Mouse 5").expect("mouse mark");
+    assert!((m.game_time - 6.0).abs() < 1e-6, "{}", m.game_time);
+    ctx.send(EngineCommand::Shutdown).unwrap();
+    handle.await.unwrap();
     std::fs::remove_dir_all(root).ok();
 }

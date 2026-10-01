@@ -10,6 +10,7 @@ pub mod audio;
 pub mod capture;
 pub mod d3d;
 pub mod frames;
+pub mod input;
 pub mod mux;
 pub mod perf;
 pub mod thumb;
@@ -396,10 +397,44 @@ impl Recorder for NativeRecorder {
     async fn status(&self) -> RecorderStatus {
         self.inner.status.lock().unwrap().clone()
     }
+
+    fn clock_base_hns(&self) -> Option<i64> {
+        self.inner.active.lock().unwrap().as_ref().map(|a| a.rec_start)
+    }
 }
 
 /// Records `secs` seconds of the screen (or a window) to `out_dir`, for the self-test.
 /// Returns the file and the frame statistics.
+/// Test tools: records `exe`'s window at its own size, 60 fps (see `examples/inputtest.rs`).
+pub fn start_test_recording(out_dir: &Path, exe: &str) -> Result<NativeRecorder> {
+    let rec = NativeRecorder::new();
+    let target = CaptureTarget { exe: exe.to_string(), display_capture_only: false };
+    let opts = RecordOptions {
+        output_dir: out_dir.to_path_buf(),
+        encoder: "auto".into(),
+        quality: "high".into(),
+        fps: 60,
+        height: 0,
+        replay_buffer_secs: 5,
+        record_mic: false,
+        display_capture: false,
+        full_video: true,
+    };
+    *rec.inner.prepared.lock().unwrap() = Some((target, opts));
+    rec.start_blocking()?;
+    Ok(rec)
+}
+
+impl NativeRecorder {
+    /// Test tools: stops a recording started with [`start_test_recording`].
+    pub fn stop_test_recording(&self) -> Result<PathBuf> {
+        self.stop_blocking()
+    }
+    pub fn test_clock_base(&self) -> Option<i64> {
+        self.inner.active.lock().unwrap().as_ref().map(|a| a.rec_start)
+    }
+}
+
 pub fn self_test(out_dir: &Path, secs: u64, exe: Option<&str>, mic: bool) -> Result<(PathBuf, u64, u64)> {
     let rec = NativeRecorder::new();
     let target = CaptureTarget { exe: exe.unwrap_or("explorer.exe").to_string(), display_capture_only: exe.is_none() };

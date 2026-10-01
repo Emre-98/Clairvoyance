@@ -7,6 +7,8 @@
   import { record, navAt } from "../lib/perfmarks";
   import { api } from "../lib/api";
   import { attachVideo, detachVideo, setVideoUrl } from "../lib/videopool";
+  import InputOverlay from "./InputOverlay.svelte";
+  import { Overlay, parse as parseInput, loadOptions, saveOptions } from "../lib/inputoverlay";
 
   let {
     src,
@@ -21,6 +23,8 @@
     current = $bindable(0),
     startAt = 0,
     removed = false,
+    inputId = null,
+    heatRange = null,
   }: {
     src: string | null;
     /** The video file (so the app doesn't replace it while it's open). */
@@ -37,7 +41,48 @@
     startAt?: number;
     /** The storage clean-up removed the full video (its kept clips remain). */
     removed?: boolean;
+    /** Game id when this game has an input recording (replay overlay); null = none. */
+    inputId?: string | null;
+    /** Range (video seconds) for the "selected range" heatmap. */
+    heatRange?: [number, number] | null;
   } = $props();
+
+  // Input overlay: always off when a replay opens; the recording is only loaded the first time
+  // it's switched on; its options are remembered between replays.
+  let overlayOn = $state(false);
+  let overlay = $state.raw<Overlay | null>(null);
+  let overlayLoading = $state(false);
+  let overlayError = $state<string | null>(null);
+  let overlayOpts = $state(loadOptions());
+  let optsOpen = $state(false);
+  $effect(() => saveOptions($state.snapshot(overlayOpts)));
+
+  export async function toggleOverlay() {
+    if (!inputId) return;
+    if (overlayOn) {
+      overlayOn = false;
+      return;
+    }
+    overlayOn = true;
+    if (overlay || overlayLoading) return;
+    const t0 = performance.now();
+    overlayLoading = true;
+    overlayError = null;
+    try {
+      const buf = await api.inputLoad(inputId);
+      overlay = new Overlay(parseInput(buf));
+      requestAnimationFrame(() => {
+        const ms = performance.now() - t0;
+        record("overlay_on", ms);
+        (window as any).__cvOverlayLoadMs = ms;
+      });
+    } catch (e) {
+      overlayError = String(e);
+      overlayOn = false;
+    } finally {
+      overlayLoading = false;
+    }
+  }
 
   let video = $state<HTMLVideoElement>();
   let box: HTMLDivElement;
@@ -249,7 +294,20 @@
     };
   }
 
+  function typing(el: HTMLElement | null): boolean {
+    if (!el) return false;
+    if (el.isContentEditable || el.tagName === "TEXTAREA") return true;
+    if (el.tagName !== "INPUT") return false;
+    const t = (el as HTMLInputElement).type;
+    return !["checkbox", "radio", "range", "button", "submit", "color"].includes(t);
+  }
+
   function key(e: KeyboardEvent) {
+    if (e.key.toLowerCase() === "i" && !e.ctrlKey && !e.altKey && !e.metaKey && !typing(e.target as HTMLElement)) {
+      e.preventDefault();
+      toggleOverlay();
+      return;
+    }
     const tag = (e.target as HTMLElement)?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
     const k = e.key.toLowerCase();
@@ -282,6 +340,9 @@
       {#if paused && !error && frameReady && !busy}
         <button class="bigplay" onclick={toggle} aria-label="Play"><Icon name="play" size={30} fill /></button>
       {/if}
+      {#if overlayOn && overlay}
+        <InputOverlay {overlay} {video} options={overlayOpts} {heatRange} />
+      {/if}
       {#if flash}<div class="flash">{flash}</div>{/if}
       {#if error}<div class="err"><Icon name="warn" size={18} />{error}</div>{/if}
     {:else}
@@ -307,6 +368,45 @@
       <span class="muted"> game · {clock(current)} / {clock(dur)}</span>
     </div>
     <div class="spacer"></div>
+    <div class="ovwrap">
+      <button
+        class="chip ovchip"
+        class:off={!overlayOn}
+        style="--c:var(--accent)"
+        onclick={toggleOverlay}
+        disabled={!inputId}
+        aria-pressed={overlayOn}
+        title={inputId ? (overlayError ? `Input overlay: ${overlayError}` : "Input overlay: your cursor, clicks and keys from this game (I)") : "No input recorded for this game"}
+        data-testid="overlay-toggle"
+      >
+        <span class="chip-ic">{#if overlayLoading}<span class="mini-spin"></span>{:else}<Icon name="mouse" size={11} stroke={2.6} />{/if}</span>
+        Input overlay
+      </button>
+      <button class="cbtn optbtn" onclick={() => (optsOpen = !optsOpen)} disabled={!inputId} title="Input overlay options" aria-expanded={optsOpen} data-testid="overlay-options"><Icon name="sliders" size={15} /></button>
+      {#if optsOpen && inputId}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="ovpop card" onkeydown={(e) => e.key === "Escape" && (optsOpen = false)}>
+          <div class="ovhead"><strong>Input overlay</strong><button class="x" onclick={() => (optsOpen = false)} aria-label="Close"><Icon name="x" size={14} /></button></div>
+          <label class="check"><input type="checkbox" bind:checked={overlayOpts.trail} />Cursor trail</label>
+          <label class="slider" class:dim={!overlayOpts.trail}>
+            <span>Trail length <b>{overlayOpts.trailSecs.toFixed(2).replace(/0$/, "")} s</b></span>
+            <input type="range" min="0.25" max="3" step="0.25" bind:value={overlayOpts.trailSecs} disabled={!overlayOpts.trail} aria-label="Trail length in seconds" />
+          </label>
+          <label class="check"><input type="checkbox" bind:checked={overlayOpts.clicks} />Clicks <span class="legend"><i style="background:#4dabf7"></i>left <i style="background:#ff6b6b"></i>right</span></label>
+          <label class="check"><input type="checkbox" bind:checked={overlayOpts.dot} />Cursor dot</label>
+          <label class="check"><input type="checkbox" bind:checked={overlayOpts.keys} />Keys pressed</label>
+          <label class="check"><input type="checkbox" bind:checked={overlayOpts.heat} />Heatmap</label>
+          <div class="seg" class:dim={!overlayOpts.heat} role="radiogroup" aria-label="Heatmap range">
+            <button role="radio" aria-checked={overlayOpts.heatRange === "game"} class:on={overlayOpts.heatRange === "game"} onclick={() => (overlayOpts.heatRange = "game")} disabled={!overlayOpts.heat}>Whole game</button>
+            <button role="radio" aria-checked={overlayOpts.heatRange === "range"} class:on={overlayOpts.heatRange === "range"} onclick={() => (overlayOpts.heatRange = "range")} disabled={!overlayOpts.heat}>Selected range</button>
+          </div>
+          {#if overlayOpts.heat && overlayOpts.heatRange === "range" && !heatRange}
+            <small class="muted">Drag across the APM chart under Mechanics to pick a range (whole game until then).</small>
+          {/if}
+          <small class="muted">Shortcut: I</small>
+        </div>
+      {/if}
+    </div>
     <select class="rate" bind:value={rate} title="Speed">
       {#each [0.25, 0.5, 1, 1.5, 2] as r}<option value={r}>{r}×</option>{/each}
     </select>
@@ -522,5 +622,111 @@
   .chip.off .chip-ic {
     background: var(--surface-3);
     color: var(--muted);
+  }
+  .ovwrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-right: 6px;
+  }
+  .ovchip {
+    cursor: pointer;
+  }
+  .ovchip:disabled,
+  .optbtn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .mini-spin {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    border: 1.5px solid color-mix(in srgb, currentColor 35%, transparent);
+    border-top-color: currentColor;
+    animation: spin 0.8s linear infinite;
+  }
+  .ovpop {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 8px);
+    width: 250px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 20;
+    background: var(--surface);
+    border: 1px solid var(--border-2);
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    font-size: 13px;
+    animation: fade 0.15s;
+  }
+  .ovhead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .ovhead .x {
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    display: grid;
+    place-items: center;
+  }
+  .ovpop .check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .ovpop .slider {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-left: 24px;
+    font-size: 12px;
+    color: var(--text-2);
+  }
+  .ovpop .slider input {
+    accent-color: var(--accent);
+  }
+  .ovpop .dim {
+    opacity: 0.45;
+  }
+  .legend {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .legend i {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-left: 4px;
+  }
+  .seg {
+    display: flex;
+    margin-left: 24px;
+    border: 1px solid var(--border-2);
+    border-radius: 7px;
+    overflow: hidden;
+  }
+  .seg button {
+    flex: 1;
+    border: none;
+    background: transparent;
+    padding: 4px 6px;
+    font-size: 12px;
+    color: var(--text-2);
+  }
+  .seg button.on {
+    background: var(--surface-3);
+    color: var(--text);
+    font-weight: 600;
   }
 </style>

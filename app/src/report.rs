@@ -73,6 +73,23 @@ pub fn write(st: &AppState, ui: &serde_json::Value) -> anyhow::Result<PathBuf> {
             line
         );
     }
+    // Input recordings: only their stats (the files themselves never go into the report).
+    let _ = writeln!(t, "\nInput recordings (replay overlay; files not included):");
+    for g in games.iter().take(8) {
+        let Ok(sess) = cv_core::session::GameSession::load(&g.dir) else { continue };
+        let Some(name) = sess.input_file.as_ref() else {
+            let _ = writeln!(t, "  {} | none", g.id);
+            continue;
+        };
+        let p = g.dir.join(name);
+        let line = match (std::fs::metadata(&p), cv_core::input::read(&p)) {
+            (Ok(m), Ok(f)) => serde_json::to_string(&cv_core::input::stats::summarize(&f, m.len())).unwrap_or_default(),
+            (Err(e), _) => format!("missing ({e})"),
+            (_, Err(e)) => format!("can't read: {e}"),
+        };
+        let mech = sess.mechanics.as_ref().map(|m| format!(" | APM {:.0}, {} clicks, {} keys, idle {:.0} s", m.apm, m.clicks, m.key_presses, m.idle_secs)).unwrap_or_default();
+        let _ = writeln!(t, "  {} | {line}{mech}", g.id);
+    }
     let _ = writeln!(t, "\nWindow responsiveness (this run): {}", serde_json::to_string_pretty(ui).unwrap_or_default());
     let timings = st.startup.lock().unwrap();
     let _ = writeln!(t, "Startup: window painted {:?} ms after launch (page {:?} ms)", timings.0, timings.1);

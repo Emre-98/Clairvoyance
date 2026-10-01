@@ -133,7 +133,8 @@ mod win {
         let vk = kb.VKey;
         let is_down = kb.Message == 0x100 || kb.Message == 0x104; // WM_KEYDOWN / WM_SYSKEYDOWN
         let at = Instant::now();
-        let press = STATE.with(|s| {
+        let qpc_hns = qpc_hns();
+        let ev = STATE.with(|s| {
             let mut s = s.borrow_mut();
             match vk {
                 0x10 | 0xA0 | 0xA1 => s.shift = is_down,
@@ -142,17 +143,31 @@ mod win {
                 _ => {}
             }
             if !is_down {
-                s.down.remove(&vk);
-                return None;
+                // Only releases of keys seen going down (no stray ups).
+                return s.down.remove(&vk).then(|| InputEvent { key: None, vk, down: false, at, qpc_hns });
             }
             // Ignore auto-repeat while a key is held.
             if !s.down.insert(vk) {
                 return None;
             }
-            key_name(vk).map(|key| KeyPress { key, ctrl: s.ctrl, shift: s.shift, alt: s.alt })
+            let key = key_name(vk).map(|key| KeyPress { key, ctrl: s.ctrl, shift: s.shift, alt: s.alt });
+            Some(InputEvent { key, vk, down: true, at, qpc_hns })
         });
-        if let (Some(key), Some(tx)) = (press, SENDER.get()) {
-            let _ = tx.send(InputEvent { key, at });
+        if let (Some(ev), Some(tx)) = (ev, SENDER.get()) {
+            let _ = tx.send(ev);
+        }
+    }
+
+    fn qpc_hns() -> i64 {
+        use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
+        unsafe {
+            let (mut c, mut f) = (0i64, 0i64);
+            let _ = QueryPerformanceCounter(&mut c);
+            let _ = QueryPerformanceFrequency(&mut f);
+            if f == 0 {
+                return 0;
+            }
+            ((c as i128 * 10_000_000) / f as i128) as i64
         }
     }
 

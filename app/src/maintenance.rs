@@ -43,6 +43,8 @@ pub struct Maintenance {
     finalize_failed: Mutex<HashSet<PathBuf>>,
     /// Games whose recording check failed this session (not retried every run).
     verify_failed: Mutex<HashSet<PathBuf>>,
+    /// Games whose input recording couldn't be processed (not retried every run).
+    input_failed: Mutex<HashSet<PathBuf>>,
 }
 
 impl Maintenance {
@@ -82,6 +84,8 @@ pub struct RunReport {
     pub finalized: usize,
     /// Games whose events were checked against the recording.
     pub verified: usize,
+    /// Input recordings processed (stats, heatmap, compression).
+    pub inputs: usize,
     /// A game interrupted by a crash got its video back.
     pub recovered: bool,
     pub removed: Vec<CleanupDone>,
@@ -106,7 +110,7 @@ pub async fn run(app: &AppHandle, forced: bool) -> RunReport {
     let s2 = st.clone();
     let report = tauri::async_runtime::spawn_blocking(move || crate::platform::in_background_mode(|| run_blocking(&s2, forced))).await.unwrap_or_default();
 
-    if report.thumbs_made > 0 || report.finalized > 0 || report.verified > 0 || report.recovered || !report.removed.is_empty() {
+    if report.thumbs_made > 0 || report.finalized > 0 || report.verified > 0 || report.inputs > 0 || report.recovered || !report.removed.is_empty() {
         let _ = app.emit("library-changed", ());
     }
     if !report.removed.is_empty() {
@@ -240,6 +244,23 @@ fn run_blocking(st: &Arc<AppState>, forced: bool) -> RunReport {
         lib.refresh(&root);
     }
 
+    // Input recordings (replay overlay): Mechanics stats + heatmap, then compressed. After the
+    // ult check, newest first, stops when a game starts.
+    for g in lib.summaries() {
+        if busy(st) {
+            break;
+        }
+        if g.input_bytes == 0 {
+            continue;
+        }
+        if process_input(st, &g.dir) {
+            report.inputs += 1;
+        }
+    }
+    if report.inputs > 0 {
+        lib.refresh(&root);
+    }
+
     // Thumbnails of games deleted outside the app.
     let ids: Vec<String> = lib.summaries().into_iter().map(|g| g.id).collect();
     let orphans = lib.thumbs().remove_orphans(&ids);
@@ -343,6 +364,66 @@ fn verify_game(st: &AppState, game: &dyn cv_core::game::GameIntegration, dir: &P
         Err(e) => {
             log::warn!("recording check of {}: {e:#}", dir.display());
             st.maintenance.verify_failed.lock().unwrap().insert(dir.to_path_buf());
+            false
+        }
+    }
+}
+
+/// One game's input recording after the game: Mechanics stats into session.json, the whole-game
+/// heatmap into the file, and the file compressed. Skipped when already done.
+fn process_input(st: &AppState, dir: &Path) -> bool {
+    use cv_core::input::{self, stats};
+    use cv_core::session::GameSession;
+    if st.maintenance.input_failed.lock().unwrap().contains(dir) {
+        return false;
+    }
+    let Ok(s) = GameSession::load(dir) else { return false };
+    let Some(name) = s.input_file.clone() else { return false };
+    let path = dir.join(&name);
+    let t = std::time::Instant::now();
+    let r = (|| -> anyhow::Result<Option<String>> {
+        let f = input::read(&path)?;
+        let stats_ok = s.mechanics.as_ref().is_some_and(|m| m.version >= stats::STATS_VERSION);
+        if stats_ok && f.compressed {
+            return Ok(None);
+        }
+        let an = stats::Analysis::from_file(&f);
+        let mech = stats::mechanics_whole(&an, s.video_offset);
+        if busy(st) {
+            anyhow::bail!("paused: a game started");
+        }
+        let mut sizes = String::new();
+        if !f.compressed {
+            let heat = stats::heatmap(&an, 0.0, an.end, stats::HEAT_W, stats::HEAT_H);
+            let (a, b) = input::compress_in_place(&path, Some(&heat))?;
+            sizes = format!(", {} KB -> {} KB", a / 1024, b / 1024);
+        }
+        // Re-read just before saving: keep what changed meanwhile.
+        let mut now = GameSession::load(dir)?;
+        now.mechanics = Some(mech.clone());
+        now.save(dir)?;
+        Ok(Some(format!(
+            "{} samples, APM {:.0}, {} clicks, {} keys{sizes}{}",
+            mech.cursor_samples,
+            mech.apm,
+            mech.clicks,
+            mech.key_presses,
+            if f.truncated { " (cut off by a crash: kept up to that point)" } else { "" }
+        )))
+    })();
+    match r {
+        Ok(Some(what)) => {
+            log::info!("input recording of {} processed in {} ms: {what}", dir.display(), t.elapsed().as_millis());
+            true
+        }
+        Ok(None) => false,
+        Err(e) if busy(st) => {
+            log::info!("input recording of {} paused ({e}); later", dir.display());
+            false
+        }
+        Err(e) => {
+            log::warn!("input recording of {}: {e:#}", dir.display());
+            st.maintenance.input_failed.lock().unwrap().insert(dir.to_path_buf());
             false
         }
     }

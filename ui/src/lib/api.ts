@@ -13,6 +13,7 @@ import type {
   UpdateStatus,
   GameModesView,
   SelfTestResult,
+  Mechanics,
 } from "./types";
 
 type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
@@ -96,6 +97,9 @@ export const api = {
   simulateGame: (speed: number, length: number, queue: number | null = null) => call<void>("simulate_game", { speed, length, queue }),
   videoInfo: (path: string) => call<{ layout: string; fragments: number; keyframe_interval_avg: number; keyframe_interval_max: number; duration_secs: number; codec: string | null }>("video_info", { path }),
   videoKeyframes: (path: string) => call<number[]>("video_keyframes", { path }),
+  /** The replay overlay's data (binary, see lib/inputoverlay.ts). */
+  inputLoad: (id: string) => call<ArrayBuffer>("input_load", { id }),
+  inputStats: (id: string, from: number, to: number) => call<Mechanics>("input_stats", { id, from, to }),
   testReport: (ui: unknown) => call<string>("test_report", { ui }),
   quit: () => call<void>("quit_app"),
   removeLegacyApp: () => call<void>("remove_legacy_app"),

@@ -107,6 +107,8 @@ export interface SessionSummary {
   video_removed: boolean;
   size_bytes: number;
   video_bytes: number;
+  /** Size of the input recording (replay overlay); 0 = none. */
+  input_bytes?: number;
   event_count: number;
   clip_count: number;
   thumb_at: number;
@@ -169,6 +171,8 @@ export interface GameSession {
   record_mode?: "full" | "clips_only" | null;
   warnings: string[];
   verification?: Verification | null;
+  input_file?: string | null;
+  mechanics?: Mechanics | null;
 }
 
 /** Live key presses checked against the recording after the game (League: ult casts). */
@@ -184,7 +188,27 @@ export interface Verification {
   analysis_ms: number;
 }
 
+/** Mouse/keyboard stats of a game or a range (cv_core::input::stats::Mechanics). */
+export interface Mechanics {
+  version: number;
+  from: number;
+  to: number;
+  focused_secs: number;
+  clicks: number;
+  right_clicks: number;
+  key_presses: number;
+  apm: number;
+  apm_per_min: (number | null)[];
+  right_click_hz: number;
+  cursor_distance: number;
+  path_efficiency?: number | null;
+  idle_secs: number;
+  cursor_samples: number;
+}
+
 export interface SessionView {
+  /** Size of the input recording (replay overlay), if any. */
+  input_bytes?: number | null;
   session: GameSession;
   dir: string;
   video_path?: string | null;
@@ -254,8 +278,9 @@ export interface Settings {
 export interface ConfigField {
   key: string;
   label: string;
-  kind: "text" | "key" | "bool";
+  kind: "text" | "key" | "bool" | "select";
   help: string;
+  options?: [string, string][];
 }
 
 export interface GameMeta {
@@ -263,6 +288,7 @@ export interface GameMeta {
   name: string;
   short_name: string;
   supports_events: boolean;
+  input_tracking?: boolean;
   config_fields: ConfigField[];
   default_config: Record<string, unknown>;
 }

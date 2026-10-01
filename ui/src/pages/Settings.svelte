@@ -303,6 +303,10 @@
                   <HotkeyInput single bind:value={cfg[f.key] as string} />
                 {:else if f.kind === "bool"}
                   <input type="checkbox" bind:checked={cfg[f.key] as boolean} />
+                {:else if f.kind === "select"}
+                  <select class="input" bind:value={cfg[f.key] as string}>
+                    {#each f.options ?? [] as [v, label]}<option value={v}>{label}</option>{/each}
+                  </select>
                 {:else}
                   <input class="input" bind:value={cfg[f.key] as string} />
                 {/if}
@@ -440,6 +444,7 @@
         <div class="item"><div><strong>Window ready after launch</strong><span class="muted">Start of the app until the library is on screen (target under 1 s)</span></div><span class="metric">{ms(timings?.startup_ms)}</span></div>
         <div class="item"><div><strong>Page switch</strong><span class="muted">Click until the new page is painted, median / slowest of the last {marks.page_switch.n} (target under 100 ms)</span></div><span class="metric">{ms(marks.page_switch.median)} / {ms(marks.page_switch.max)}</span></div>
         <div class="item"><div><strong>Opening a replay</strong><span class="muted">Click on a game until its first video frame is on screen, median / slowest of the last {marks.replay_frame.n} (target under 500 ms)</span></div><span class="metric">{ms(marks.replay_frame.median)} / {ms(marks.replay_frame.max)}</span></div>
+        <div class="item"><div><strong>Input overlay on</strong><span class="muted">First switch-on of a replay's input overlay until it's drawn (loads the recording), median / slowest of the last {marks.overlay_on.n} (target under 100 ms)</span></div><span class="metric">{ms(marks.overlay_on.median)} / {ms(marks.overlay_on.max)}</span></div>
         <div class="item"><div><strong>Timeline jump</strong><span class="muted">Marker click until the video shows the moment, median / slowest of the last {marks.seek.n} (target under 200 ms)</span></div><span class="metric">{ms(marks.seek.median)} / {ms(marks.seek.max)}</span></div>
       </div>
       <h3 class="sub">Try it without playing</h3>

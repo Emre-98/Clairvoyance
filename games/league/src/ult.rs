@@ -115,6 +115,12 @@ fn key_name(k: &str) -> Option<String> {
     })
 }
 
+/// League's mouse bind names: "Button 1" = left, 2 = right, 3 = middle, 4/5 = side buttons.
+pub fn mouse_button_number(name: &str) -> Option<u8> {
+    let n: u8 = name.trim().to_ascii_lowercase().strip_prefix("button")?.trim().parse().ok()?;
+    (1..=5).contains(&n).then_some(n)
+}
+
 /// Parses one bind value: `[Alt][r]`, `[r],[Shift][r]`, `null`, `[<Unbound>]`.
 /// Returns key binds and mouse-button binds.
 fn parse_value(v: &str) -> (Vec<Bind>, Vec<String>) {
@@ -462,6 +468,22 @@ impl UltTracker {
         accepted
     }
 
+    /// Mouse-button presses (from the input recording, after the game) on a button bound to the
+    /// ult: kept as ult presses for the check against the recording, so a mouse-bound ult cast
+    /// matches its press instead of showing as "cast without a logged press". No live gates are
+    /// known for them (reason "mouse"); the recording decides.
+    pub fn mouse_marks(&self, presses: &[(f64, u8)]) -> Vec<KeyMark> {
+        if self.manual.is_some() {
+            return Vec::new();
+        }
+        let bound: Vec<u8> = self.binds.mouse.iter().filter_map(|b| mouse_button_number(b)).collect();
+        presses
+            .iter()
+            .filter(|(_, b)| bound.contains(b))
+            .map(|&(t, b)| KeyMark { game_time: t, action: "ult".into(), key: format!("Mouse {b}"), accepted: false, reason: Some("mouse".into()) })
+            .collect()
+    }
+
     pub fn take_marks(&mut self) -> Vec<KeyMark> {
         std::mem::take(&mut self.marks)
     }
@@ -504,6 +526,20 @@ evtPlayerMoveClick=[Button 2],[Shift][Button 2]
         let labels: Vec<String> = b.cast.iter().map(|b| b.label()).collect();
         assert_eq!(labels, vec!["R", "Alt+R", "Shift+R"]);
         assert_eq!(b.level_up, vec![Bind { key: "R".into(), ctrl: true, shift: false, alt: false }]);
+    }
+
+    #[test]
+    fn mouse_bound_ult_presses_from_the_input_recording() {
+        let binds = parse_input_ini("evtCastSpell4=[r],[Button 5]\n");
+        let t = UltTracker::new(binds.clone(), None, UltRules::builtin());
+        let marks = t.mouse_marks(&[(10.0, 5), (11.0, 1), (12.0, 4), (13.5, 5)]);
+        assert_eq!(marks.iter().map(|m| (m.game_time, m.key.as_str())).collect::<Vec<_>>(), vec![(10.0, "Mouse 5"), (13.5, "Mouse 5")]);
+        assert!(marks.iter().all(|m| m.action == "ult" && !m.accepted && m.reason.as_deref() == Some("mouse")));
+        // A manual ult key replaces League's binds: no mouse marks.
+        let manual = UltTracker::new(binds, Some(Bind::plain("T")), UltRules::builtin());
+        assert!(manual.mouse_marks(&[(10.0, 5)]).is_empty());
+        assert_eq!(mouse_button_number("Button 4"), Some(4));
+        assert_eq!(mouse_button_number("button 9"), None);
     }
 
     #[test]

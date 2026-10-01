@@ -9,6 +9,7 @@
   import Player from "../components/Player.svelte";
   import ClipEditor from "../components/ClipEditor.svelte";
   import LineChart from "../components/LineChart.svelte";
+  import Mechanics from "../components/Mechanics.svelte";
   import ChampionIcon from "../components/ChampionIcon.svelte";
   import Icon from "../components/Icon.svelte";
 
@@ -25,6 +26,8 @@
   let hidden = $state(new Set<Group>(HIDDEN_BY_DEFAULT));
   let range = $state<[number, number] | null>(null);
   let listEl = $state<HTMLDivElement>();
+  /** Mechanics range (game seconds): range stats + the overlay's "selected range" heatmap. */
+  let mechRange = $state<[number, number] | null>(null);
 
   async function load() {
     try {
@@ -46,6 +49,9 @@
   const videoSrc = $derived(videoPath ? videoUrl(videoPath, view ? view.video_bytes : sum?.video_bytes) : null);
   const poster = $derived(fileSrc(view?.thumb_path ?? sum?.thumb_path) || null);
   const offset = $derived(s?.video_offset ?? 0);
+  // The game has an input recording (from the library summary at once, then the full view).
+  const hasInput = $derived((view ? (view.input_bytes ?? 0) : (sum?.input_bytes ?? 0)) > 0);
+  const heatRange = $derived<[number, number] | null>(mechRange ? [mechRange[0] + offset, mechRange[1] + offset] : range);
   const events = $derived([...(s?.events ?? [])].sort((a, b) => a.game_time - b.game_time));
   const listEvents = $derived(events.filter((e) => !hidden.has((KIND[e.kind] ?? KIND.manual_marker).group)));
   const gameLen = $derived(s?.game_duration ?? (s?.video_duration ? s.video_duration - offset : 0));
@@ -150,6 +156,8 @@
           bind:current
           startAt={t}
           removed={!!(s?.video_removed_at ?? sum?.video_removed)}
+          inputId={hasInput ? id : null}
+          {heatRange}
         />
         {#if range && s}
           <ClipEditor sessionId={s.id} bind:range {current} {offset} duration={videoLen} onclose={() => (range = null)} onpreview={() => player?.seek(range![0], true)} />
@@ -210,6 +218,12 @@
         <div class="tile"><span class="label">{k}</span><span class="big">{v}</span></div>
       {/each}
     </div>
+
+    {#if s.mechanics}
+      <Mechanics whole={s.mechanics} {id} {offset} canRange={hasInput} bind:range={mechRange} />
+    {:else if s.input_file && hasInput}
+      <div class="card mech-wait muted">Mechanics stats are computed shortly after the game (while no game is running).</div>
+    {/if}
 
     {#if deaths.length && gameLen > 0}
       <div class="card deaths">
@@ -286,6 +300,11 @@
 </div>
 
 <style>
+  .mech-wait {
+    padding: 14px 16px;
+    margin-top: 16px;
+    font-size: 13px;
+  }
   .head {
     display: flex;
     align-items: center;

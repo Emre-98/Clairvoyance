@@ -47,12 +47,12 @@
 
 <div class="pt">
   <p class="lead">
-    Measures what recording costs in a real game: League FPS (average and 1% lows), CPU and GPU, first without recording, then with the built-in recorder. About {Math.round((secs * 2) / 60 + 1)} minutes of play.
+    Measures what recording costs in a real game: League FPS (average and 1% lows), CPU and GPU, first without recording, then recording, then recording with mouse &amp; keyboard input. About {Math.round((secs * 3) / 60 + 1)} minutes of play.
   </p>
   <ol class="steps">
     <li>Click <strong>Start test</strong> and accept the Windows prompt (PresentMon, Intel's free frame-time tool, needs it to read FPS; it never touches the game).</li>
     <li>Start a <strong>Practice Tool</strong> game and play normally (walk around, fight minions). You'll hear each phase start.</li>
-    <li><strong>Stay in the game until you hear “Performance test finished”</strong> (about {Math.round((secs * 2) / 60 + 1)} minutes). Leaving earlier stops the test. Then leave the game: the results appear here.</li>
+    <li><strong>Stay in the game until you hear “Performance test finished”</strong> (about {Math.round((secs * 3) / 60 + 1)} minutes). Leaving earlier stops the test. Then leave the game: the results appear here.</li>
     <li>For a fair comparison, do the same thing in every phase (for example, stand in lane and last-hit). Big fights in one phase and not the other change the FPS more than recording does.</li>
   </ol>
   <div class="row controls">

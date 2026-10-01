@@ -226,8 +226,9 @@ impl GameIntegration for Cs2Integration {
                 label: "CS2 cfg folder",
                 kind: "text",
                 help: "Found automatically through Steam. Clairvoyance puts its Game State Integration file there; restart CS2 once after the first install.",
+                options: &[],
             },
-            ConfigField { key: "gsi_port", label: "Local port", kind: "text", help: "Port CS2 sends its game state to (default 3380)." },
+            ConfigField { key: "gsi_port", label: "Local port", kind: "text", help: "Port CS2 sends its game state to (default 3380).", options: &[] },
         ]
     }
     fn default_config(&self) -> serde_json::Value {
