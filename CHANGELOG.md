@@ -3,6 +3,14 @@
 Newest first. `scripts/release.ps1` adds a section for each release; the section becomes the
 release notes on GitHub and in the in-app "Update available" card.
 
+## [1.3.0] - 2026-10-01
+
+- Accurate ult tracking: your ult keys are read from League's settings (quick cast, indicator, self-cast), and presses before level 6, while dead, in chat or on cooldown are ignored
+- After each game the recording is checked: real ult casts are marked 'Ult used' at the exact moment, also casts the keyboard log missed
+- Presses without a cast are kept as 'Unconfirmed presses' (hidden; click the chip under the video to show them)
+- Older recordings are checked too, in the background, while no game is running
+- Events stay in the right place when Clairvoyance is started in the middle of a game
+
 ## [1.2.0] - 2026-10-01
 
 - Replays open instantly: the first frame shows in about 0.1 s instead of up to 30 s; recordings are finalized for instant playback after each game (older ones too)
