@@ -25,7 +25,10 @@
 - Owner tests so far (2026-09-30, RTX 5080 / i9-9900K, 4K → 1080p60): self-test and a Practice
   Tool game recorded fine: 0 dropped frames, NVENC, game-only audio, ~0.5% CPU, ~180 MB RAM while
   recording, League FPS 140.7 → 140.3 average (−0.3%), 1% low 102.5 → 100.2.
-- **Waiting for the owner**: play a real League game with v1.0.x and check the timeline,
+- **Auto-update tested end to end (2026-10-01):** v1.0.0 installed from GitHub; v1.1.0 published by
+  `scripts\release.ps1` + GitHub Actions; the installed app showed "Update available: v1.1.0"
+  ~60 s after start, "Update now" downloaded, installed and restarted it on 1.1.0.
+- **Waiting for the owner**: play a real League game with v1.1.x and check the timeline,
   thumbnail and Settings > Advanced > Responsiveness numbers (see "Known issues").
 
 ## What we're building
