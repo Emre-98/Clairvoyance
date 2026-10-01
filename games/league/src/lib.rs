@@ -323,6 +323,7 @@ impl GameIntegration for LeagueIntegration {
             ModeGroupInfo { id: "aram", label: "ARAM", help: "Howling Abyss" },
             ModeGroupInfo { id: "arena", label: "Arena", help: "2v2v2v2" },
             ModeGroupInfo { id: "rotating", label: "Rotating & event modes", help: "URF, One for All and other limited-time modes" },
+            ModeGroupInfo { id: "tft", label: "Teamfight Tactics", help: "TFT games (run in the League game client too)" },
             ModeGroupInfo { id: "other", label: "Other", help: "Custom games, Practice Tool, Co-op vs AI, Tutorial" },
         ]
     }

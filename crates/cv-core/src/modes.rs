@@ -187,6 +187,9 @@ impl GameModes {
                     if !c.name.is_empty() {
                         e.name = c.name.clone();
                     }
+                    // Grouping is derived data (it may improve with better sources); the
+                    // user's rule is kept.
+                    e.group = c.group.clone();
                     if c.available.is_some() {
                         e.available = c.available;
                     }

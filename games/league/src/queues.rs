@@ -68,6 +68,9 @@ pub fn classify(q: &QueueFacts) -> (String, Option<ModeRule>) {
     }
     let name = q.name.to_lowercase();
     let t = q.queue_type.to_uppercase();
+    if q.game_mode.eq_ignore_ascii_case("TFT") || name.contains("teamfight tactics") || t.contains("TFT") {
+        return ("tft".into(), None);
+    }
     if q.is_ranked || t.starts_with("RANKED") || name.contains("ranked") {
         return ("ranked".into(), Some(ModeRule::Record));
     }
@@ -79,7 +82,7 @@ pub fn classify(q: &QueueFacts) -> (String, Option<ModeRule>) {
     }
     let gm = q.game_mode.to_uppercase();
     let map = q.map_name.to_lowercase();
-    if gm == "ARAM" || (gm.is_empty() && map.contains("howling abyss") && !name.contains("urf") && !name.contains("one for all")) {
+    if gm == "ARAM" || name.contains("aram") || (gm.is_empty() && map.contains("howling abyss") && !name.contains("urf") && !name.contains("one for all")) {
         return ("aram".into(), Some(ModeRule::Record));
     }
     if gm == "CHERRY" || map.contains("rings of wrath") || name.contains("arena") {
@@ -129,7 +132,9 @@ pub fn parse_static(json: &str) -> Vec<StaticQueue> {
     serde_json::from_str(json).unwrap_or_default()
 }
 
-/// Current (not deprecated) queues from Riot's list. Availability isn't known from it.
+/// Not-deprecated queues from Riot's list. Riot's list also keeps old event modes, so apart from
+/// the well-known queues they're marked "not currently available" until the client lists them
+/// or one is played (then they become available and keep the name).
 pub fn static_catalog(list: &[StaticQueue]) -> Vec<CatalogMode> {
     list.iter()
         .filter(|q| q.queue_id > 0)
@@ -140,7 +145,8 @@ pub fn static_catalog(list: &[StaticQueue]) -> Vec<CatalogMode> {
                 return None;
             }
             let facts = QueueFacts { id: q.queue_id, name: desc.clone(), map_name: q.map.clone(), ..Default::default() };
-            Some(catalog_entry(&facts, None))
+            let known = KNOWN.iter().any(|k| k.0 == q.queue_id);
+            Some(catalog_entry(&facts, if known { None } else { Some(false) }))
         })
         .collect()
 }

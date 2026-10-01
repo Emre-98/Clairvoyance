@@ -18,16 +18,26 @@ param(
 $ErrorActionPreference = "Stop"
 Set-Location (Split-Path $PSScriptRoot -Parent)
 
+$script:GitExe = (Get-Command git -CommandType Application | Select-Object -First 1).Source
+# git writes progress and warnings to stderr; Windows PowerShell would treat that as an error.
+function Invoke-Git {
+  $old = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try { $out = & $script:GitExe @args 2>&1 } finally { $ErrorActionPreference = $old }
+  $out | ForEach-Object { "$_" }
+  if ($LASTEXITCODE -ne 0) { throw "git $args failed ($LASTEXITCODE)" }
+}
+
 $Version = $Version.TrimStart("v")
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "Version must look like 1.2.3" }
 $tag = "v$Version"
 
 if (-not $DryRun) {
-  if (git status --porcelain) { throw "You have uncommitted changes. Commit or stash them first." }
-  $branch = (git rev-parse --abbrev-ref HEAD).Trim()
+  if (Invoke-Git status --porcelain) { throw "You have uncommitted changes. Commit or stash them first." }
+  $branch = (Invoke-Git rev-parse --abbrev-ref HEAD | Select-Object -First 1).Trim()
   if ($branch -ne "main") { throw "Release from the main branch (you're on $branch)." }
-  git fetch --tags --quiet origin
-  if (git tag --list $tag) { throw "Tag $tag already exists." }
+  Invoke-Git fetch --tags --quiet origin | Out-Null
+  if (Invoke-Git tag --list $tag) { throw "Tag $tag already exists." }
 }
 
 $current = ((Get-Content app/tauri.conf.json -Raw) | ConvertFrom-Json).version
@@ -68,11 +78,11 @@ Edit-File "CHANGELOG.md" { param($t) ([regex]'(?m)^## ').Replace($t, "$section##
 
 if ($DryRun) { Write-Host "Dry run: nothing written."; Write-Host $section; exit 0 }
 
-git add Cargo.toml Cargo.lock app/tauri.conf.json ui/package.json ui/package-lock.json CHANGELOG.md
-git commit -m "Release $tag"
-git tag -a $tag -m "Clairvoyance $tag"
-git push origin main
-git push origin $tag
+Invoke-Git add Cargo.toml Cargo.lock app/tauri.conf.json ui/package.json ui/package-lock.json CHANGELOG.md
+Invoke-Git commit -m "Release $tag"
+Invoke-Git tag -a $tag -m "Clairvoyance $tag"
+Invoke-Git push origin main
+Invoke-Git push origin $tag
 Write-Host ""
 Write-Host "Pushed $tag. GitHub Actions is building the release (about 10-15 minutes):"
 Write-Host "  https://github.com/Emre-98/Clairvoyance/actions"
