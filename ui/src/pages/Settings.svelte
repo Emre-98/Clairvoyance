@@ -152,9 +152,24 @@
 
   let simSpeed = $state(1);
   let simLength = $state(180);
+  let simQueue = $state(400);
+  let reporting = $state(false);
+  async function saveReport() {
+    reporting = true;
+    try {
+      const path = await api.testReport({ ...perfSummary(), ui_timings: timings });
+      toast("Test report saved.", "ok", 6000);
+      api.reveal(path);
+    } catch (e) {
+      toast(`Couldn't save the test report: ${e}`, "error");
+    } finally {
+      reporting = false;
+    }
+  }
+
   async function simulate() {
     try {
-      await api.simulateGame(simSpeed, simLength);
+      await api.simulateGame(simSpeed, simLength, simQueue);
       toast("Simulated League game started. It records your desktop.", "ok", 7000);
     } catch (e) {
       toast(String(e), "error");
@@ -424,6 +439,7 @@
       <div class="card box list">
         <div class="item"><div><strong>Window ready after launch</strong><span class="muted">Start of the app until the library is on screen (target under 1 s)</span></div><span class="metric">{ms(timings?.startup_ms)}</span></div>
         <div class="item"><div><strong>Page switch</strong><span class="muted">Click until the new page is painted, median / slowest of the last {marks.page_switch.n} (target under 100 ms)</span></div><span class="metric">{ms(marks.page_switch.median)} / {ms(marks.page_switch.max)}</span></div>
+        <div class="item"><div><strong>Opening a replay</strong><span class="muted">Click on a game until its first video frame is on screen, median / slowest of the last {marks.replay_frame.n} (target under 500 ms)</span></div><span class="metric">{ms(marks.replay_frame.median)} / {ms(marks.replay_frame.max)}</span></div>
         <div class="item"><div><strong>Timeline jump</strong><span class="muted">Marker click until the video shows the moment, median / slowest of the last {marks.seek.n} (target under 200 ms)</span></div><span class="metric">{ms(marks.seek.median)} / {ms(marks.seek.max)}</span></div>
       </div>
       <h3 class="sub">Try it without playing</h3>
@@ -437,8 +453,23 @@
               <option value={600}>10 min</option>
             </select>
           </label>
+          <label class="inline" title="The mode the fake League client reports: try your Game modes rules">Mode
+            <select class="input" bind:value={simQueue}>
+              <option value={400}>Draft Pick</option>
+              <option value={420}>Ranked Solo/Duo</option>
+              <option value={450}>ARAM</option>
+              <option value={1700}>Arena</option>
+              <option value={-1}>Practice Tool</option>
+              <option value={9999}>A brand-new mode</option>
+            </select>
+          </label>
           <button class="btn primary" onclick={simulate} disabled={app.status?.state !== "idle"}><Icon name="play" size={14} fill />Simulate a League game</button>
         </div>
+      </div>
+      <h3 class="sub">Test report</h3>
+      <div class="card box">
+        <p class="lead" style="margin-top:0">Something went wrong in a game? Save a test report: one small zip with the log, the latest game's timeline data and the numbers above (no videos, no Riot ID). It's saved in your recordings folder under "test-reports".</p>
+        <button class="btn" onclick={saveReport} disabled={reporting}><Icon name="download" size={14} />{reporting ? "Saving…" : "Save test report"}</button>
       </div>
       <h3 class="sub">Files</h3>
       <div class="card box list">

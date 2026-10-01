@@ -145,8 +145,9 @@ Compared:
   letterboxed to the output size, into a ring of 8 textures. Frames are dropped (never queued up)
   if the encoder falls 5 behind, so the game can't be slowed down.
 - **Encode: Media Foundation hardware H.264 MFT** (async, D3D11-aware) on the same GPU as the
-  capture, preferring the vendor's own (NVENC → AMF → Quick Sync by adapter). VBR, 2 s GOP, no
-  B-frames, low-latency mode. Bitrate: 12 Mbps (Standard) / 20 Mbps (High) at 1080p60, scaled by
+  capture, preferring the vendor's own (NVENC → AMF → Quick Sync by adapter). VBR, GOP = 1 s of
+  frames plus a forced keyframe whenever 1 s of *time* has passed without one (games don't always
+  deliver the full frame rate, which stretched keyframe gaps to 5 s), no B-frames, low-latency mode. Bitrate: 12 Mbps (Standard) / 20 Mbps (High) at 1080p60, scaled by
   pixel rate. Refuses software encoders.
 - **Audio:** game audio through **WASAPI process loopback** (`ActivateAudioInterfaceAsync` with
   `PROCESS_LOOPBACK`, include process tree), so Discord/Spotify aren't recorded. Falls back to
@@ -157,7 +158,8 @@ Compared:
 - **Container: own fragmented-MP4 muxer** (pure Rust, `mp4.rs`): a `moof`+`mdat` fragment every
   ~1 s, flushed to disk every 10 s, `mfra` index at the end. A crash or power loss only loses the
   last seconds; the rest plays. Chosen over MF's sink writer, which only writes a playable file on
-  a clean close.
+  a clean close. After the game the file is **finalized** to a faststart MP4 (see "Instant
+  replays").
 - **Replay buffer in memory:** the last N seconds of encoded packets (capped in bytes), trimmed at
   keyframes. Saving a clip writes a normal MP4 (moov first) from it, with no re-encode.
 - Encoders that only publish SPS/PPS in the output format (not in-stream) get them prepended to
@@ -352,6 +354,63 @@ Compared:
 - Events work in every mode (they come from the Live Client Data API); modes without Baron etc.
   simply have no such markers.
 
+### Instant replays (2026-10-01, owner's request)
+Problem: opening a game showed a black player for seconds (28 s for a 33 min game) before the
+video or the markers worked. Measured, not guessed (`scripts`/jobs + `--bench-replays`, see
+"Replay benchmark" below):
+- **Cause 1, the big one: the MP4 layout.** The recorder writes crash-safe *fragmented* MP4
+  (a `moof`+`mdat` every second, no full index up front). Chromium's demuxer (FFmpeg's `mov`,
+  which ignores the `mfra` index by default) reads **every** `moof` before the first frame:
+  1,957 reads spread over 2.6 GB for the owner's 33 min game, 298 for a 5 min one. Reproduced
+  on Linux with ffmpeg over a range-logging HTTP server: 1,977 range requests vs 1 for the same
+  media as a faststart file.
+- **Fix: finalize after the game.** `cv_capture::remux` rewrites the recording as a faststart
+  MP4 (ftyp, full `moov` with stts/stss/stsz/stsc/stco-or-co64, then one `mdat`), copying the
+  media as is (no re-encode, ~3.5 s for 2.6 GB on the owner's PC). Timestamps are kept exactly
+  (a late first sample covers the gap from 0). Done by the maintenance pass after each game
+  (after the auto clips), newest first, and for all older recordings; never while a game runs
+  (the copy stops and the original stays), never under the open player, only with enough free
+  space; written to `<video>.mp4.finalizing`, re-parsed and checked, then swapped in.
+  Recording stays fragmented (crash safety); interrupted finalizes leave the original untouched.
+- **Cause 2, checked: serving.** Tauri's asset protocol already answers HTTP Range requests (206,
+  ≤1 MB per response), so only the needed parts are read; nothing to change. The video URL now
+  carries `?v=<file size>` so the player never mixes cached bytes of the file before and after
+  it was finalized.
+- **Cause 3, checked: codec.** H.264 High (avc1.64002a), hardware-decoded by WebView2
+  (`mediaCapabilities`: supported, smooth, powerEfficient). HEVC/AV1 not used.
+- **Cause 4: keyframes.** Real recordings had keyframes every 2.0–2.3 s on average and up to
+  5.5 s apart (GOP counted in frames at ~52 fps real). Now: forced keyframe every second of time
+  (new recordings), and marker jumps **snap to the keyframe before the target** (0–3 s earlier
+  than "5 s before", from `video_keyframes`, cached per file), so the frame shows without
+  decoding the frames in between, also for old recordings.
+- **Cause 5: player setup.** The page waited for the game data before creating the player, the
+  `<video>` was re-created on every open, and there was no poster. Now: one shared `<video>`
+  element for the whole app (`ui/src/lib/videopool.ts`), moved into the page and kept with its
+  data afterwards; hovering a game card for 120 ms starts loading its video (preload=metadata);
+  the page renders from the library summary at once (header, player, poster) while the events
+  load in parallel; the thumbnail is the poster with a small spinner until the first frame;
+  marker clicks before the video is ready are remembered and done as soon as it can seek (the
+  playhead moves at once).
+- Interrupted games (crash, power cut, killed app) get their partial video back: the maintenance
+  pass links the leftover recording to the game (with a warning) and finalizes it.
+
+### Replay benchmark and end-to-end tests (developer tools)
+- `Clairvoyance.exe --bench-replays=<config.json>`: opens the given games N times in the real
+  window and measures page / first frame / playable / marker jumps / "marker clicked right away"
+  (`ui/src/lib/replaybench.ts`, `app/src/bench.rs`); writes JSON and quits.
+- `Clairvoyance.exe --ui-test=<config.json>`: end-to-end checks in the app (`ui/src/lib/uitests.ts`):
+  game-mode rules with simulated games, storage limit during a game, finalizing, crash recovery.
+  Run in a sandbox profile (APPDATA / LOCALAPPDATA / USERPROFILE pointed at a test folder).
+- The simulator (`--simulate`, Settings > Advanced) also fakes the **League client**: a lockfile
+  (`%LOCALAPPDATA%\Clairvoyance\simulator\lockfile`, protocol `http`) and the LCU endpoints
+  `/lol-gameflow/v1/session` and `/lol-game-queues/v1/queues`, with a chosen queue
+  (`--simulate-queue=450`, or the Mode picker), so game-mode rules can be tried without playing.
+- `mp4tool` (cv-capture example): `info`, `finalize`, `loop` (make a recording of any length from
+  a real one), `benchsession`.
+- Settings > Advanced > **Save test report**: a zip (log, latest game's session.json, settings
+  without Riot ID, report.txt with file layout/keyframes of the latest recordings and the
+  responsiveness numbers) in `<recordings>\test-reports\`. No videos.
+
 ## Milestones
 - [x] 0. Project setup: solution, projects, core interfaces, this plan
 - [x] Choose the language/stack: Tauri 2 (see Decisions made)
@@ -379,6 +438,8 @@ Compared:
 - [x] 19. Responsiveness: library cache, virtualization, lazy thumbnails, 1 s keyframes, measured
 - [x] 20. GitHub repo + auto-updater + release workflow (v1.0.0)
 - [x] 21. Game modes: per-queue Record / Clips only / Off from the League client, dynamic list (v1.1.0)
+- [x] 22. Instant replays: faststart finalize, keyframe snapping, shared player, poster, queued jumps
+- [x] 23. Test tools: replay benchmark, end-to-end tests with a fake League client, test report
 
 ## Known issues
 - The Windows-only parts added on 2026-10-01 (Media Foundation thumbnails, updater install,

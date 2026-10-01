@@ -1,6 +1,8 @@
-//! A fake League Live Client Data API (plain HTTP) that plays a scripted match.
-//! Used by "Settings > Advanced > Simulate a League game" and by tests, so the whole
-//! pipeline (detection, recording, events, offset, timeline) can be tried without playing.
+//! A fake League Live Client Data API (plain HTTP) that plays a scripted match, plus the two
+//! League Client (LCU) endpoints Clairvoyance reads: the game flow session (which queue is
+//! being played) and the queue list. Used by "Settings > Advanced > Simulate a League game"
+//! and by tests, so the whole pipeline (mode rules, detection, recording, events, offset,
+//! timeline) can be tried without playing.
 
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
@@ -22,6 +24,27 @@ pub struct MockOptions {
     pub linger_secs: f64,
     pub player: String,
     pub champion: String,
+    /// The queue the fake client reports (`/lol-gameflow/v1/session` → gameData.queue).
+    pub queue: Value,
+}
+
+/// An LCU-style queue object for a queue id (a few well-known ones; anything else is a
+/// "brand new" mode, to test how new modes are handled).
+pub fn queue_json(id: i64) -> Value {
+    let q = |desc: &str, t: &str, mode: &str, ranked: bool, cat: &str| {
+        json!({ "id": id, "name": desc, "description": desc, "shortName": desc, "type": t, "gameMode": mode, "isRanked": ranked, "category": cat, "queueAvailability": "Available", "mapId": if mode == "ARAM" { 12 } else if mode == "CHERRY" { 30 } else { 11 } })
+    };
+    match id {
+        420 => q("Ranked Solo/Duo", "RANKED_SOLO_5x5", "CLASSIC", true, "PvP"),
+        440 => q("Ranked Flex", "RANKED_FLEX_SR", "CLASSIC", true, "PvP"),
+        400 => q("Draft Pick", "NORMAL", "CLASSIC", false, "PvP"),
+        480 => q("Swiftplay", "SWIFTPLAY", "SWIFTPLAY", false, "PvP"),
+        450 => q("ARAM", "ARAM_UNRANKED_5x5", "ARAM", false, "PvP"),
+        1700 => q("Arena", "CHERRY", "CHERRY", false, "PvP"),
+        -1 => json!({ "id": -1, "description": "Practice Tool", "type": "", "gameMode": "PRACTICETOOL", "isRanked": false, "category": "Custom", "mapId": 11 }),
+        0 => json!({ "id": 0, "description": "Custom game", "type": "", "gameMode": "CLASSIC", "isRanked": false, "category": "Custom", "mapId": 11 }),
+        _ => q("Brand New Mode", "BRAND_NEW_MODE", "NEWMODE", false, "PvP"),
+    }
 }
 
 impl Default for MockOptions {
@@ -34,6 +57,7 @@ impl Default for MockOptions {
             linger_secs: 8.0,
             player: "Tester#EUW".into(),
             champion: "Ahri".into(),
+            queue: queue_json(400),
         }
     }
 }
@@ -43,6 +67,14 @@ pub struct MockHandle {
     pub running: Arc<AtomicBool>,
     stop: Arc<AtomicBool>,
     pub base_url: String,
+    pub port: u16,
+}
+
+impl MockHandle {
+    /// A League Client lockfile pointing at this fake (plain HTTP, any password).
+    pub fn lockfile_text(&self) -> String {
+        format!("LeagueClient:{}:{}:simulator:http", std::process::id(), self.port)
+    }
 }
 
 impl MockHandle {
@@ -157,15 +189,28 @@ impl Script {
     }
 
     fn respond(&self, path: &str) -> Option<Value> {
-        let t = self.game_time()?;
         let path = path.split('?').next().unwrap_or(path);
+        // The League client answers from the start (during the loading screen too).
+        match path {
+            "/lol-gameflow/v1/session" => return Some(json!({ "phase": "InProgress", "gameData": { "queue": self.opts.queue.clone(), "isCustomGame": self.opts.queue["category"] == "Custom" } })),
+            "/lol-game-queues/v1/queues" => {
+                let mut list: Vec<Value> = [420, 440, 400, 480, 450, 1700].iter().map(|id| queue_json(*id)).collect();
+                if !list.iter().any(|q| q["id"] == self.opts.queue["id"]) && self.opts.queue["id"].as_i64().unwrap_or(0) > 0 {
+                    list.push(self.opts.queue.clone());
+                }
+                return Some(Value::Array(list));
+            }
+            _ => {}
+        }
+        let t = self.game_time()?;
+        let game_mode = self.opts.queue["gameMode"].as_str().filter(|m| !m.is_empty()).unwrap_or("CLASSIC").to_string();
         Some(match path.trim_start_matches("/liveclientdata/") {
-            "gamestats" => json!({"gameMode": "CLASSIC", "gameTime": t, "mapName": "Map11", "mapNumber": 11, "mapTerrain": "Default"}),
+            "gamestats" => json!({"gameMode": game_mode, "gameTime": t, "mapName": "Map11", "mapNumber": 11, "mapTerrain": "Default"}),
             "activeplayername" => json!(self.me()),
             "activeplayer" => json!({"currentGold": 250.0 + t * 1.2, "level": 10, "riotId": self.me(), "summonerName": self.me_short()}),
             "playerlist" => self.player_list(t),
             "eventdata" => json!({"Events": self.events(t)}),
-            "allgamedata" => json!({"gameData": {"gameTime": t, "gameMode": "CLASSIC"}, "events": {"Events": self.events(t)}}),
+            "allgamedata" => json!({"gameData": {"gameTime": t, "gameMode": game_mode}, "events": {"Events": self.events(t)}}),
             _ => return None,
         })
     }
@@ -224,5 +269,5 @@ pub fn spawn(opts: MockOptions) -> std::io::Result<MockHandle> {
         }
         r.store(false, Ordering::SeqCst);
     })?;
-    Ok(MockHandle { running, stop, base_url })
+    Ok(MockHandle { running, stop, base_url, port: opts.port })
 }

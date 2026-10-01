@@ -1,6 +1,6 @@
 import { api, on, onEngine } from "./api";
 import { initTheme } from "./theme";
-import { measurePaint, nextPaint, record } from "./perfmarks";
+import { markNav, measurePaint, nextPaint, record } from "./perfmarks";
 import type { AppInfo, LiveStatus, SessionSummary, SessionView, Settings, UpdateStatus } from "./types";
 
 export type Route =
@@ -71,6 +71,7 @@ export function toast(text: string, level: Toast["level"] = "info", ms = 4500) {
 }
 
 export function go(route: Route) {
+  markNav();
   measurePaint("page_switch");
   app.route = route;
 }
@@ -119,6 +120,11 @@ export async function boot() {
     }
   });
   api.updateStatus().then((u) => (app.update = u)).catch(() => {});
+  // Developer tool: `--bench-replays=<config>` (see app/src/bench.rs).
+  api
+    .benchConfig()
+    .then((c) => c && (c.tests ? import("./uitests").then((m) => m.runUiTests(c)) : import("./replaybench").then((m) => m.runBench(c))))
+    .catch(() => {});
   countNewModes();
   await on("modes-changed", () => countNewModes());
   await on("update-status", (u: UpdateStatus) => {

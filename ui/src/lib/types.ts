@@ -172,6 +172,7 @@ export interface SessionView {
   session: GameSession;
   dir: string;
   video_path?: string | null;
+  video_bytes?: number | null;
   thumb_path?: string | null;
   clips: (ClipInfo & { path: string; exists: boolean; thumb_path?: string | null })[];
 }

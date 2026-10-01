@@ -2,6 +2,9 @@
 //! - keeps the library index up to date,
 //! - creates missing thumbnails (from the finished video, in the thumbnail folder),
 //! - removes thumbnails of games that are gone,
+//! - finalizes finished recordings for instant playback: the crash-safe fragmented MP4 written
+//!   during the game is rewritten as a "faststart" MP4 (index at the front, same media, no
+//!   re-encode; see `cv_capture::remux`), newest first, older recordings too,
 //! - applies the storage limit (oldest games first; favorites and kept clips are protected).
 //!
 //! Runs a little after start-up, after every game (once its auto clips are cut), after the
@@ -31,6 +34,10 @@ pub struct Maintenance {
     failed: Mutex<HashSet<PathBuf>>,
     /// Last clean-up result, for the Storage page.
     pub last_plan: Mutex<Option<CleanupPlan>>,
+    /// The video the replay player has open: not finalized (replaced) under it.
+    pub open_video: Mutex<Option<PathBuf>>,
+    /// Videos that couldn't be finalized this session (not retried every run).
+    finalize_failed: Mutex<HashSet<PathBuf>>,
 }
 
 impl Maintenance {
@@ -66,6 +73,10 @@ pub fn spawn(app: AppHandle) {
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct RunReport {
     pub thumbs_made: usize,
+    /// Recordings rewritten for instant playback.
+    pub finalized: usize,
+    /// A game interrupted by a crash got its video back.
+    pub recovered: bool,
     pub removed: Vec<CleanupDone>,
     pub freed_bytes: u64,
     /// Over the limit with only protected games left.
@@ -88,7 +99,7 @@ pub async fn run(app: &AppHandle, forced: bool) -> RunReport {
     let s2 = st.clone();
     let report = tauri::async_runtime::spawn_blocking(move || crate::platform::in_background_mode(|| run_blocking(&s2, forced))).await.unwrap_or_default();
 
-    if report.thumbs_made > 0 || !report.removed.is_empty() {
+    if report.thumbs_made > 0 || report.finalized > 0 || report.recovered || !report.removed.is_empty() {
         let _ = app.emit("library-changed", ());
     }
     if !report.removed.is_empty() {
@@ -131,6 +142,12 @@ fn run_blocking(st: &Arc<AppState>, forced: bool) -> RunReport {
     }
     if adopted {
         lib.save();
+    }
+
+    // Games interrupted by a crash or power cut: give them back their (partial) video.
+    if recover_interrupted(st) > 0 {
+        lib.refresh(&root);
+        report.recovered = true;
     }
 
     // Storage limit first (no point making thumbnails for games about to be removed).
@@ -183,6 +200,20 @@ fn run_blocking(st: &Arc<AppState>, forced: bool) -> RunReport {
         lib.save();
     }
 
+    // Finished recordings -> faststart, newest first (the one you're most likely to watch).
+    for g in lib.summaries() {
+        if busy(st) {
+            return report;
+        }
+        let Some(video) = &g.video_path else { continue };
+        if finalize_video(st, video) {
+            report.finalized += 1;
+        }
+    }
+    if report.finalized > 0 {
+        lib.refresh(&root);
+    }
+
     // Thumbnails of games deleted outside the app.
     let ids: Vec<String> = lib.summaries().into_iter().map(|g| g.id).collect();
     let orphans = lib.thumbs().remove_orphans(&ids);
@@ -190,6 +221,107 @@ fn run_blocking(st: &Arc<AppState>, forced: bool) -> RunReport {
         log::info!("removed {orphans} unused thumbnails");
     }
     report
+}
+
+/// A game whose app was closed hard (crash, power cut, killed) during the recording has a
+/// session.json without a video: the crash-safe recording is still in its folder. Link it,
+/// with the length that made it to disk. Only runs when no game is active.
+fn recover_interrupted(st: &AppState) -> usize {
+    let mut n = 0;
+    for g in st.library.summaries() {
+        if g.video_path.is_some() || g.video_removed || g.record_mode.as_deref() == Some("clips_only") {
+            continue;
+        }
+        let Ok(mut s) = cv_core::session::GameSession::load(&g.dir) else { continue };
+        if s.video_file.is_some() {
+            continue;
+        }
+        let Ok(rd) = std::fs::read_dir(&g.dir) else { continue };
+        let video = rd
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("mp4")))
+            .filter(|p| !p.file_name().unwrap().to_string_lossy().starts_with("Replay_"))
+            .max_by_key(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0));
+        let Some(video) = video else { continue };
+        let Ok(info) = cv_capture::remux::info(&video) else { continue };
+        if info.video_frames == 0 {
+            continue;
+        }
+        s.video_file = Some(video.file_name().unwrap().to_string_lossy().to_string());
+        s.video_duration = Some(info.duration_secs);
+        if s.ended_at.is_none() {
+            s.ended_at = std::fs::metadata(&video).and_then(|m| m.modified()).ok().map(chrono::DateTime::<chrono::Local>::from);
+        }
+        s.warnings.push("Clairvoyance was closed during this game (crash or power cut?): the video was recovered up to that moment.".into());
+        if s.save(&g.dir).is_ok() {
+            log::info!("recovered the video of interrupted game {} ({:.0} s)", g.id, info.duration_secs);
+            n += 1;
+        }
+    }
+    n
+}
+
+/// Rewrites one recording as a faststart MP4 if it isn't one yet. Never while a game runs (the
+/// copy stops and the original stays as it was), never under the open player, and only with
+/// enough free disk space for the copy.
+fn finalize_video(st: &AppState, video: &Path) -> bool {
+    use cv_capture::remux;
+    // Leftover from a finalize that was cut off (crash or power cut).
+    let tmp = video.with_extension("mp4.finalizing");
+    if tmp.exists() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    if st.maintenance.finalize_failed.lock().unwrap().contains(video) {
+        return false;
+    }
+    let layout = match remux::probe(video) {
+        Ok(l) => l,
+        Err(e) => {
+            log::warn!("finalize: can't read {}: {e}", video.display());
+            st.maintenance.finalize_failed.lock().unwrap().insert(video.to_path_buf());
+            return false;
+        }
+    };
+    if !layout.needs_finalize() {
+        return false;
+    }
+    let is_open = || st.maintenance.open_video.lock().unwrap().as_deref() == Some(video);
+    if is_open() {
+        return false; // next run
+    }
+    let size = std::fs::metadata(video).map(|m| m.len()).unwrap_or(0);
+    if let Some(free) = video.parent().and_then(crate::platform::free_space) {
+        if free < size + (2 << 30) {
+            log::warn!("finalize: not enough free disk space for {} ({} free)", video.display(), fmt_bytes(free));
+            st.maintenance.finalize_failed.lock().unwrap().insert(video.to_path_buf());
+            return false;
+        }
+    }
+    let t = std::time::Instant::now();
+    match remux::finalize_in_place(video, &|| busy(st) || is_open()) {
+        Ok(r) => {
+            log::info!(
+                "finalized {} for instant playback: {:?} -> faststart, {} fragments, {} in {:.1} s",
+                video.display(),
+                r.from,
+                r.fragments,
+                fmt_bytes(r.bytes_out),
+                t.elapsed().as_secs_f64()
+            );
+            true
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {
+            log::info!("finalize of {} paused (game started or video opened); later", video.display());
+            false
+        }
+        Err(e) => {
+            // E.g. the file is open in another player (can't be replaced): try again next session.
+            log::warn!("finalize {}: {e}", video.display());
+            st.maintenance.finalize_failed.lock().unwrap().insert(video.to_path_buf());
+            false
+        }
+    }
 }
 
 fn make_thumb(st: &AppState, video: &Path, at: f64, out: &Path, ffmpeg: Option<&Path>) -> bool {

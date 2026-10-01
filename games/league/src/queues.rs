@@ -69,7 +69,11 @@ pub fn classify(q: &QueueFacts) -> (String, Option<ModeRule>) {
     let name = q.name.to_lowercase();
     let t = q.queue_type.to_uppercase();
     if q.game_mode.eq_ignore_ascii_case("TFT") || name.contains("teamfight tactics") || t.contains("TFT") {
-        return ("tft".into(), None);
+        return ("tft".into(), Some(ModeRule::Record));
+    }
+    // Clash is flagged "ranked" by Riot but it's a tournament event: it goes with the events.
+    if t.contains("CLASH") || name.contains("clash") {
+        return ("rotating".into(), Some(ModeRule::Record));
     }
     if q.is_ranked || t.starts_with("RANKED") || name.contains("ranked") {
         return ("ranked".into(), Some(ModeRule::Record));
@@ -159,6 +163,8 @@ pub fn static_catalog(list: &[StaticQueue]) -> Vec<CatalogMode> {
 pub struct Lockfile {
     pub port: u16,
     pub password: String,
+    /// "https" (the real client); "http" only for Clairvoyance's own simulator.
+    pub protocol: String,
 }
 
 /// `LeagueClient:<pid>:<port>:<password>:https`
@@ -167,7 +173,8 @@ pub fn parse_lockfile(text: &str) -> Option<Lockfile> {
     if parts.len() < 5 {
         return None;
     }
-    Some(Lockfile { port: parts[2].parse().ok()?, password: parts[3].to_string() })
+    let protocol = if parts[4].trim() == "http" { "http" } else { "https" };
+    Some(Lockfile { port: parts[2].parse().ok()?, password: parts[3].to_string(), protocol: protocol.into() })
 }
 
 /// Where League may be installed: the configured folder, what the Riot Client knows, then
@@ -225,7 +232,7 @@ impl Lcu {
             .connect_timeout(Duration::from_millis(600))
             .build()
             .ok()?;
-        Some(Lcu { client, base: format!("https://127.0.0.1:{}", lock.port), password: lock.password.clone() })
+        Some(Lcu { client, base: format!("{}://127.0.0.1:{}", lock.protocol, lock.port), password: lock.password.clone() })
     }
 
     pub async fn get(&self, path: &str) -> anyhow::Result<serde_json::Value> {
@@ -337,7 +344,7 @@ mod tests {
 
     #[test]
     fn lockfile() {
-        assert_eq!(parse_lockfile("LeagueClient:12345:54321:AbCdEf123:https"), Some(Lockfile { port: 54321, password: "AbCdEf123".into() }));
+        assert_eq!(parse_lockfile("LeagueClient:12345:54321:AbCdEf123:https"), Some(Lockfile { port: 54321, password: "AbCdEf123".into(), protocol: "https".into() }));
         assert_eq!(parse_lockfile("garbage"), None);
     }
 
@@ -387,5 +394,14 @@ mod tests {
         let c = static_catalog(&list);
         let ids: Vec<_> = c.iter().map(|m| (m.queue_id.unwrap(), m.group.as_str(), m.name.as_str())).collect();
         assert_eq!(ids, vec![(420, "ranked", "5v5 Ranked Solo"), (450, "aram", "5v5 ARAM"), (1700, "arena", "Arena"), (1020, "rotating", "One for All")]);
+    }
+
+    #[test]
+    fn clash_is_an_event_not_ranked() {
+        let f = |id, name: &str, t: &str, gm: &str| QueueFacts { id, name: name.into(), queue_type: t.into(), game_mode: gm.into(), category: "PvP".into(), is_ranked: true, ..Default::default() };
+        assert_eq!(classify(&f(700, "Clash", "CLASH", "CLASSIC")).0, "rotating");
+        assert_eq!(classify(&f(741, "AR Ultra Rapid Fire Clash", "URF_CLASH", "URF")).0, "rotating");
+        assert_eq!(classify(&f(420, "Ranked Solo/Duo", "RANKED_SOLO_5x5", "CLASSIC")).0, "ranked");
+        assert_eq!(classify(&f(1100, "Teamfight Tactics (Ranked)", "RANKED_TFT", "TFT")), ("tft".to_string(), Some(ModeRule::Record)));
     }
 }

@@ -1,9 +1,15 @@
 // Tiny in-app responsiveness meter (Settings > Advanced): how long page switches and timeline
 // jumps really take in this window. Costs a couple of timestamps per action.
 
-export type MetricKey = "page_switch" | "seek" | "startup";
+export type MetricKey = "page_switch" | "seek" | "startup" | "replay_frame";
 
-const samples: Record<MetricKey, number[]> = { page_switch: [], seek: [], startup: [] };
+const samples: Record<MetricKey, number[]> = { page_switch: [], seek: [], startup: [], replay_frame: [] };
+
+/** When the last page switch started (a replay's "time to first frame" counts from it). */
+export let navAt = 0;
+export function markNav() {
+  navAt = performance.now();
+}
 const KEEP = 50;
 
 export function record(key: MetricKey, ms: number) {

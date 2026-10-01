@@ -137,7 +137,7 @@ impl Default for Settings {
     }
 }
 
-pub const SETTINGS_VERSION: u32 = 3;
+pub const SETTINGS_VERSION: u32 = 4;
 
 impl Settings {
     /// The theme setting, normalized to "system", "dark" or "light".
@@ -187,6 +187,12 @@ impl Settings {
             // and reopens instantly.
             self.close_ui_in_game = false;
             self.keep_ui_loaded = true;
+        }
+        if self.settings_version < 4 {
+            // v1.1.0 flagged the whole first live list from the League client as "new".
+            for m in self.modes.values_mut() {
+                m.clear_new();
+            }
         }
         if self.settings_version < 3 && self.max_disk_gb == 0 {
             // v3: storage limit with automatic clean-up, 100 GB by default (was "no limit").

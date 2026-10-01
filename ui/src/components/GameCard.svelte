@@ -3,6 +3,7 @@
   import { fileSrc, api } from "../lib/api";
   import { clock, kda, relativeDate } from "../lib/format";
   import { go, prefetchSession } from "../lib/store.svelte";
+  import { warmVideo, cancelWarm, videoUrl } from "../lib/videopool";
   import ChampionIcon from "./ChampionIcon.svelte";
   import Icon from "./Icon.svelte";
 
@@ -26,6 +27,13 @@
   );
   const resultLabel = $derived(s.result === "win" ? "Victory" : s.result === "loss" ? "Defeat" : s.result === "draw" ? "Draw" : null);
 
+  // Hovering a card loads the game's data and starts loading its video (index + first frame),
+  // so the page is ready when the click lands.
+  function warm() {
+    prefetchSession(s.id);
+    if (s.video_path) warmVideo(videoUrl(s.video_path, s.video_bytes));
+  }
+
   async function toggleFav(e: MouseEvent) {
     e.stopPropagation();
     favLocal = !fav;
@@ -33,7 +41,7 @@
   }
 </script>
 
-<button class="card game" onpointerenter={() => prefetchSession(s.id)} onfocus={() => prefetchSession(s.id)} onclick={() => go({ page: "game", id: s.id })}>
+<button class="card game" onpointerenter={warm} onpointerleave={cancelWarm} onfocus={warm} onclick={() => go({ page: "game", id: s.id })}>
   <div class="thumb">
     {#if thumb && !failed}
       {#if !loaded}<div class="skeleton ph-skel"></div>{/if}

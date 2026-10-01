@@ -64,7 +64,9 @@ pub async fn refresh_catalog(st: &Arc<AppState>) -> bool {
         let mut s = st.settings.write().unwrap();
         let modes = s.modes.entry(g.id().to_string()).or_default();
         let before = modes.clone();
-        let first = modes.entries.is_empty();
+        // The first list, and the first live list from the client (much longer than the
+        // built-in one), aren't "new" to the user: only modes that appear later are.
+        let first = modes.entries.is_empty() || (authoritative && modes.catalog_updated_at.is_none());
         let added = modes.merge_catalog(&catalog, authoritative);
         if first {
             // The first list isn't "new" to the user.

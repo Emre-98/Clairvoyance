@@ -16,8 +16,8 @@ fn tmp(name: &str) -> std::path::PathBuf {
 
 /// (video config, video packets, audio packets) for `secs` seconds.
 fn sources(secs: u32) -> (VideoConfig, Vec<Packet>, Vec<Packet>) {
-    let h264 = tmp("in.h264");
-    let aac = tmp("in.aac");
+    let h264 = tmp(&format!("in{secs}.h264"));
+    let aac = tmp(&format!("in{secs}.aac"));
     let st = Command::new("ffmpeg")
         .args(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30", "-t", &secs.to_string()])
         .args(["-c:v", "libx264", "-bf", "0", "-g", "60", "-profile:v", "high", "-x264-params", "aud=1", "-f", "h264"])
@@ -155,4 +155,66 @@ fn fragmented_recording_and_clip() {
     let moov_at = head.windows(4).position(|w| w == b"moov").unwrap();
     let mdat_at = head.windows(4).position(|w| w == b"mdat").unwrap();
     assert!(moov_at < mdat_at);
+}
+
+fn pts_list(path: &std::path::Path, stream: &str) -> Vec<f64> {
+    probe(path, &["-select_streams", stream, "-show_entries", "packet=pts_time", "-of", "csv=p=0"])
+        .lines()
+        .filter_map(|l| l.trim().trim_end_matches(',').parse().ok())
+        .collect()
+}
+
+#[test]
+fn finalized_recording_plays_the_same() {
+    if !have_ffmpeg() {
+        eprintln!("ffmpeg not installed, skipping");
+        return;
+    }
+    use cv_capture::remux;
+    let (vc, video, audio) = sources(8);
+    let acfg = vec![AudioConfig::aac_lc(48000, 2, "Game audio")];
+    let mut all: Vec<Packet> = video.iter().map(|p| Packet { pts: p.pts + 200_000, ..p.clone() }).chain(audio.clone()).collect();
+    all.sort_by_key(|p| p.pts);
+    let src = tmp("fin-src.mp4");
+    let mut w = FragmentedWriter::new(std::io::BufWriter::new(std::fs::File::create(&src).unwrap()), vc.clone(), acfg).unwrap();
+    let mut next = HNS;
+    for p in all {
+        if p.pts >= next {
+            w.flush_fragment().unwrap();
+            next += HNS;
+        }
+        w.push(p);
+    }
+    w.finish().unwrap();
+    let dst = tmp("fin-dst.mp4");
+    let rep = remux::finalize(&src, &dst, &|| false).unwrap();
+    assert_eq!(rep.from, remux::Layout::Fragmented);
+    assert_eq!(remux::probe(&dst).unwrap(), remux::Layout::Faststart);
+    let errs = decode_errors(&dst);
+    assert!(errs.trim().is_empty(), "decode errors: {errs}");
+    let frames = probe(&dst, &["-count_frames", "-select_streams", "v:0", "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0"]);
+    assert_eq!(frames.trim(), "240");
+    let d1: f64 = probe(&src, &["-show_entries", "format=duration", "-of", "csv=p=0"]).trim().parse().unwrap();
+    let d2: f64 = probe(&dst, &["-show_entries", "format=duration", "-of", "csv=p=0"]).trim().parse().unwrap();
+    assert!((d1 - d2).abs() < 0.05, "duration {d1} vs {d2}");
+    // Every frame and audio packet keeps its time (the first video frame now starts at 0 and
+    // covers the 20 ms before it).
+    let (a, b) = (pts_list(&src, "v:0"), pts_list(&dst, "v:0"));
+    assert_eq!(a.len(), b.len());
+    assert!(b[0].abs() < 0.001, "first frame at {}", b[0]);
+    for (x, y) in a.iter().zip(&b).skip(1) {
+        assert!((x - y).abs() < 0.0005, "video {x} vs {y}");
+    }
+    let (a, b) = (pts_list(&src, "a:0"), pts_list(&dst, "a:0"));
+    assert_eq!(a, b);
+    // The index is at the front.
+    let head = std::fs::read(&dst).unwrap();
+    assert_eq!(&head[4..8], b"ftyp");
+    let moov_at = head.windows(4).position(|w| w == b"moov").unwrap();
+    let mdat_at = head.windows(4).position(|w| w == b"mdat").unwrap();
+    assert!(moov_at < mdat_at);
+    let info = remux::info(&dst).unwrap();
+    assert_eq!(info.codec.as_deref().map(|c| &c[..7]), Some("avc1.64"));
+    assert_eq!((info.width, info.height), (640, 360));
+    assert!((info.keyframe_interval_avg - 2.0).abs() < 0.05, "{info:?}");
 }

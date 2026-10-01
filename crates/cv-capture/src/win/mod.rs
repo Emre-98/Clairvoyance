@@ -423,6 +423,17 @@ pub fn self_test(out_dir: &Path, secs: u64, exe: Option<&str>, mic: bool) -> Res
     if let Err(e) = thumb::video_thumbnail(&path, secs as f64 / 2.0, &out_dir.join("selftest.jpg"), 480) {
         log::warn!("self-test thumbnail: {e:#}");
     }
+    match crate::remux::info(&path) {
+        Ok(i) => log::info!(
+            "self-test file: {:?}, {}, {} frames, keyframes every {:.2} s (max {:.2} s)",
+            i.layout,
+            i.codec.unwrap_or_default(),
+            i.video_frames,
+            i.keyframe_interval_avg,
+            i.keyframe_interval_max
+        ),
+        Err(e) => log::warn!("self-test file info: {e}"),
+    }
     let (f, d) = frames.unwrap_or((0, 0));
     Ok((path, f, d))
 }

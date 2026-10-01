@@ -83,8 +83,12 @@ fn main() {
     let _ = d3d::qpc_hns();
     let _ = std::fs::write(out.join("selftest-report.txt"), &report);
     println!("Report saved to {}", out.join("selftest-report.txt").display());
-    println!("Press Enter to close.");
-    let _ = std::io::stdin().read_line(&mut String::new());
+    // Started by double-click: keep the window open. From a script: don't wait for a key.
+    use std::io::IsTerminal;
+    if std::io::stdin().is_terminal() && !std::env::args().any(|a| a == "--no-wait") {
+        println!("Press Enter to close.");
+        let _ = std::io::stdin().read_line(&mut String::new());
+    }
 }
 
 #[cfg(windows)]

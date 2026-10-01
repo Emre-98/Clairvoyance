@@ -1,6 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { api, fileSrc, confirmDialog } from "../lib/api";
+  import { videoUrl } from "../lib/videopool";
   import { app, go, toast, cachedSession, fetchSession } from "../lib/store.svelte";
   import { clock, kda, kdaRatio, num, relativeDate } from "../lib/format";
   import { KIND, type Group } from "../lib/eventmeta";
@@ -15,6 +16,9 @@
 
   // Re-created per game ({#key} in App), so reading `id` once is intended.
   let view = $state<SessionView | null>(untrack(() => cachedSession(id)));
+  // The library already knows the video, thumbnail and header facts: the page, the player and
+  // the video loading start right away, while the full game data (events, stats) loads.
+  const sum = $derived(app.sessions.find((x) => x.id === id) ?? null);
   let error = $state<string | null>(null);
   let player = $state<ReturnType<typeof Player>>();
   let current = $state(0);
@@ -37,15 +41,19 @@
   });
 
   const s = $derived(view?.session);
+  const hd = $derived((s ?? sum) as any);
+  const videoPath = $derived(view ? (view.video_path ?? null) : (sum?.video_path ?? null));
+  const videoSrc = $derived(videoPath ? videoUrl(videoPath, view ? view.video_bytes : sum?.video_bytes) : null);
+  const poster = $derived(fileSrc(view?.thumb_path ?? sum?.thumb_path) || null);
   const offset = $derived(s?.video_offset ?? 0);
   const events = $derived([...(s?.events ?? [])].sort((a, b) => a.game_time - b.game_time));
   const listEvents = $derived(events.filter((e) => !hidden.has((KIND[e.kind] ?? KIND.manual_marker).group)));
   const gameLen = $derived(s?.game_duration ?? (s?.video_duration ? s.video_duration - offset : 0));
-  const videoLen = $derived(s?.video_duration ?? gameLen + offset);
+  const videoLen = $derived(s?.video_duration ?? (s ? gameLen + offset : (sum?.duration ?? 0)));
   const clipRanges = $derived(
     (view?.clips ?? []).filter((c) => c.video_start != null && c.video_end != null).map((c) => ({ start: c.video_start!, end: c.video_end!, title: c.title })),
   );
-  const resultLabel = $derived(s?.result === "win" ? "Victory" : s?.result === "loss" ? "Defeat" : s?.result === "draw" ? "Draw" : "No result");
+  const resultLabel = $derived(hd?.result === "win" ? "Victory" : hd?.result === "loss" ? "Defeat" : hd?.result === "draw" ? "Draw" : "No result");
   const deaths = $derived(events.filter((e) => e.kind === "death"));
   const csPerMin = $derived(s?.stats?.cs != null && gameLen > 60 ? s.stats.cs / (gameLen / 60) : null);
 
@@ -108,29 +116,31 @@
   {#if error}
     <button class="btn ghost" onclick={() => go({ page: "games" })}><Icon name="back" size={16} />Back</button>
     <div class="empty" style="margin-top:20px">{error}</div>
-  {:else if s && view}
+  {:else if hd}
     <div class="head">
       <button class="btn ghost icon" onclick={() => go({ page: "games" })} aria-label="Back"><Icon name="back" size={18} /></button>
-      <ChampionIcon id={s.player?.character_id} name={s.player?.character ?? s.game_name} size={48} />
+      <ChampionIcon id={hd.player?.character_id} name={hd.player?.character ?? hd.game_name} size={48} />
       <div class="htxt">
         <div class="row">
-          <h1>{s.player?.character ?? s.game_name}</h1>
-          <span class="result {s.result ?? ''}">{resultLabel}</span>
+          <h1>{hd.player?.character ?? hd.game_name}</h1>
+          <span class="result {hd.result ?? ''}">{resultLabel}</span>
         </div>
-        <div class="muted">{s.game_name}{(s.mode_name ?? s.player?.mode) ? ` · ${s.mode_name ?? s.player?.mode}` : ""}{s.record_mode === "clips_only" ? " · clips only" : ""} · {relativeDate(s.started_at)} · {clock(gameLen)}</div>
+        <div class="muted">{hd.game_name}{(hd.mode_name ?? hd.player?.mode) ? ` · ${hd.mode_name ?? hd.player?.mode}` : ""}{hd.record_mode === "clips_only" ? " · clips only" : ""} · {relativeDate(hd.started_at)}{s ? ` · ${clock(gameLen)}` : ""}</div>
       </div>
       <div class="spacer"></div>
-      <button class="btn" class:favon={s.favorite} onclick={toggleFav} title="Favorites are never deleted by the storage clean-up" aria-pressed={s.favorite}><Icon name="star" size={15} fill={s.favorite} />{s.favorite ? "Favorite" : "Add to favorites"}</button>
-      <button class="btn" onclick={startClip} disabled={!view.video_path}><Icon name="scissors" size={15} />Create clip</button>
-      <button class="btn" onclick={() => api.reveal(view!.video_path ?? view!.dir)}><Icon name="folder" size={15} />Folder</button>
-      <button class="btn ghost icon danger" onclick={del} title="Delete game"><Icon name="trash" size={16} /></button>
+      <button class="btn" class:favon={hd.favorite} onclick={toggleFav} disabled={!s} title="Favorites are never deleted by the storage clean-up" aria-pressed={!!hd.favorite}><Icon name="star" size={15} fill={hd.favorite} />{hd.favorite ? "Favorite" : "Add to favorites"}</button>
+      <button class="btn" onclick={startClip} disabled={!view?.video_path}><Icon name="scissors" size={15} />Create clip</button>
+      <button class="btn" onclick={() => view && api.reveal(view.video_path ?? view.dir)} disabled={!view}><Icon name="folder" size={15} />Folder</button>
+      <button class="btn ghost icon danger" onclick={del} disabled={!s} title="Delete game"><Icon name="trash" size={16} /></button>
     </div>
 
     <div class="main">
       <div class="left">
         <Player
           bind:this={player}
-          src={view.video_path ? fileSrc(view.video_path) : null}
+          src={videoSrc}
+          path={videoPath}
+          {poster}
           {events}
           {offset}
           knownDuration={videoLen}
@@ -139,9 +149,9 @@
           bind:range
           bind:current
           startAt={t}
-          removed={!!s.video_removed_at}
+          removed={!!(s?.video_removed_at ?? sum?.video_removed)}
         />
-        {#if range}
+        {#if range && s}
           <ClipEditor sessionId={s.id} bind:range {current} {offset} duration={videoLen} onclose={() => (range = null)} onpreview={() => player?.seek(range![0], true)} />
         {/if}
       </div>
@@ -149,9 +159,12 @@
       <div class="events card">
         <div class="ev-head">
           <h3>Events</h3>
-          <span class="muted">{listEvents.length}</span>
+          <span class="muted">{s ? listEvents.length : ""}</span>
         </div>
         <div class="ev-list" bind:this={listEl}>
+          {#if !s}
+            {#each [70, 55, 80, 60, 75] as w}<div class="ev"><span class="skeleton-line" style="width:{w}%"></span></div>{/each}
+          {/if}
           {#each listEvents as e (e.id)}
             {@const m = KIND[e.kind] ?? KIND.manual_marker}
             <button class="ev" class:active={e.id === activeId} data-id={e.id} onclick={() => player?.jumpTo(e)}>
@@ -163,12 +176,13 @@
               <span class="ev-time">{clock(e.game_time)}</span>
             </button>
           {:else}
-            <div class="muted none">No events{events.length ? " (all filtered out)" : ""}.</div>
+            {#if s}<div class="muted none">No events{events.length ? " (all filtered out)" : ""}.</div>{/if}
           {/each}
         </div>
       </div>
     </div>
 
+    {#if s && view}
     <h2 class="sec">Summary</h2>
     <div class="tiles">
       <div class="tile"><span class="label">KDA</span><span class="big">{kda(s.stats)}</span><span class="sub">{kdaRatio(s.stats)} ratio</span></div>
@@ -248,6 +262,7 @@
       <div class="pill" title="Video position when the game clock was 0:00">Video offset {offset.toFixed(2)} s</div>
       {#each s.warnings as w}<div class="pill warnpill"><Icon name="warn" size={13} />{w}</div>{/each}
     </div>
+    {/if}
   {:else}
     <div class="head" aria-busy="true">
       <span class="skeleton" style="width:48px;height:48px;border-radius:10px"></span>

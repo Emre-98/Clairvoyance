@@ -296,6 +296,33 @@ pub fn windows_prefers_dark() -> bool {
     true
 }
 
+/// e.g. "Windows 11 Pro 24H2 (build 26100)" (for the test report).
+#[cfg(windows)]
+pub fn os_version() -> String {
+    use windows::core::{w, PCWSTR};
+    use windows::Win32::System::Registry::{RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ};
+    let get = |name: PCWSTR| -> String {
+        let mut buf = [0u16; 128];
+        let mut len = (buf.len() * 2) as u32;
+        let r = unsafe { RegGetValueW(HKEY_LOCAL_MACHINE, w!("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion"), name, RRF_RT_REG_SZ, None, Some(buf.as_mut_ptr() as *mut _), Some(&mut len)) };
+        if r.is_err() {
+            return String::new();
+        }
+        let n = buf.iter().position(|c| *c == 0).unwrap_or(0);
+        String::from_utf16_lossy(&buf[..n])
+    };
+    let build = get(w!("CurrentBuild"));
+    // ProductName still says "Windows 10" on Windows 11; the build number tells them apart.
+    let product = get(w!("ProductName"));
+    let product = if build.parse::<u32>().unwrap_or(0) >= 22000 { product.replace("Windows 10", "Windows 11") } else { product };
+    format!("{product} {} (build {build})", get(w!("DisplayVersion")))
+}
+
+#[cfg(not(windows))]
+pub fn os_version() -> String {
+    std::env::consts::OS.to_string()
+}
+
 /// Runs `f` with this thread in Windows' background mode (lowest CPU and disk I/O priority), so
 /// thumbnails and clean-up never compete with anything else.
 pub fn in_background_mode<T>(f: impl FnOnce() -> T) -> T {

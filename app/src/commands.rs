@@ -174,6 +174,9 @@ pub struct SessionView {
     session: GameSession,
     dir: String,
     video_path: Option<String>,
+    /// Size of the video file: part of its URL, so the player never mixes up cached bytes of
+    /// the recording before and after it was finalized.
+    video_bytes: Option<u64>,
     thumb_path: Option<String>,
     clips: Vec<ClipView>,
 }
@@ -182,7 +185,9 @@ pub struct SessionView {
 pub async fn get_session(st: St<'_>, id: String) -> R<SessionView> {
     let dir = session_dir(&st, &id)?;
     let s = GameSession::load(&dir).map_err(err)?;
-    let video_path = s.video_file.as_ref().map(|f| dir.join(f)).filter(|p| p.exists()).map(|p| p.to_string_lossy().to_string());
+    let video = s.video_file.as_ref().map(|f| dir.join(f)).and_then(|p| std::fs::metadata(&p).ok().map(|m| (p, m.len())));
+    let video_bytes = video.as_ref().map(|v| v.1);
+    let video_path = video.map(|(p, _)| p.to_string_lossy().to_string());
     let thumb = st.library.thumbs().session(&id);
     let clips = s
         .clips
@@ -196,10 +201,48 @@ pub async fn get_session(st: St<'_>, id: String) -> R<SessionView> {
     Ok(SessionView {
         dir: dir.to_string_lossy().to_string(),
         video_path,
+        video_bytes,
         thumb_path: thumb.exists().then(|| thumb.to_string_lossy().to_string()),
         clips,
         session: s,
     })
+}
+
+/// The replay player opened (or closed, `None`) a video: maintenance won't replace that file
+/// while it's open.
+#[tauri::command]
+pub fn player_open(st: St<'_>, path: Option<String>) {
+    *st.maintenance.open_video.lock().unwrap() = path.map(PathBuf::from);
+}
+
+/// Layout, codec and keyframe spacing of a video (Settings > Advanced, test report).
+#[tauri::command]
+pub async fn video_info(path: String) -> R<cv_capture::remux::VideoInfo> {
+    tauri::async_runtime::spawn_blocking(move || cv_capture::remux::info(std::path::Path::new(&path)).map_err(err))
+        .await
+        .map_err(err)?
+}
+
+/// Keyframe times of a video (cached per file and size): marker jumps land on a keyframe so
+/// the frame shows without decoding the frames before it.
+#[tauri::command]
+pub async fn video_keyframes(path: String) -> R<std::sync::Arc<Vec<f64>>> {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex, OnceLock};
+    static CACHE: OnceLock<Mutex<HashMap<(String, u64), Arc<Vec<f64>>>>> = OnceLock::new();
+    let len = std::fs::metadata(&path).map_err(err)?.len();
+    let key = (path.clone(), len);
+    if let Some(k) = CACHE.get_or_init(Default::default).lock().unwrap().get(&key) {
+        return Ok(k.clone());
+    }
+    let k = tauri::async_runtime::spawn_blocking(move || cv_capture::remux::keyframes(std::path::Path::new(&path)).map_err(err)).await.map_err(err)??;
+    let k = Arc::new(k);
+    let mut c = CACHE.get_or_init(Default::default).lock().unwrap();
+    if c.len() > 64 {
+        c.clear();
+    }
+    c.insert(key, k.clone());
+    Ok(k)
 }
 
 #[tauri::command]
@@ -458,15 +501,22 @@ pub async fn finish_first_run(app: AppHandle, st: St<'_>) -> R<()> {
 /// Plays a scripted League match against a fake game API, recording the desktop with the
 /// built-in recorder, so everything can be tested without playing. `speed` = game seconds per second.
 #[tauri::command]
-pub fn simulate_game(st: St, speed: f64, length: f64) -> R<()> {
-    start_simulation(st.inner().clone(), speed, length)
+pub fn simulate_game(st: St, speed: f64, length: f64, queue: Option<i64>) -> R<()> {
+    start_simulation(st.inner().clone(), speed, length, queue)
 }
 
-pub fn start_simulation(st: Arc<AppState>, speed: f64, length: f64) -> R<()> {
+/// Plays a fake League match (and a fake League client reporting `queue`, default Draft Pick),
+/// so detection, mode rules, recording, events and the timeline can be tried without playing.
+pub fn start_simulation(st: Arc<AppState>, speed: f64, length: f64, queue: Option<i64>) -> R<()> {
     if st.live.lock().unwrap().session_id.is_some() {
         return Err("A game is already running.".into());
     }
-    let mut opts = cv_mock_league::MockOptions { speed: speed.clamp(1.0, 60.0), length: length.clamp(60.0, 3600.0), ..Default::default() };
+    let mut opts = cv_mock_league::MockOptions {
+        speed: speed.clamp(1.0, 60.0),
+        length: length.clamp(60.0, 3600.0),
+        queue: cv_mock_league::queue_json(queue.unwrap_or(400)),
+        ..Default::default()
+    };
     let mock = (2998..3010)
         .find_map(|port| {
             opts.port = port;
@@ -477,6 +527,11 @@ pub fn start_simulation(st: Arc<AppState>, speed: f64, length: f64) -> R<()> {
     let mut sim = st.engine_settings(&real);
     let mut league = sim.games.get("league").cloned().unwrap_or_else(|| serde_json::json!({}));
     league["api_base"] = serde_json::json!(mock.base_url);
+    // The fake League client: a lockfile in our own data folder, found before the real one.
+    let client_dir = st.paths.data_dir.join("simulator");
+    let _ = std::fs::create_dir_all(&client_dir);
+    std::fs::write(client_dir.join("lockfile"), mock.lockfile_text()).map_err(err)?;
+    league["client_dir"] = serde_json::json!(client_dir.to_string_lossy());
     sim.games.insert("league".into(), league);
     sim.video.display_capture = true;
     let _ = st.cmd.send(EngineCommand::ReloadSettings(Box::new(sim)));
@@ -669,6 +724,16 @@ pub fn ui_timings(st: St) -> UiTimings {
     UiTimings { startup_ms: s.0, page_ms: s.1 }
 }
 
+/// Settings > Advanced > "Save test report": a zip with the log, the latest game's data and
+/// the numbers needed to look into a problem (no videos). Returns the zip's path.
+#[tauri::command]
+pub async fn test_report(st: St<'_>, ui: serde_json::Value) -> R<String> {
+    let st = st.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || crate::report::write(&st, &ui).map(|p| p.to_string_lossy().to_string()).map_err(|e| format!("{e:#}")))
+        .await
+        .map_err(err)?
+}
+
 #[tauri::command]
 pub fn quit_app(app: AppHandle) {
     crate::quit(&app);
@@ -718,5 +783,13 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static 
         quit_app,
         remove_legacy_app,
         set_theme,
+        player_open,
+        video_info,
+        test_report,
+        video_keyframes,
+        crate::bench::bench_config,
+        crate::bench::bench_prepare,
+        crate::bench::bench_finish,
+        crate::bench::bench_log,
     ]
 }

@@ -372,6 +372,18 @@ export async function invoke(cmd: string, args: any = {}): Promise<any> {
         : { state: "idle" };
     case "ffmpeg_status":
       return { available: false };
+    // Replay benchmark in the browser preview (`?bench=1`), to check the harness itself.
+    case "bench_config":
+      return q.get("bench") ? { sessions: [sessions[0].id], runs: 2, early_runs: 1, label: "mock" } : null;
+    case "bench_prepare":
+      return { [sessions[0].id]: { video: "/dev-assets/sample.webm", before: { codec: "vp09.00.10.08", width: 1280, height: 720 } } };
+    case "bench_log":
+      console.log("[bench]", args.line);
+      return;
+    case "bench_finish":
+      (window as any).__benchResult = args.result;
+      console.log("[bench] done");
+      return;
     default:
       return null;
   }

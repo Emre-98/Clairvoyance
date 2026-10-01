@@ -57,3 +57,28 @@ async fn full_mock_match() {
     assert_eq!(ids.len(), events.len());
     mock.stop();
 }
+
+/// The fake League client (lockfile + gameflow session + queue list): the exact queue is read
+/// before the game, and the live queue list is used for the mode catalog.
+#[tokio::test(flavor = "multi_thread")]
+async fn mode_from_the_fake_league_client() {
+    for (port, id, key, name, group) in [(29982u16, 450i64, "q450", "ARAM", "aram"), (29983, 420, "q420", "Ranked Solo/Duo", "ranked"), (29984, 9999, "q9999", "Brand New Mode", "rotating"), (29985, -1, "practice", "Practice Tool", "other")] {
+        let opts = cv_mock_league::MockOptions { port, speed: 60.0, length: 120.0, loading_secs: 30.0, queue: cv_mock_league::queue_json(id), ..Default::default() };
+        let mock = cv_mock_league::spawn(opts).unwrap();
+        let dir = std::env::temp_dir().join(format!("cv-lcu-{port}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lockfile"), mock.lockfile_text()).unwrap();
+        let mut lol = LeagueIntegration::new();
+        lol.configure(&serde_json::json!({ "api_base": mock.base_url, "riot_id": "", "client_dir": dir.to_string_lossy() }));
+        // During the "loading screen" (the in-game API isn't up yet): the client answers.
+        let m = lol.detect_mode().await.expect("mode detected");
+        assert_eq!(m.key.as_deref(), Some(key), "{m:?}");
+        assert_eq!(m.name, name);
+        assert_eq!(m.group, group);
+        assert!(m.source.contains("client"), "{}", m.source);
+        let (catalog, live) = lol.mode_catalog(&dir).await;
+        assert!(live, "live queue list from the fake client");
+        assert!(catalog.iter().any(|c| c.key == "q450" && c.available == Some(true)));
+        mock.stop();
+    }
+}

@@ -8,6 +8,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod autostart;
+mod bench;
 mod commands;
 mod ffmpeg;
 mod games;
@@ -18,6 +19,7 @@ mod migrate;
 mod modes;
 mod perftest;
 mod platform;
+mod report;
 mod state;
 mod tray;
 mod updater;
@@ -344,8 +346,12 @@ fn main() {
             let _ = app.asset_protocol_scope().allow_directory(&thumbs_dir, false);
             app.manage(st);
 
-            maintenance::spawn(handle.clone());
-            updater::spawn(handle.clone());
+            if bench::maintenance_off() {
+                log::info!("replay benchmark mode: no maintenance, no update checks");
+            } else {
+                maintenance::spawn(handle.clone());
+                updater::spawn(handle.clone());
+            }
             let tray = tray::create(&handle)?;
             let h = handle.clone();
             tauri::async_runtime::spawn(async move {
@@ -365,12 +371,14 @@ fn main() {
                 });
             }
             // `--simulate[=seconds]`: play a fake League match right away (testing/demo).
-            if let Some(arg) = std::env::args().find(|a| a.starts_with("--simulate")) {
+            if let Some(arg) = std::env::args().find(|a| a.starts_with("--simulate") && !a.starts_with("--simulate-queue")) {
                 let length = arg.split_once('=').and_then(|(_, v)| v.parse().ok()).unwrap_or(120.0);
+                // `--simulate-queue=<id>`: the queue the fake League client reports (450 = ARAM...).
+                let queue = std::env::args().find_map(|a| a.strip_prefix("--simulate-queue=").and_then(|v| v.parse().ok()));
                 let st = handle.state::<Arc<AppState>>().inner().clone();
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(Duration::from_secs(3)).await;
-                    if let Err(e) = commands::start_simulation(st, 1.0, length) {
+                    if let Err(e) = commands::start_simulation(st, 1.0, length, queue) {
                         log::warn!("simulation: {e}");
                     }
                 });

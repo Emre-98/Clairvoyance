@@ -4,10 +4,14 @@
   import { clock } from "../lib/format";
   import Icon from "./Icon.svelte";
   import Timeline from "./Timeline.svelte";
-  import { record } from "../lib/perfmarks";
+  import { record, navAt } from "../lib/perfmarks";
+  import { api } from "../lib/api";
+  import { attachVideo, detachVideo, setVideoUrl } from "../lib/videopool";
 
   let {
     src,
+    path = null,
+    poster = null,
     events,
     offset,
     knownDuration = 0,
@@ -19,6 +23,10 @@
     removed = false,
   }: {
     src: string | null;
+    /** The video file (so the app doesn't replace it while it's open). */
+    path?: string | null;
+    /** Thumbnail shown until the first video frame is ready. */
+    poster?: string | null;
     events: GameEvent[];
     offset: number;
     knownDuration?: number;
@@ -40,26 +48,67 @@
   let rate = $state(1);
   let error = $state<string | null>(null);
   let flash = $state<string | null>(null);
-
+  /** A video frame is on screen (until then: the thumbnail + a loading indicator). */
+  let frameReady = $state(false);
+  /** Loading or seeking: the small spinner. */
+  let busy = $state(true);
+  /** A jump requested before the video could seek; done as soon as it can. */
+  let pending: { t: number; play: boolean } | null = null;
+  // Settings > Advanced: page opened -> first video frame on screen.
+  let frameMeasured = false;
+  $effect(() => {
+    if (frameReady && !frameMeasured) {
+      frameMeasured = true;
+      const since = navAt;
+      if (since && performance.now() - since < 30000) requestAnimationFrame(() => record("replay_frame", performance.now() - since));
+    }
+  });
   const dur = $derived(duration || knownDuration || 1);
   const visible = $derived(events.filter((e) => !hidden.has((KIND[e.kind] ?? KIND.manual_marker).group)));
   const counts = $derived(
     Object.fromEntries(GROUPS.map((g) => [g.id, events.filter((e) => (KIND[e.kind] ?? KIND.manual_marker).group === g.id).length])),
   );
-  const target = (e: GameEvent) => Math.max(0, e.game_time + offset - 5);
+  // Keyframe times of this video (loaded in the background). A jump that lands on a keyframe
+  // shows its frame at once; between keyframes the decoder must run through every frame from
+  // the previous one first (older recordings have keyframes up to 5 s apart).
+  let keyframes: number[] = [];
+  function snap(t: number): number {
+    let lo = 0;
+    let hi = keyframes.length - 1;
+    if (hi < 0 || keyframes[0] > t) return t;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (keyframes[mid] <= t) lo = mid;
+      else hi = mid - 1;
+    }
+    // At most 3 s earlier than asked (still inside the "5 s before" lead-in); a hair after the
+    // keyframe so rounding never lands just before it.
+    return t - keyframes[lo] <= 3 ? keyframes[lo] + 0.04 : t;
+  }
+  const target = (e: GameEvent) => snap(Math.max(0, e.game_time + offset - 5));
 
   export function seek(t: number, play = false) {
-    if (!video) return;
-    video.currentTime = Math.max(0, Math.min(t, dur));
-    current = video.currentTime;
+    t = Math.max(0, Math.min(t, duration || knownDuration || Infinity));
+    // The playhead moves at once, whatever state the video is in.
+    current = t;
+    if (!video || video.readyState < 1) {
+      // Not ready yet: remember the click and do it as soon as the video can seek.
+      pending = { t, play };
+      busy = true;
+      return;
+    }
+    if (Math.abs(video.currentTime - t) > 0.01) busy = true;
+    video.currentTime = t;
     if (play) video.play().catch(() => {});
   }
 
   export function jumpTo(e: GameEvent) {
-    // Measure click -> the video showing the new position.
-    if (video) {
-      const t0 = performance.now();
-      video.addEventListener("seeked", () => requestAnimationFrame(() => record("seek", performance.now() - t0)), { once: true });
+    // Measure click -> the video showing the new position (incl. waiting for the video).
+    const t0 = performance.now();
+    const v = video;
+    if (v) {
+      const done = () => requestAnimationFrame(() => record("seek", performance.now() - t0));
+      v.addEventListener("seeked", done, { once: true });
     }
     seek(target(e), true);
     flash = e.title;
@@ -115,13 +164,89 @@
     if (range && current > range[1] && !paused) seek(range[0], true);
   });
 
-  let didStart = false;
   function loaded() {
     duration = video?.duration && isFinite(video.duration) ? video.duration : 0;
-    if (!didStart && startAt > 0) {
-      didStart = true;
-      seek(startAt);
+    if (video && video.readyState >= 1 && pending) {
+      const p = pending;
+      pending = null;
+      seek(p.t, p.play);
     }
+  }
+
+  // The shared <video> element (see lib/videopool.ts) lives in this host while the page is open.
+  function host(node: HTMLDivElement, url: string) {
+    const v = attachVideo(node, url);
+    const offs: (() => void)[] = [];
+    const on = (name: string, f: () => void) => {
+      v.addEventListener(name, f);
+      offs.push(() => v.removeEventListener(name, f));
+    };
+    const reset = () => {
+      frameReady = v.readyState >= 2;
+      busy = v.readyState < 3;
+      error = null;
+      paused = v.paused;
+    };
+    reset();
+    if (startAt > 0) seek(startAt);
+    on("loadedmetadata", loaded);
+    on("durationchange", loaded);
+    on("loadeddata", () => {
+      // With a jump pending, keep the thumbnail until the frame at that position is ready.
+      if (!pending && !v.seeking) frameReady = true;
+      if (!v.seeking) busy = v.readyState < 3 && !v.paused;
+    });
+    on("seeked", () => {
+      frameReady = true;
+      busy = false;
+      current = v.currentTime;
+    });
+    on("canplay", () => {
+      if (!v.seeking) busy = false;
+    });
+    on("waiting", () => (busy = true));
+    on("playing", () => (busy = false));
+    on("timeupdate", () => {
+      if (!pending) current = v.currentTime;
+    });
+    on("play", () => (paused = false));
+    on("pause", () => (paused = true));
+    on("error", () => {
+      error = "This video can't be played here. Try “Open in player”.";
+      busy = false;
+    });
+    on("click", toggle);
+    on("dblclick", fullscreen);
+    v.playbackRate = rate;
+    v.volume = volume;
+    v.muted = muted;
+    if (v.readyState >= 1) loaded();
+    video = v;
+    api.playerOpen(path).catch(() => {});
+    keyframes = [];
+    if (path) {
+      const p = path;
+      api.videoKeyframes(p).then((k) => {
+        if (p === path) keyframes = k;
+      }).catch(() => {});
+    }
+    return {
+      update(next: string) {
+        // The file changed (e.g. finalized for playback): same position, new data.
+        const at = v.currentTime;
+        const wasPlaying = !v.paused;
+        setVideoUrl(next);
+        reset();
+        if (path) api.videoKeyframes(path).then((k) => (keyframes = k)).catch(() => {});
+        frameReady = false;
+        pending = { t: at, play: wasPlaying };
+      },
+      destroy() {
+        offs.forEach((f) => f());
+        detachVideo();
+        api.playerOpen(null).catch(() => {});
+      },
+    };
   }
 
   function key(e: KeyboardEvent) {
@@ -147,21 +272,14 @@
 <div class="player" bind:this={box}>
   <div class="screen">
     {#if src}
-      <!-- svelte-ignore a11y_media_has_caption -->
-      <video
-        bind:this={video}
-        {src}
-        preload="auto"
-        onclick={toggle}
-        ondblclick={fullscreen}
-        onloadedmetadata={loaded}
-        ondurationchange={loaded}
-        ontimeupdate={() => (current = video?.currentTime ?? 0)}
-        onplay={() => (paused = false)}
-        onpause={() => (paused = true)}
-        onerror={() => (error = "This video can't be played here. Try “Open in player”.")}
-      ></video>
-      {#if paused && !error}
+      <div class="vhost" use:host={src}></div>
+      {#if !frameReady && !error}
+        {#if poster}<img class="poster" src={poster} alt="" draggable="false" />{/if}
+      {/if}
+      {#if busy && !error}
+        <div class="loading" role="status" aria-label="Loading video"><span class="spinner"></span></div>
+      {/if}
+      {#if paused && !error && frameReady && !busy}
         <button class="bigplay" onclick={toggle} aria-label="Play"><Icon name="play" size={30} fill /></button>
       {/if}
       {#if flash}<div class="flash">{flash}</div>{/if}
@@ -185,7 +303,7 @@
     <button class="cbtn play" onclick={toggle} title="Play/pause (Space)"><Icon name={paused ? "play" : "pause"} size={18} fill /></button>
     <button class="cbtn" onclick={next} title="Next event (N)"><Icon name="next" size={17} /></button>
     <div class="time">
-      <span class="game">{current - offset < 0 ? "Loading" : clock(current - offset)}</span>
+      <span class="game">{current - offset < 0 ? "Loading screen" : clock(current - offset)}</span>
       <span class="muted"> game · {clock(current)} / {clock(dur)}</span>
     </div>
     <div class="spacer"></div>
@@ -234,12 +352,51 @@
     aspect-ratio: 16 / 9;
     background: var(--media-bg);
   }
-  video {
+  .vhost {
+    position: absolute;
+    inset: 0;
+  }
+  .vhost :global(video) {
     width: 100%;
     height: 100%;
     display: block;
     object-fit: contain;
     background: var(--media-bg);
+  }
+  .poster {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+    animation: fade 0.15s;
+  }
+  .loading {
+    position: absolute;
+    right: 14px;
+    bottom: 12px;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: var(--media-overlay);
+    display: grid;
+    place-items: center;
+    pointer-events: none;
+    animation: fade 0.2s 0.1s both;
+  }
+  .spinner {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid color-mix(in srgb, var(--on-media) 30%, transparent);
+    border-top-color: var(--on-media);
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
   .bigplay {
     position: absolute;

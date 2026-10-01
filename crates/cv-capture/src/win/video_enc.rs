@@ -260,7 +260,7 @@ unsafe fn sequence_header(mft: &IMFTransform) -> Option<Vec<u8>> {
     }
 }
 
-unsafe fn pull_output(mft: &IMFTransform, provides: bool, out_size: u32, tx: &Sender<super::mux::MuxMsg>, in_flight: &AtomicUsize, fed: &mut std::collections::VecDeque<i64>) -> Result<()> {
+unsafe fn pull_output(mft: &IMFTransform, provides: bool, out_size: u32, tx: &Sender<super::mux::MuxMsg>, in_flight: &AtomicUsize, fed: &mut std::collections::VecDeque<i64>, last_key: &mut i64) -> Result<()> {
     unsafe {
         let own = if provides {
             None
@@ -296,6 +296,9 @@ unsafe fn pull_output(mft: &IMFTransform, provides: bool, out_size: u32, tx: &Se
                         fed.pop_front();
                     }
                     in_flight.store(fed.len(), Ordering::SeqCst);
+                    if key {
+                        *last_key = (*last_key).max(pts);
+                    }
                     let _ = tx.send(super::mux::MuxMsg::Video(EncodedFrame { pts, annexb: data, key }));
                 }
                 Ok(())
@@ -311,6 +314,9 @@ unsafe fn pull_output(mft: &IMFTransform, provides: bool, out_size: u32, tx: &Se
     }
 }
 
+/// Longest time between keyframes (100 ns units).
+const KEYFRAME_EVERY: i64 = 10_000_000;
+
 fn run(mft: IMFTransform, _mgr: IMFDXGIDeviceManager, fps: u32, rx: Receiver<EncIn>, tx: Sender<super::mux::MuxMsg>, in_flight: Arc<AtomicUsize>) {
     unsafe {
         let info = mft.GetOutputStreamInfo(0).unwrap_or_default();
@@ -319,6 +325,12 @@ fn run(mft: IMFTransform, _mgr: IMFDXGIDeviceManager, fps: u32, rx: Receiver<Enc
         let dur = 10_000_000i64 / fps.max(1) as i64;
         let mut draining = false;
         let mut fed: std::collections::VecDeque<i64> = std::collections::VecDeque::new();
+        // Keyframes at least every second of *time*: the GOP is counted in frames, and games don't
+        // always deliver the full frame rate (menus, loading, heavy fights), which stretched the
+        // gap between keyframes to 5 s in real recordings. Seeking decodes from the keyframe
+        // before the target, so this keeps every jump short.
+        let codec = mft.cast::<ICodecAPI>().ok();
+        let mut last_key = i64::MIN / 2;
         loop {
             let ev = match gen.GetEvent(MF_EVENT_FLAG_NONE) {
                 Ok(e) => e,
@@ -343,6 +355,12 @@ fn run(mft: IMFTransform, _mgr: IMFDXGIDeviceManager, fps: u32, rx: Receiver<Enc
                             s.AddBuffer(&buf)?;
                             s.SetSampleTime(pts)?;
                             s.SetSampleDuration(dur)?;
+                            if pts - last_key >= KEYFRAME_EVERY - dur / 2 {
+                                if let Some(c) = &codec {
+                                    let _ = c.SetValue(&CODECAPI_AVEncVideoForceKeyFrame, &var_u32(1));
+                                }
+                                last_key = pts;
+                            }
                             mft.ProcessInput(0, &s, 0)?;
                             fed.push_back(pts);
                             in_flight.store(fed.len(), Ordering::SeqCst);
@@ -361,7 +379,7 @@ fn run(mft: IMFTransform, _mgr: IMFDXGIDeviceManager, fps: u32, rx: Receiver<Enc
                     }
                 }
             } else if ty == METransformHaveOutput.0 {
-                if let Err(e) = pull_output(&mft, provides, info.cbSize, &tx, &in_flight, &mut fed) {
+                if let Err(e) = pull_output(&mft, provides, info.cbSize, &tx, &in_flight, &mut fed, &mut last_key) {
                     log::warn!("{e:#}");
                 }
             } else if ty == METransformDrainComplete.0 {

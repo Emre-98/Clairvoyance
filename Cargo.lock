@@ -703,6 +703,7 @@ dependencies = [
  "cv-core",
  "log",
  "serde",
+ "serde_json",
  "tokio",
  "windows 0.61.3",
  "windows-core 0.61.2",
