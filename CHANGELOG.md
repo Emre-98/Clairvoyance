@@ -3,6 +3,13 @@
 Newest first. `scripts/release.ps1` adds a section for each release; the section becomes the
 release notes on GitHub and in the in-app "Update available" card.
 
+## [1.1.0] - 2026-10-01
+
+- Game modes: choose per League mode (Ranked, Normal, ARAM, Arena, rotating modes, TFT...) whether it's recorded: Record, Clips only or Off (Settings > Game modes).
+- The exact queue comes from the League client when the game starts, so a mode that's off is never recorded; the tray says why.
+- New and rotating modes appear by themselves with a New badge; modes that disappear keep your choice.
+- Library cards show the game mode, and the library can filter by mode.
+
 ## [1.0.0] - 2026-10-01
 
 - GameRecorder is now **Clairvoyance**. Your settings, games, clips and tools are moved over on
