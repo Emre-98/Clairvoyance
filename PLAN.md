@@ -28,7 +28,21 @@
 - **Auto-update tested end to end (2026-10-01):** v1.0.0 installed from GitHub; v1.1.0 published by
   `scripts\release.ps1` + GitHub Actions; the installed app showed "Update available: v1.1.0"
   ~60 s after start, "Update now" downloaded, installed and restarted it on 1.1.0.
-- **Waiting for the owner**: play a real League game with v1.1.x and check the timeline,
+- **Instant replays (2026-10-01, v1.2.0):** measured in the real window on the owner's PC, 5 opens
+  each, before → after: 33 min game first frame ~28.6 s (first open > 30 s) → 97–135 ms first
+  open, 16–43 ms repeat opens; 5 min game ~4.0 s → 176–190 ms first open, 12–33 ms repeat; page
+  + markers 20–60 ms both (target < 200 ms); marker jump 121–330 ms → 69–175 ms (keyframe
+  snapping); marker clicked right away 4–29 s → 75–200 ms. Finalizing a 2.6 GB recording took
+  3.5 s. Details in "Instant replays".
+- **End-to-end tests (2026-10-01, sandbox profile on the owner's PC, simulated games + fake League
+  client):** ARAM off → not recorded, status "ARAM: recording off for this mode"; Ranked recorded
+  with queue 420 + "Ranked Solo/Duo" saved; switching Ranked off mid-game keeps that recording and
+  the next Ranked game isn't recorded; Arena on Clips only → no full video, 2 clips (triple kill,
+  ace); a brand-new queue (9999) → recorded by the "Unknown / new modes" rule and flagged "New";
+  over the storage limit during a game → nothing deleted while recording, oldest game
+  removed 24 s after the game; every recording finalized (faststart); app killed mid-recording →
+  the game got its 34 s video back. Self-test: keyframes every 1.00 s (max 1.02 s) at 54.6 fps.
+- **Waiting for the owner**: play a real League game with v1.2.x and check the timeline,
   thumbnail and Settings > Advanced > Responsiveness numbers (see "Known issues").
 
 ## What we're building
@@ -405,6 +419,9 @@ video or the markers worked. Measured, not guessed (`scripts`/jobs + `--bench-re
   (`%LOCALAPPDATA%\Clairvoyance\simulator\lockfile`, protocol `http`) and the LCU endpoints
   `/lol-gameflow/v1/session` and `/lol-game-queues/v1/queues`, with a chosen queue
   (`--simulate-queue=450`, or the Mode picker), so game-mode rules can be tried without playing.
+- The simulator refuses to start while the previous simulated game is still closing (its fake
+  game process must be gone, or the engine treats the next one as the same process still open
+  after its match). Found by the end-to-end tests.
 - `mp4tool` (cv-capture example): `info`, `finalize`, `loop` (make a recording of any length from
   a real one), `benchsession`.
 - Settings > Advanced > **Save test report**: a zip (log, latest game's session.json, settings
@@ -454,6 +471,13 @@ video or the markers worked. Measured, not guessed (`scripts`/jobs + `--bench-re
   "Create clip" button is disabled for them.
 - Windows SmartScreen may warn about the installer (it isn't code-signed with a certificate;
   updates are still signature-checked by the updater).
+
+- Recordings made before v1.2.0 keep their 2–5.5 s keyframe spacing (only a re-encode would
+  change that); marker jumps snap to keyframes so they're fast anyway, but scrubbing to an
+  arbitrary point in an old recording can take ~0.1–0.3 s.
+- A recording is finalized shortly after its game (seconds); if you open it in those seconds, it
+  plays from the fragmented file (slow first frame) and is finalized the next time.
+- Hovering a game card starts loading its video: a few MB read from disk per hovered game.
 
 ## Next steps
 - Owner: play a real game on v1.1.x (timeline, thumbnail after the game, storage page), and

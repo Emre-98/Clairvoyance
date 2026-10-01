@@ -508,9 +508,19 @@ pub fn simulate_game(st: St, speed: f64, length: f64, queue: Option<i64>) -> R<(
 /// Plays a fake League match (and a fake League client reporting `queue`, default Draft Pick),
 /// so detection, mode rules, recording, events and the timeline can be tried without playing.
 pub fn start_simulation(st: Arc<AppState>, speed: f64, length: f64, queue: Option<i64>) -> R<()> {
+    // Each simulation has a number: the clean-up of an earlier one (which waits for its game to
+    // be saved) must not switch off a newer one that started in the meantime.
+    static SIMULATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    // The fake game "process" of the previous simulation must be gone first, or the next one
+    // looks like the same process still open after its match (no new game would start).
+    static CLOSING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     if st.live.lock().unwrap().session_id.is_some() {
         return Err("A game is already running.".into());
     }
+    if CLOSING.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err("The previous simulated game is still closing. Try again in a few seconds.".into());
+    }
+    let generation = SIMULATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
     let mut opts = cv_mock_league::MockOptions {
         speed: speed.clamp(1.0, 60.0),
         length: length.clamp(60.0, 3600.0),
@@ -538,6 +548,7 @@ pub fn start_simulation(st: Arc<AppState>, speed: f64, length: f64, queue: Optio
     st.platform.set_fake_process(Some(("league of legends.exe".into(), mock.running.clone())));
     log::info!("simulated game started at {}", mock.base_url);
 
+    CLOSING.store(true, std::sync::atomic::Ordering::SeqCst);
     let state = st.clone();
     tauri::async_runtime::spawn(async move {
         while mock.running.load(std::sync::atomic::Ordering::SeqCst) {
@@ -550,9 +561,14 @@ pub fn start_simulation(st: Arc<AppState>, speed: f64, length: f64, queue: Optio
                 break;
             }
         }
-        state.platform.set_fake_process(None);
-        let _ = state.cmd.send(EngineCommand::ReloadSettings(Box::new(state.engine_settings(&state.settings()))));
         mock.stop();
+        if SIMULATION.load(std::sync::atomic::Ordering::SeqCst) == generation {
+            state.platform.set_fake_process(None);
+            let _ = state.cmd.send(EngineCommand::ReloadSettings(Box::new(state.engine_settings(&state.settings()))));
+        }
+        // Give the engine a moment to see the "process" gone.
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        CLOSING.store(false, std::sync::atomic::Ordering::SeqCst);
     });
     Ok(())
 }

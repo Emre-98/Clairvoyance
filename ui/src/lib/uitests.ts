@@ -32,7 +32,15 @@ const idle = (s: LiveStatus) => s.state === "idle";
 async function play(queue: number, length = 120, during?: (s: LiveStatus) => Promise<void>) {
   const seen: string[] = [];
   const before = new Set((await sessions()).map((s) => s.id));
-  await api.simulateGame(6, length, queue);
+  // The previous simulated game may still be closing: retry for a while.
+  await until(async () => {
+    try {
+      await api.simulateGame(6, length, queue);
+      return true;
+    } catch {
+      return false;
+    }
+  }, 90000, 1000);
   // Detected -> (recording) -> idle again.
   const started = await until(async () => {
     const s = await status();
