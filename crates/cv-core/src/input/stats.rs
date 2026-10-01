@@ -62,55 +62,89 @@ impl Analysis {
     }
 
     pub fn from_records(records: &[Record]) -> Analysis {
-        let mut recs = records.to_vec();
-        // Two threads write records (cursor thread, engine): order by time.
-        recs.sort_by_key(|r| r.t());
-        let mut a = Analysis::default();
-        let mut focused_since: Option<f64> = None;
-        let mut chat_since: Option<f64> = None;
-        let mut pos = (0.5f32, 0.5f32);
-        let mut brk = true;
+        // Two threads write records (the cursor thread: cursor, buttons, window, focus; the
+        // engine: keys, chat), so the file is in order per kind but not overall. Each list is
+        // built in file order and sorted only if needed (no sort of the whole file: the overlay
+        // loads this on the first switch-on).
         let s = |t: i64| t as f64 / 1e6;
-        for r in &recs {
-            let t = s(r.t());
-            a.end = a.end.max(t);
+        let mut a = Analysis { moves: Vec::with_capacity(records.len()), ..Default::default() };
+        let mut buttons: Vec<(f64, u8, bool)> = Vec::new();
+        let mut focus_ev: Vec<(f64, bool)> = Vec::new();
+        let mut chat_ev: Vec<(f64, bool)> = Vec::new();
+        let mut brks: Vec<f64> = Vec::new();
+        let mut end = 0i64;
+        for r in records {
+            let ti = r.t();
+            end = end.max(ti);
             match *r {
-                Record::Cursor { x, y, .. } => {
-                    pos = ((x as f64 / UNIT) as f32, (y as f64 / UNIT) as f32);
-                    a.moves.push(Move { t, x: pos.0, y: pos.1, brk });
-                    brk = false;
+                Record::Cursor { t, x, y } => a.moves.push(Move { t: s(t), x: (x as f64 / UNIT) as f32, y: (y as f64 / UNIT) as f32, brk: false }),
+                Record::Button { t, button, down } => buttons.push((s(t), button, down)),
+                Record::Key { t, vk, down } => a.keys.push(KeyEv { t: s(t), vk, down }),
+                Record::Wheel { t, delta } => a.wheel.push((s(t), delta)),
+                Record::Window { t, info } => {
+                    a.windows.push((s(t), info));
+                    brks.push(s(t));
                 }
-                Record::Button { button, down, .. } => a.clicks.push(Click { t, button, down, x: pos.0, y: pos.1 }),
-                Record::Key { vk, down, .. } => a.keys.push(KeyEv { t, vk, down }),
-                Record::Wheel { delta, .. } => a.wheel.push((t, delta)),
-                Record::Window { info, .. } => {
-                    a.windows.push((t, info));
-                    brk = true;
+                Record::Focus { t, focused } => {
+                    focus_ev.push((s(t), focused));
+                    brks.push(s(t));
                 }
-                Record::Focus { focused, .. } => {
-                    if focused {
-                        focused_since.get_or_insert(t);
-                    } else if let Some(s0) = focused_since.take() {
-                        a.focus.push((s0, t));
-                    }
-                    brk = true;
-                }
-                Record::Chat { open, .. } => {
-                    if open {
-                        chat_since.get_or_insert(t);
-                    } else if let Some(s0) = chat_since.take() {
-                        a.chat.push((s0, t));
-                    }
-                }
+                Record::Chat { t, open } => chat_ev.push((s(t), open)),
                 Record::End { .. } => {}
             }
         }
-        if let Some(s0) = focused_since {
-            a.focus.push((s0, a.end));
+        a.end = s(end);
+        fn sort_t<T>(v: &mut [T], t: impl Fn(&T) -> f64) {
+            if !v.windows(2).all(|w| t(&w[0]) <= t(&w[1])) {
+                v.sort_by(|x, y| t(x).total_cmp(&t(y)));
+            }
         }
-        if let Some(s0) = chat_since {
-            a.chat.push((s0, a.end));
+        sort_t(&mut a.moves, |m| m.t);
+        sort_t(&mut buttons, |b| b.0);
+        sort_t(&mut a.keys, |k| k.t);
+        sort_t(&mut a.wheel, |w| w.0);
+        sort_t(&mut a.windows, |w| w.0);
+        sort_t(&mut focus_ev, |f| f.0);
+        sort_t(&mut chat_ev, |c| c.0);
+        sort_t(&mut brks, |b| *b);
+        // Strokes: a new one starts at the first sample and after every focus/window change.
+        if let Some(m) = a.moves.first_mut() {
+            m.brk = true;
         }
+        for b in brks {
+            let i = a.moves.partition_point(|m| m.t < b);
+            if let Some(m) = a.moves.get_mut(i) {
+                m.brk = true;
+            }
+        }
+        // A click is where the cursor was then.
+        a.clicks = buttons
+            .into_iter()
+            .map(|(t, button, down)| {
+                let (x, y) = match a.moves.partition_point(|m| m.t <= t) {
+                    0 => (0.5, 0.5),
+                    i => (a.moves[i - 1].x, a.moves[i - 1].y),
+                };
+                Click { t, button, down, x, y }
+            })
+            .collect();
+        let intervals = |ev: &[(f64, bool)]| {
+            let mut out = Vec::new();
+            let mut since: Option<f64> = None;
+            for &(t, on) in ev {
+                if on {
+                    since.get_or_insert(t);
+                } else if let Some(s0) = since.take() {
+                    out.push((s0, t));
+                }
+            }
+            if let Some(s0) = since {
+                out.push((s0, a.end));
+            }
+            out
+        };
+        a.focus = intervals(&focus_ev);
+        a.chat = intervals(&chat_ev);
         a
     }
 

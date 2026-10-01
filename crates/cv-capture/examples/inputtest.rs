@@ -148,7 +148,58 @@ mod win {
         moved_at: i64,
     }
 
+    /// `--other x y w h secs`: a topmost window in a separate process (to take the focus away
+    /// from the fake game the way another program would).
+    fn other_window_process(a: &[i32]) {
+        unsafe {
+            let _ = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+            let hinst = GetModuleHandleW(None).unwrap();
+            let class = w!("CvInputTestOther");
+            let wc = WNDCLASSW { lpfnWndProc: Some(wndproc), hInstance: hinst.into(), lpszClassName: class, hCursor: LoadCursorW(None, IDC_ARROW).unwrap(), ..Default::default() };
+            RegisterClassW(&wc);
+            let h = CreateWindowExW(WS_EX_TOPMOST, class, w!("Other window"), WS_OVERLAPPEDWINDOW | WS_VISIBLE, a[0], a[1], a[2], a[3], None, None, Some(hinst.into()), None).unwrap();
+            let _ = SetWindowPos(h, Some(HWND_TOPMOST), a[0], a[1], a[2], a[3], SWP_SHOWWINDOW);
+            let end = Instant::now() + Duration::from_secs(a[4] as u64);
+            let mut msg = MSG::default();
+            while Instant::now() < end {
+                while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
+                    let _ = TranslateMessage(&msg);
+                    DispatchMessageW(&msg);
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        }
+    }
+
     pub fn main() {
+        let argv: Vec<String> = std::env::args().collect();
+        if let Some(i) = argv.iter().position(|a| a == "--other") {
+            let v: Vec<i32> = argv[i + 1..].iter().take(5).filter_map(|x| x.parse().ok()).collect();
+            if v.len() == 5 {
+                other_window_process(&v);
+            }
+            return;
+        }
+        let idle = argv.iter().any(|a| a == "--idle");
+        // --load: keep half the cores busy (like a game), so the CPU runs at game clocks; on an
+        // idle desktop the cores clock down and every call looks slower than it is in game.
+        let load_stop = Arc::new(AtomicBool::new(false));
+        if argv.iter().any(|a| a == "--load") {
+            let n = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4) / 2;
+            for _ in 0..n {
+                let st = load_stop.clone();
+                std::thread::spawn(move || {
+                    let mut x = 1u64;
+                    while !st.load(Ordering::Relaxed) {
+                        for _ in 0..10_000 {
+                            x = x.wrapping_mul(6364136223846793005).wrapping_add(1);
+                        }
+                        std::hint::black_box(x);
+                    }
+                });
+            }
+            println!("load: {n} busy threads");
+        }
         let dpi = arg("--dpi").unwrap_or_else(|| "aware".into());
         let rate: u32 = arg("--rate").and_then(|r| r.parse().ok()).unwrap_or(250);
         let secs: f64 = arg("--secs").and_then(|r| r.parse().ok()).unwrap_or(12.0);
@@ -187,21 +238,23 @@ mod win {
             RegisterClassW(&wc);
             let game = CreateWindowExW(WS_EX_TOPMOST, class, w!("Input test game"), WS_OVERLAPPEDWINDOW | WS_VISIBLE, 100, 100, 1000, 600, None, None, Some(hinst.into()), None).unwrap();
             GAME.store(game.0 as isize, Ordering::SeqCst);
-            let other = CreateWindowExW(WS_EX_TOPMOST, class, w!("Other window"), WS_OVERLAPPEDWINDOW | WS_VISIBLE, 0, 0, 300, 200, None, None, Some(hinst.into()), None).unwrap();
-            tx.send((game.0 as isize, other.0 as isize)).unwrap();
+            tx.send((game.0 as isize, 0)).unwrap();
             let mut msg = MSG::default();
             while GetMessageW(&mut msg, None, 0, 0).as_bool() {
                 let _ = TranslateMessage(&msg);
                 DispatchMessageW(&msg);
             }
         });
-        let (g, o) = rx.recv().unwrap();
-        let (game, other) = (HWND(g as *mut _), HWND(o as *mut _));
+        let (g, _) = rx.recv().unwrap();
+        let game = HWND(g as *mut _);
         // Place them in physical pixels: the game at (200, 150), client ~ 1280 x 720 physical.
         unsafe {
             let _ = SetWindowPos(game, None, 200, 150, 1300, 760, SWP_NOZORDER);
             let gr = client_screen(game);
-            let _ = SetWindowPos(other, None, gr.right + 80, gr.top, 500, 350, SWP_NOZORDER);
+            // The other window: another process, to the right of the game.
+            let _ = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--other", &(gr.right + 80).to_string(), &gr.top.to_string(), "500", "350", &((secs as i32) + 10).to_string()])
+                .spawn();
         }
         std::thread::sleep(Duration::from_millis(600));
         let info0 = window_info(game).unwrap();
@@ -252,17 +305,21 @@ mod win {
         events.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
         let mut ev_i = 0;
         let mut away = false;
-        while t < secs {
+        if idle {
+            // Mouse untouched: only the capture thread runs.
+            std::thread::sleep(Duration::from_secs_f64(secs));
+        }
+        while !idle && t < secs {
             wait_until(t0, t);
             let c = client_screen(game);
             let (w, h) = ((c.right - c.left) as f64, (c.bottom - c.top) as f64);
             let x = c.left + (w * (0.5 + 0.38 * (std::f64::consts::PI * 0.5 * t).sin())) as i32;
             let y = c.top + (h * (0.5 + 0.36 * (std::f64::consts::PI * 0.35 * t + 0.7).sin())) as i32;
-            if !away {
+            if !away && !idle {
                 send_mouse(MOUSE_EVENT_FLAGS(0), x, y, 0);
                 truth.moves.push((qpc_hns(), x, y));
             }
-            while ev_i < events.len() && events[ev_i].0 <= t {
+            while !idle && ev_i < events.len() && events[ev_i].0 <= t {
                 let (bx, by) = if away { (0, 0) } else { (x, y) };
                 let now = qpc_hns();
                 match events[ev_i].1 {
@@ -292,8 +349,9 @@ mod win {
                         truth.wheel.push(now);
                     }
                     "away" => {
-                        let r = client_screen(other);
-                        let (ox, oy) = ((r.left + r.right) / 2, (r.top + r.bottom) / 2);
+                        let r = client_screen(game);
+                        // Middle of the other window (to the right of the game, 500 x 350).
+                        let (ox, oy) = (r.right + 80 + 250, r.top + 175);
                         send_mouse(MOUSE_EVENT_FLAGS(0), ox, oy, 0);
                         std::thread::sleep(Duration::from_millis(20));
                         send_mouse(MOUSEEVENTF_LEFTDOWN, ox, oy, 0);
@@ -324,14 +382,25 @@ mod win {
         }
         std::thread::sleep(Duration::from_millis(300));
         let cost = cap.stop();
+        load_stop.store(true, Ordering::Relaxed);
         let end_us = writer.video_us(qpc_hns());
         let (bytes, nrec) = writer.finish(end_us);
         let video = rec.as_ref().and_then(|r| r.stop_test_recording().map_err(|e| println!("stop recording: {e:#}")).ok());
         unsafe {
             let _ = PostMessageW(Some(game), WM_CLOSE, WPARAM(0), LPARAM(0));
-            let _ = PostMessageW(Some(other), WM_CLOSE, WPARAM(0), LPARAM(0));
+            if let Ok(o) = FindWindowW(w!("CvInputTestOther"), w!("Other window")) {
+                let _ = PostMessageW(Some(o), WM_CLOSE, WPARAM(0), LPARAM(0));
+            }
         }
 
+        if idle {
+            println!(
+                "IDLE COST ({rate} Hz, mouse untouched, game focused): capture thread {:.4}% of one core ({:.2} ms CPU from cycles, {:.1} ms tick-sampled, in {:.1} s), {} ticks ({} active, {} idle wakes), {} raw mouse messages, sections {:?}",
+                cost.core_percent(), cost.cpu_ms, cost.cpu_ms_sampled, cost.wall_secs, cost.ticks, cost.active_ticks, cost.idle_wakes, cost.raw_mouse_msgs, cost.sections_ms
+            );
+            std::fs::write(out.join("idle-cost.json"), serde_json::to_vec_pretty(&cost).unwrap()).unwrap();
+            return;
+        }
         // ---- checks ----
         let mut checks: Vec<(String, bool, String)> = Vec::new();
         let mut check = |name: &str, ok: bool, detail: String| {
@@ -377,7 +446,9 @@ mod win {
             !errs.is_empty() && pct(&errs, 0.5) <= 1.5 && pct(&errs, 0.95) <= 3.0,
             format!("{} samples, error median {:.2} px, p95 {:.2} px, max {:.2} px; sample time - input time median {:.2} ms, p95 {:.2} ms", errs.len(), pct(&errs, 0.5), pct(&errs, 0.95), pct(&errs, 1.0), pct(&lag_ms, 0.5), pct(&lag_ms, 0.95)),
         );
-        let expect_samples = (secs - 1.0) * rate as f64 * 0.8;
+        // Samples only when the cursor moved: SendInput moves it 500 times a second; 1 s of the
+        // test is away from the game.
+        let expect_samples = if idle { 0.0 } else { (secs - 2.0) * (rate.min(500)) as f64 * 0.8 };
         check("sample rate", errs.len() as f64 >= expect_samples, format!("{} samples in {secs} s at {rate} Hz", errs.len()));
         // Buttons.
         let rec_btn: Vec<(i64, u8, bool)> = f.records.iter().filter_map(|r| if let Record::Button { t, button, down } = r { Some((*t, *button, *down)) } else { None }).collect();
@@ -397,8 +468,8 @@ mod win {
         btn_err.sort_by(|a, b| a.partial_cmp(b).unwrap());
         check(
             "clicks (left, right, side button) recorded with their time",
-            matched == expected.len() && pct(&btn_err, 1.0) <= 1000.0 / rate as f64 + 2.0,
-            format!("{matched}/{} matched, time error median {:.2} ms, max {:.2} ms (tick {:.1} ms)", expected.len(), pct(&btn_err, 0.5), pct(&btn_err, 1.0), 1000.0 / rate as f64),
+            matched == expected.len() && pct(&btn_err, 1.0) <= 1000.0 / 60.0,
+            format!("{matched}/{} matched, time error median {:.2} ms, max {:.2} ms (tick {:.1} ms; target 1 frame = 16.7 ms)", expected.len(), pct(&btn_err, 0.5), pct(&btn_err, 1.0), 1000.0 / rate as f64),
         );
         let wheel = f.records.iter().filter(|r| matches!(r, Record::Wheel { delta: -120, .. })).count();
         check("wheel", wheel == 1, format!("{wheel} wheel record(s)"));
@@ -410,19 +481,25 @@ mod win {
             gap.is_some_and(|g| (g.0 - fl0).abs() < 0.1 && (g.1 - fl1).abs() < 0.1) && !an.moves.iter().any(|m| m.t > fl0 + 0.05 && m.t < fl1 - 0.05),
             format!("gap {:?}, clicked away at {fl0:.2}-{fl1:.2} s", gap),
         );
-        let moved = windows.iter().any(|w| (w.0 - us(truth.moved_at)).abs() < 200_000 && w.0 > 0);
+        let moved = windows.iter().any(|w| (w.0 - us(truth.moved_at)).abs() < 600_000 && w.0 > 0); // checked every 500 ms
         check("window move logged", moved && windows.len() >= 2, format!("{} window records", windows.len()));
         let core = cost.core_percent();
         check(
             "capture cost",
             true,
             format!(
-                "capture thread {:.3}% of one core ({:.1} ms CPU in {:.1} s), {} ticks, {} raw mouse messages, writer buffer max {:.1} KB, file {:.1} KB, {} records",
+                "capture thread {:.4}% of one core ({:.2} ms CPU from cycles; {:.1} ms tick-sampled; in {:.1} s), {} ticks ({:.1} us per tick), {} leftover WM_INPUT, {} raw mouse messages, {} active ticks, {} idle wakes, sections {:?}, writer buffer max {:.1} KB, file {:.1} KB, {} records",
                 core,
                 cost.cpu_ms,
+                cost.cpu_ms_sampled,
                 cost.wall_secs,
                 cost.ticks,
+                cost.cpu_ms * 1000.0 / cost.ticks.max(1) as f64,
+                cost.leftover_msgs,
                 cost.raw_mouse_msgs,
+                cost.active_ticks,
+                cost.idle_wakes,
+                cost.sections_ms,
                 max_buf as f64 / 1024.0,
                 bytes as f64 / 1024.0,
                 nrec

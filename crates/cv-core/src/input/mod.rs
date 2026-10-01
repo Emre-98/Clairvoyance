@@ -251,6 +251,8 @@ impl Encoder {
 
 /// Decodes a records payload (one or several blocks' worth, concatenated).
 fn decode_records(b: &[u8], out: &mut Vec<Record>) -> Option<()> {
+    // ~5 bytes per record (mostly cursor moves).
+    out.reserve(b.len() / 5);
     let mut r = Rd { b, i: 0 };
     let mut t: i64 = 0;
     let mut pos = (0i32, 0i32);
@@ -498,8 +500,23 @@ pub struct CaptureRequest {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CaptureStats {
     pub wall_secs: f64,
-    /// CPU time of the capture thread.
+    /// CPU time of the capture thread (exact, from its CPU cycles).
     pub cpu_ms: f64,
+    /// The same from Windows' tick-sampled thread times (over-counts short frequent wake-ups).
+    #[serde(default)]
+    pub cpu_ms_sampled: f64,
+    /// WM_INPUT messages left after GetRawInputBuffer (read one by one).
+    #[serde(default)]
+    pub leftover_msgs: u64,
+    /// Ticks at the sample rate (mouse moving in the game) and idle wake-ups (100 ms or the
+    /// first mouse report after a pause).
+    #[serde(default)]
+    pub active_ticks: u64,
+    #[serde(default)]
+    pub idle_wakes: u64,
+    /// Time inside the loop per section (the rest of `cpu_ms` is waking up/going to sleep).
+    #[serde(default)]
+    pub sections_ms: Vec<(String, f64)>,
     pub ticks: u64,
     pub cursor_samples: u64,
     /// Raw Input mouse messages read (movement included).
