@@ -235,7 +235,7 @@ mod run {
     fn launch_elevated(exe: &Path, csv: &Path) -> anyhow::Result<isize> {
         use windows::core::{w, HSTRING};
         use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
-        let params = HSTRING::from(format!("--process_name \"{GAME_EXE}\" --output_file \"{}\" --terminate_on_proc_exit", csv.display()));
+        let params = HSTRING::from(format!("--process_name \"{GAME_EXE}\" --output_file \"{}\" --terminate_on_proc_exit --session_name ClairvoyancePerfTest --stop_existing_session", csv.display()));
         let file = HSTRING::from(exe.as_os_str());
         let mut info = SHELLEXECUTEINFOW {
             cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
@@ -316,7 +316,13 @@ mod run {
                 anyhow::bail!("cancelled");
             }
             let l = st.live.lock().unwrap().clone();
-            if l.game_id.as_deref() == Some("league") && l.phase == cv_core::game::MatchPhase::InProgress {
+            if l.state == cv_core::engine::EngineState::Recording {
+                // A game that started before the test is being recorded normally: the test needs
+                // the recorder for itself (and a fair "not recording" phase).
+                set(st, |s| {
+                    s.message = Some("The current game is being recorded normally. Leave it and start a new Practice Tool game: the test begins by itself.".into());
+                });
+            } else if l.game_id.as_deref() == Some("league") && l.phase == cv_core::game::MatchPhase::InProgress {
                 break;
             }
             if wait_start.elapsed() > Duration::from_secs(30 * 60) {
@@ -497,7 +503,15 @@ mod run {
         });
         tokio::time::sleep(Duration::from_secs(2)).await;
 
-        let rows = std::fs::read_to_string(&csv).map(|t| parse_presentmon(&t, GAME_EXE)).unwrap_or_default();
+        // PresentMon writes its file as it ends: give it up to 20 s if it's still empty.
+        let mut rows = Vec::new();
+        for _ in 0..20 {
+            rows = std::fs::read_to_string(&csv).map(|t| parse_presentmon(&t, GAME_EXE)).unwrap_or_default();
+            if !rows.is_empty() || pm_started.is_none() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
         let fps_source = if rows.is_empty() {
             if pm_started.is_some() {
                 notes.push("PresentMon ran but recorded no League frames (keep the game in focus during the test).".into());

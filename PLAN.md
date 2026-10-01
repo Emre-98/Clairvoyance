@@ -50,18 +50,23 @@
   presses kept as hidden "no cast" (on cooldown 88, dead 12, chat 7). Owner's 3 real games: 24/24
   casts, the shop-typed "r" marked no cast (before: precision 96%). A 33 min game is checked in
   2.7–3.3 s inside the app (target ≤ 15 s). Details in "Ult tracking".
-- **Input tracking + replay overlay (2026-10-01, built, v1.4.0 pending):** mouse/keyboard
-  recorded during cursor-based games (League) and drawn over the replay (trail, clicks, cursor
-  dot, keys, heatmap; toggle "Input overlay" / I), plus post-game "Mechanics" stats. Tested in
-  the cloud: format/stats/engine/library unit tests; the ult check on the saved clips is
-  unchanged (9/9 casts, 0 missed, 0 extra); overlay in Chromium against a test video: cursor dot
-  within 0.4-0.7 px of the video's cursor (normal + fullscreen, double letterbox), draw time
-  median 0.1 ms / p95 0.3 ms, no stalls toggling at 0.25x/1x/2x; 35 min worst case 3.6 MB raw /
-  1.8 MB compressed. **Pending on the owner's PC** (job 36: SendInput + DPI + video alignment
-  test, replay benchmark before/after, ult check on the owner's games), then the performance
-  test in League and the owner's Practice Tool test. Details in "Input tracking".
-- **Waiting for the owner**: a performance test (Settings > Performance test) with the ult build;
-  play a real League game with v1.2.x and check the timeline,
+- **Input tracking + replay overlay (2026-10-01/02, v1.4.0):** mouse/keyboard recorded during
+  cursor-based games (League) and drawn over the replay (trail, clicks, cursor dot, keys,
+  heatmap; toggle "Input overlay" / I), plus post-game "Mechanics" stats. Tested on the owner's
+  PC: SendInput into a fake game window recorded by the real recorder: cursor samples median
+  0.01 px from the true path, clicks median 1-2 ms / max 10 ms, focus gap and window moves
+  logged, 100 % (DPI-unaware window) and 150 % correct, recorded cursor vs the cursor in the
+  video frames: best fit -5..-6 ms (< 1 frame). Ult check unchanged on the saved clips (9/9) and
+  on the owner's 5 games (identical counts). Replay open time unchanged (page 19-23 ms vs 20-24
+  ms on v1.3.0, first frame same); overlay: off on every open, re-on 10-18 ms, first on 66 ms (2
+  min game) / 125 ms (synthetic 33 min with the cursor moving non-stop; before the i16 payload),
+  draw p95 0.2-0.4 ms, 0 stalls toggling at 0.25x/1x/2x. **Performance test in League (Practice
+  Tool, 2026-10-02, real play):** not recording 143.8 FPS / 1 % low 110.1, recording 142.3 /
+  83.7, recording + input 143.7 / 109.3 (-0.07 % vs not recording; target < 1 %); app CPU
+  0.46-0.65 % with input vs 0.55-0.80 % without (no measurable difference), RAM +1-6 MB; capture
+  thread 0.26-0.41 % of one core in play (cursor moving most of the time), 0.10 % with the mouse
+  at rest. Owner's check: the trail follows the cursor in the replay. Details in "Input tracking".
+- **Waiting for the owner**: play a real League game with v1.4.x and check the timeline,
   thumbnail and Settings > Advanced > Responsiveness numbers (see "Known issues").
 
 ## What we're building
@@ -519,15 +524,25 @@ while the chat is open, key codes only, local only).
   offset) needs nothing special: the input never uses the game clock (only the per-minute APM
   chart converts to game minutes).
 - **Capture (`cv-capture/src/win/input.rs`, thread "input-capture", below-normal priority, DPI
-  aware per monitor v2):** a high-resolution waitable timer (no change to the system timer)
-  wakes it at the sample rate: `GetCursorPos` (stored only when it moved, in 1/65536 of the
-  client area), foreground check every tick (`GetForegroundWindow` vs the game window/pid:
-  focus records = gaps), client rect / DWM frame / DPI every 100 ms (window records). Mouse
-  buttons (L R M X1 X2) and wheel come from **Raw Input** (`RIDEV_INPUTSINK` on a message-only
-  window) drained in batches with `GetRawInputBuffer` on each tick instead of one wake-up per
-  mouse report (a 1000-8000 Hz mouse would wake it thousands of times a second); a button gets
-  the middle of its tick as time (±half a tick). The game window is found once (every 2 s until
-  found), no process snapshots per tick.
+  aware per monitor v2):** a high-resolution periodic waitable timer (no change to the system
+  timer) wakes it at the sample rate while the mouse moves: `GetCursorPos` (stored only when it
+  moved, in 1/65536 of the client area) and the five mouse buttons with `GetAsyncKeyState`
+  (physical state + "pressed since last call" bit, so a click shorter than a tick isn't missed;
+  a change gets the middle of its tick as time); foreground check every tick (focus records =
+  gaps); client rect / DWM frame / DPI every 500 ms and on refocus (window records). After 250 ms
+  without movement it drops to a 30 Hz `GetLastInputInfo` check; outside the game 10 Hz. The
+  game window is found once (every 2 s until found).
+- **Decision (measured, owner's PC, 2026-10-01): no mouse Raw Input.** The first version
+  registered the mouse for Raw Input (`RIDEV_INPUTSINK`) as specified, but every movement report
+  then has to be read: 7.7 µs per report (`GetRawInputBuffer`; `PeekMessage` + `GetRawInputData`
+  16.9 µs), i.e. ~0.8 % of a core with a 1000 Hz mouse in motion, vs 0.46 µs per tick for the
+  five `GetAsyncKeyState` calls (`GetCursorPos` 5.5-7 µs, `GetForegroundWindow` 0.4 µs). Same
+  safety (no hook, nothing in the game), ~17x cheaper; the wheel isn't recorded (the format
+  keeps a wheel record for later). Capture thread cost, exact (`QueryThreadCycleTime`; Windows'
+  tick-sampled thread times over-count short frequent wake-ups): mouse at rest 0.10 % of one
+  core; mouse moving non-stop (SendInput at 500 Hz) 0.18 % at 125 Hz, **0.27 % at 250 Hz**,
+  0.50 % at 500 Hz, same under game-like CPU load; almost all of it is `GetCursorPos` itself.
+  Before: 0.6-1.3 %.
 - **Keys:** the existing Raw Input keyboard thread now sends every key down/up (auto-repeat
   filtered, QPC timestamp) to the engine. Hotkeys and `on_key` see exactly what they saw before
   (named key-downs), so the ult tracking and `key_presses` are unchanged. The engine records a
@@ -542,8 +557,10 @@ while the chat is open, key codes only, local only).
   priority) computes the Mechanics stats (`session.json` `mechanics`) and the whole-game
   heatmap and rewrites the file deflate-compressed with the heatmap block (checked, then
   swapped in). Worst case 35 min (cursor moving the whole time at 250 Hz, 2.5 clicks + 1.5
-  keys/s): 3.57 MB raw, 1.77 MB compressed; stats 143 ms (debug build). RAM while recording:
-  the 10 s buffer + the list of button presses (tens of KB).
+  keys/s): 3.57 MB raw, 1.77 MB compressed; on the owner's PC (33 min, 509k records) 2.88 MB raw,
+  1.43 MB compressed, stats + heatmap + compression 0.75-0.85 s. Owner's real 16.5 min game:
+  92k cursor samples, 1,149 clicks, 1,946 key events, 541 KB raw. RAM while recording: the 10 s
+  buffer (16 KB at 250 Hz) + the list of button presses (tens of KB).
 - **Ult tie-in:** at the end of the game the mouse-button presses go to
   `GameIntegration::mouse_marks`; League keeps those on buttons bound to the ult (from
   `PersistedSettings.json`, "Button 4/5") as ult key marks (`key` "Mouse 5", reason "mouse",
@@ -570,8 +587,15 @@ while the chat is open, key codes only, local only).
   for a range (`input_stats`, computed from the recording) which also drives the overlay's
   "selected range" heatmap.
 - **Performance test:** three phases now: not recording, recording, recording + input (the
-  capture thread's own CPU time, samples, raw mouse messages and file size are added to the
-  report notes).
+  capture thread's own CPU time, samples and file size are added to the report notes). Fixed on
+  the way: a game already being recorded when the test starts made it fail ("already
+  recording", and left PresentMon running so the next run had no FPS): the test now asks to
+  start a new game; PresentMon gets its own session name + `--stop_existing_session`; the CSV is
+  re-read for up to 20 s while PresentMon finishes writing it.
+- **Overlay data:** positions sent as i16 (1/16384 of the client) and stroke breaks as an index
+  list (v2 payload, ~4 MB for the 33 min worst case instead of 6.6 MB); the analysis no longer
+  sorts the whole file (records are in order per thread): read + decode + payload 36 ms for
+  509k records (was 100 ms).
 - **Tests:** `cargo test -p cv-core` (format round trip, torn tail, chat/keys, stats, idle,
   efficiency, negative offset, payload layout, 35 min size targets, library clean-up of input
   files, engine end to end with chat + mouse marks); League (mouse marks, matching);
@@ -636,9 +660,9 @@ while the chat is open, key codes only, local only).
 - [x] 23. Test tools: replay benchmark, end-to-end tests with a fake League client, test report
 - [x] 24. Accurate ult tracking: League keybinds + live gates, post-game check from the recording
 - [x] Owner's scripted Practice Tool ult test (34/34 casts, 0 false)
-- [ ] Performance test with the ult build
-- [x] 25. Input tracking (mouse + keyboard, Raw Input + cursor polling) + replay overlay + Mechanics stats (built; cloud tests pass)
-- [ ] Input tracking: Windows tests on the owner's PC (job 36), performance test in League, owner's Practice Tool test, release v1.4.0
+- [x] Performance test with the ult build (done with the input build, 2026-10-02: -0.07 % FPS)
+- [x] 25. Input tracking (keyboard Raw Input + cursor/button polling, no hooks) + replay overlay + Mechanics stats (v1.4.0)
+- [x] Input tracking tested on the owner's PC (SendInput/DPI/video alignment, benchmark, ult regression, League performance test, owner's replay check)
 
 ## Known issues
 - The Windows-only parts added on 2026-10-01 (Media Foundation thumbnails, updater install,
@@ -666,6 +690,12 @@ while the chat is open, key codes only, local only).
   Auto clips are cut right after the game, before the check, so an auto-clip rule on ult events
   still uses the live presses. Typing in the shop search can't be told apart live (the check
   marks it "no cast" afterwards).
+
+- Input tracking: the capture thread costs 0.27 % of one core at 250 Hz while the cursor moves
+  non-stop (0.18 % at 125 Hz, 0.10 % at rest), above the 0.1 % target: almost all of it is
+  `GetCursorPos` itself (5.5-10 µs per call on the owner's PC); FPS impact measured -0.07 %.
+  The mouse wheel isn't recorded (no mouse Raw Input, see "Input tracking"). The first switch-on
+  of the overlay for a very long game with the cursor moving non-stop can take ~100 ms.
 
 ## Next steps
 - Owner: play a real game on v1.1.x (timeline, thumbnail after the game, storage page), and
