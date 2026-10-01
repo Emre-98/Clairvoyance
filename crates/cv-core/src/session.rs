@@ -122,6 +122,46 @@ pub struct GameSession {
     /// Non-fatal problems during the game (shown on the detail page).
     #[serde(default)]
     pub warnings: Vec<String>,
+    /// Every press of a tracked game key (League: the ult), also the ones filtered out live
+    /// (on cooldown, not learned, dead, chat), so the check against the recording can decide.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub key_presses: Vec<crate::game::KeyMark>,
+    /// Result of checking the live events against the recording after the game.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verification: Option<Verification>,
+}
+
+/// Outcome of the post-game check of key-press events against the recording (League: ult
+/// casts read from the ability bar in the video).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Verification {
+    /// Version of the checking code; older results are redone when it improves.
+    pub version: u32,
+    pub at: DateTime<Local>,
+    /// "verified", "skipped" (e.g. unknown HUD layout: the live result is kept) or "failed".
+    pub status: String,
+    #[serde(default)]
+    pub reason: Option<String>,
+    /// 0..1: how sure the ability bar was found in the video.
+    #[serde(default)]
+    pub confidence: f64,
+    /// Casts seen in the video.
+    #[serde(default)]
+    pub casts: usize,
+    /// Casts that matched a key press.
+    #[serde(default)]
+    pub confirmed: usize,
+    /// Casts without a matching key press (other binding, missed press...).
+    #[serde(default)]
+    pub video_only: usize,
+    /// Key presses without a cast.
+    #[serde(default)]
+    pub unconfirmed: usize,
+    #[serde(default)]
+    pub analysis_ms: u64,
+    /// Where the ability bar was found etc. (for the test report).
+    #[serde(default)]
+    pub details: serde_json::Value,
 }
 
 impl GameSession {
@@ -133,6 +173,8 @@ impl GameSession {
             game_name: game_name.to_string(),
             started_at,
             ended_at: None,
+            key_presses: Vec::new(),
+            verification: None,
             video_file: None,
             video_offset: 0.0,
             video_duration: None,

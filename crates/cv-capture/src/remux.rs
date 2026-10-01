@@ -862,13 +862,17 @@ fn build_head(p: &Parsed, co64: bool) -> io::Result<(Vec<u8>, Vec<Vec<(usize, us
 /// `ErrorKind::Interrupted` (the caller deletes `dst`).
 pub fn finalize(src: &Path, dst: &Path, cancel: &dyn Fn() -> bool) -> io::Result<FinalizeReport> {
     let p = parse(src)?;
+    write_faststart(&p, src, dst, cancel)
+}
+
+fn write_faststart(p: &Parsed, src: &Path, dst: &Path, cancel: &dyn Fn() -> bool) -> io::Result<FinalizeReport> {
     let samples: usize = p.tracks.iter().map(|t| t.samples.len()).sum();
     if p.tracks.iter().find(|t| t.video).map(|t| t.samples.is_empty()).unwrap_or(true) {
         return Err(bad("the recording has no video frames"));
     }
     let data_len: u64 = p.chunks.iter().map(|c| c.bytes).sum();
     let co64 = data_len + (16 << 20) > u32::MAX as u64;
-    let (head, _rel, data_len) = build_head(&p, co64)?;
+    let (head, _rel, data_len) = build_head(p, co64)?;
     let mut inp = File::open(src)?;
     let mut out = BufWriter::with_capacity(4 << 20, File::create(dst)?);
     out.write_all(&head)?;
@@ -943,6 +947,77 @@ fn replace(from: &Path, to: &Path) -> io::Result<()> {
 /// Leftover temp file from a finalize that was interrupted (crash, power cut).
 pub fn is_temp_file(p: &Path) -> bool {
     p.to_string_lossy().ends_with(".mp4.finalizing")
+}
+
+/// Test tool: copies `secs` seconds starting at `start` (from the keyframe at or before it) into
+/// a small faststart MP4, without re-encoding. Returns where the cut really starts (seconds).
+#[doc(hidden)]
+pub fn cut(src: &Path, dst: &Path, start: f64, secs: f64) -> io::Result<f64> {
+    let mut p = parse(src)?;
+    let vi = p.tracks.iter().position(|t| t.video).ok_or_else(|| bad("no video"))?;
+    let orig: Vec<Vec<Sample>> = p.tracks.iter().map(|t| t.samples.clone()).collect();
+    let dts: Vec<Vec<u64>> = p
+        .tracks
+        .iter()
+        .map(|t| {
+            let mut d = t.first_dts;
+            t.samples.iter().map(|s| {
+                let v = d;
+                d += s.dur as u64;
+                v
+            }).collect()
+        })
+        .collect();
+    let vts = p.tracks[vi].timescale as f64;
+    let t0 = orig[vi].iter().zip(&dts[vi]).filter(|(s, d)| s.sync && **d as f64 / vts <= start).map(|(_, d)| *d as f64 / vts).last().unwrap_or(0.0);
+    let t1 = start + secs;
+    let mut maps: Vec<Vec<Option<usize>>> = Vec::new();
+    for (ti, t) in p.tracks.iter_mut().enumerate() {
+        let ts = t.timescale as f64;
+        let mut map = vec![None; orig[ti].len()];
+        let mut kept = Vec::new();
+        let mut first = None;
+        for (i, s) in orig[ti].iter().enumerate() {
+            let at = dts[ti][i] as f64 / ts;
+            if at >= t0 - 1e-9 && at < t1 {
+                first.get_or_insert(dts[ti][i]);
+                map[i] = Some(kept.len());
+                kept.push(*s);
+            }
+        }
+        t.first_dts = first.map(|f| (f as f64 - t0 * ts).max(0.0) as u64).unwrap_or(0);
+        t.samples = kept;
+        maps.push(map);
+    }
+    let mut chunks = Vec::new();
+    for c in &p.chunks {
+        let mut run: Option<Chunk> = None;
+        let mut off = c.src;
+        for i in c.first..c.first + c.count {
+            let size = orig[c.track][i].size as u64;
+            match maps[c.track][i] {
+                Some(n) => match &mut run {
+                    Some(r) => {
+                        r.count += 1;
+                        r.bytes += size;
+                    }
+                    None => run = Some(Chunk { track: c.track, frag: c.frag, src: off, first: n, count: 1, bytes: size }),
+                },
+                None => {
+                    if let Some(done) = run.take() {
+                        chunks.push(done);
+                    }
+                }
+            }
+            off += size;
+        }
+        if let Some(done) = run.take() {
+            chunks.push(done);
+        }
+    }
+    p.chunks = chunks;
+    write_faststart(&p, src, dst, &|| false)?;
+    Ok(t0)
 }
 
 /// Test tool (replay benchmark): writes a fragmented recording of `secs` seconds by repeating
@@ -1167,6 +1242,14 @@ mod tests {
         let short = tmp("d-short.mp4");
         loop_recording(&src, &short, 2.0).unwrap();
         assert!((info(&short).unwrap().duration_secs - 2.0).abs() < 1.1);
+        // Cut 3 s from the middle: starts on the keyframe at 4 s, plays from 0.
+        let piece = tmp("d-cut.mp4");
+        let t0 = cut(&long, &piece, 4.5, 3.0).unwrap();
+        assert!((t0 - 4.0).abs() < 0.02, "{t0}");
+        let ci = info(&piece).unwrap();
+        assert_eq!(ci.layout, Layout::Faststart);
+        assert!((ci.duration_secs - 3.5).abs() < 0.1, "{ci:?}");
+        assert_eq!(ci.video_frames, 210);
         let fast = tmp("d-long-fast.mp4");
         finalize(&long, &fast, &|| false).unwrap();
         assert_eq!(info(&fast).unwrap().video_frames, i.video_frames);

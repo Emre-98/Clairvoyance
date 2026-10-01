@@ -12,7 +12,13 @@ pub enum EventKind {
     Multikill,
     FirstBlood,
     Ace,
+    /// Ult key pressed (live, not checked against the recording yet / couldn't be checked).
     UltPressed,
+    /// Ult cast, confirmed from the recording (the ability bar shows it going on cooldown).
+    UltUsed,
+    /// Ult key pressed but no cast in the recording (on cooldown, cancelled, dead...). Hidden
+    /// by default.
+    UltUnconfirmed,
     Tower,
     Inhibitor,
     Dragon,
@@ -29,7 +35,7 @@ pub enum EventKind {
 }
 
 impl EventKind {
-    pub const ALL: [EventKind; 18] = [
+    pub const ALL: [EventKind; 20] = [
         EventKind::Kill,
         EventKind::Death,
         EventKind::Assist,
@@ -37,6 +43,8 @@ impl EventKind {
         EventKind::FirstBlood,
         EventKind::Ace,
         EventKind::UltPressed,
+        EventKind::UltUsed,
+        EventKind::UltUnconfirmed,
         EventKind::Tower,
         EventKind::Inhibitor,
         EventKind::Dragon,
@@ -59,6 +67,8 @@ impl EventKind {
             EventKind::FirstBlood => "first_blood",
             EventKind::Ace => "ace",
             EventKind::UltPressed => "ult_pressed",
+            EventKind::UltUsed => "ult_used",
+            EventKind::UltUnconfirmed => "ult_unconfirmed",
             EventKind::Tower => "tower",
             EventKind::Inhibitor => "inhibitor",
             EventKind::Dragon => "dragon",
@@ -83,6 +93,8 @@ impl EventKind {
             EventKind::FirstBlood => "First blood",
             EventKind::Ace => "Ace",
             EventKind::UltPressed => "Ult",
+            EventKind::UltUsed => "Ult",
+            EventKind::UltUnconfirmed => "Ult pressed",
             EventKind::Tower => "Tower",
             EventKind::Inhibitor => "Inhibitor",
             EventKind::Dragon => "Dragon",

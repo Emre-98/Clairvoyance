@@ -9,6 +9,7 @@
 pub mod audio;
 pub mod capture;
 pub mod d3d;
+pub mod frames;
 pub mod mux;
 pub mod perf;
 pub mod thumb;

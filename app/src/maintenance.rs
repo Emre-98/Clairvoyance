@@ -5,6 +5,9 @@
 //! - finalizes finished recordings for instant playback: the crash-safe fragmented MP4 written
 //!   during the game is rewritten as a "faststart" MP4 (index at the front, same media, no
 //!   re-encode; see `cv_capture::remux`), newest first, older recordings too,
+//! - checks live key-press events against the finished recording (League: ult casts read from
+//!   the ability bar, hardware decoding), newest first, older recordings too when the check
+//!   improves (`GameIntegration::verify_version`),
 //! - applies the storage limit (oldest games first; favorites and kept clips are protected).
 //!
 //! Runs a little after start-up, after every game (once its auto clips are cut), after the
@@ -38,6 +41,8 @@ pub struct Maintenance {
     pub open_video: Mutex<Option<PathBuf>>,
     /// Videos that couldn't be finalized this session (not retried every run).
     finalize_failed: Mutex<HashSet<PathBuf>>,
+    /// Games whose recording check failed this session (not retried every run).
+    verify_failed: Mutex<HashSet<PathBuf>>,
 }
 
 impl Maintenance {
@@ -75,6 +80,8 @@ pub struct RunReport {
     pub thumbs_made: usize,
     /// Recordings rewritten for instant playback.
     pub finalized: usize,
+    /// Games whose events were checked against the recording.
+    pub verified: usize,
     /// A game interrupted by a crash got its video back.
     pub recovered: bool,
     pub removed: Vec<CleanupDone>,
@@ -99,7 +106,7 @@ pub async fn run(app: &AppHandle, forced: bool) -> RunReport {
     let s2 = st.clone();
     let report = tauri::async_runtime::spawn_blocking(move || crate::platform::in_background_mode(|| run_blocking(&s2, forced))).await.unwrap_or_default();
 
-    if report.thumbs_made > 0 || report.finalized > 0 || report.recovered || !report.removed.is_empty() {
+    if report.thumbs_made > 0 || report.finalized > 0 || report.verified > 0 || report.recovered || !report.removed.is_empty() {
         let _ = app.emit("library-changed", ());
     }
     if !report.removed.is_empty() {
@@ -214,6 +221,25 @@ fn run_blocking(st: &Arc<AppState>, forced: bool) -> RunReport {
         lib.refresh(&root);
     }
 
+    // Live events checked against the recording, newest first.
+    let games = crate::games::all();
+    for g in lib.summaries() {
+        if busy(st) {
+            break;
+        }
+        let Some(video) = &g.video_path else { continue };
+        let Some(game) = games.iter().find(|x| x.id() == g.game_id) else { continue };
+        if game.verify_version() == 0 || st.maintenance.verify_failed.lock().unwrap().contains(&g.dir) {
+            continue;
+        }
+        if verify_game(st, game.as_ref(), &g.dir, video) {
+            report.verified += 1;
+        }
+    }
+    if report.verified > 0 {
+        lib.refresh(&root);
+    }
+
     // Thumbnails of games deleted outside the app.
     let ids: Vec<String> = lib.summaries().into_iter().map(|g| g.id).collect();
     let orphans = lib.thumbs().remove_orphans(&ids);
@@ -260,6 +286,76 @@ fn recover_interrupted(st: &AppState) -> usize {
         }
     }
     n
+}
+
+/// Checks one game's live events against its recording if that wasn't done yet (or was done
+/// by an older version of the check). Stops as soon as a game starts (done again next run).
+fn verify_game(st: &AppState, game: &dyn cv_core::game::GameIntegration, dir: &Path, video: &Path) -> bool {
+    use cv_core::session::GameSession;
+    let Ok(s) = GameSession::load(dir) else { return false };
+    if s.verification.as_ref().is_some_and(|v| v.version >= game.verify_version()) {
+        return false;
+    }
+    // Still being written (fragmented, not finalized yet): next run.
+    if cv_capture::remux::probe(video).map(|l| l.needs_finalize()).unwrap_or(true) {
+        return false;
+    }
+    let t = std::time::Instant::now();
+    let mut checked = s.clone();
+    let r = open_frames(video).and_then(|mut frames| match game.verify_recording(&mut checked, frames.as_mut(), &|| busy(st)) {
+        Some(r) => r,
+        None => Err(anyhow::anyhow!("not supported")),
+    });
+    match r {
+        Ok(()) => {
+            // Re-read just before saving: keep anything the user changed meanwhile (favorite,
+            // clips); only the checked parts are replaced.
+            let Ok(mut now) = GameSession::load(dir) else { return false };
+            now.events = checked.events;
+            now.key_presses = checked.key_presses;
+            now.verification = checked.verification;
+            match now.save(dir) {
+                Ok(()) => {
+                    if let Some(v) = &now.verification {
+                        log::info!(
+                            "checked {} against its recording in {:.1} s: {} ({} casts, {} confirmed presses, {} only in the video, {} presses without a cast)",
+                            dir.display(),
+                            t.elapsed().as_secs_f64(),
+                            v.status,
+                            v.casts,
+                            v.confirmed,
+                            v.video_only,
+                            v.unconfirmed
+                        );
+                    }
+                    true
+                }
+                Err(e) => {
+                    log::warn!("saving the recording check of {}: {e:#}", dir.display());
+                    false
+                }
+            }
+        }
+        Err(e) if busy(st) => {
+            log::info!("recording check of {} paused ({e}); later", dir.display());
+            false
+        }
+        Err(e) => {
+            log::warn!("recording check of {}: {e:#}", dir.display());
+            st.maintenance.verify_failed.lock().unwrap().insert(dir.to_path_buf());
+            false
+        }
+    }
+}
+
+#[cfg(windows)]
+fn open_frames(video: &Path) -> anyhow::Result<Box<dyn cv_core::game::FrameSource>> {
+    Ok(Box::new(cv_capture::win::frames::VideoFrames::open(video)?))
+}
+
+#[cfg(not(windows))]
+fn open_frames(_video: &Path) -> anyhow::Result<Box<dyn cv_core::game::FrameSource>> {
+    anyhow::bail!("no video decoder on this platform")
 }
 
 /// Rewrites one recording as a faststart MP4 if it isn't one yet. Never while a game runs (the

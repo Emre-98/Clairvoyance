@@ -20,3 +20,4 @@ chrono.workspace = true
 [dev-dependencies]
 tokio.workspace = true
 cv-mock-league = { path = "../../crates/cv-mock-league" }
+cv-capture = { path = "../../crates/cv-capture" }

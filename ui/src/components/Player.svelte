@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { GameEvent } from "../lib/types";
-  import { GROUPS, KIND, type Group } from "../lib/eventmeta";
+  import { GROUPS, HIDDEN_BY_DEFAULT, KIND, type Group } from "../lib/eventmeta";
   import { clock } from "../lib/format";
   import Icon from "./Icon.svelte";
   import Timeline from "./Timeline.svelte";
@@ -16,7 +16,7 @@
     offset,
     knownDuration = 0,
     clips = [],
-    hidden = $bindable(new Set<Group>(["game"])),
+    hidden = $bindable(new Set<Group>(HIDDEN_BY_DEFAULT)),
     range = $bindable(null),
     current = $bindable(0),
     startAt = 0,

@@ -5,11 +5,16 @@
 //! The queue (Ranked, Normal, ARAM, …) comes from the League client's local API (LCU), see
 //! [`queues`], so per-mode recording rules are decided before recording starts.
 //!
-//! "Ult pressed" can't come from the API (it doesn't expose ability casts), so the
-//! engine forwards key presses made while the game window is focused to [`LeagueIntegration::on_key`].
+//! The API doesn't expose ability casts. Ult casts come in two layers: live, the ult key
+//! presses (binds from League's own settings) filtered by rank, cooldown and death ([`ult`]);
+//! after the game, a check against the recording's ability bar ([`verify`], [`hud`]).
 
 pub mod events;
 pub mod queues;
+pub mod ddragon;
+pub mod hud;
+pub mod ult;
+pub mod verify;
 
 use async_trait::async_trait;
 use events::{translate, Ctx, EventList};
@@ -63,6 +68,7 @@ struct Player {
     scores: Scores,
     #[serde(deserialize_with = "seq_or_map")]
     items: Vec<Item>,
+    is_dead: bool,
 }
 
 /// Riot's `items` has been a list, but some client versions send an object keyed by slot.
@@ -99,6 +105,32 @@ impl Player {
 #[serde(rename_all = "camelCase", default)]
 struct ActivePlayer {
     current_gold: f64,
+    abilities: HashMap<String, AbilityInfo>,
+    champion_stats: ChampionStats,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+struct AbilityInfo {
+    ability_level: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+struct ChampionStats {
+    ability_haste: Option<f64>,
+}
+
+/// Where Data Dragon data and the optional `ult_rules.json` override live
+/// (`%LOCALAPPDATA%\Clairvoyance`). Set once by the app at start-up.
+static DATA_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+
+pub fn set_data_dir(dir: std::path::PathBuf) {
+    let _ = DATA_DIR.set(dir);
+}
+
+fn data_dir() -> Option<&'static std::path::Path> {
+    DATA_DIR.get().map(|p| p.as_path())
 }
 
 pub struct LeagueIntegration {
@@ -117,8 +149,12 @@ pub struct LeagueIntegration {
     mode: Option<String>,
     result: Option<GameResult>,
     in_progress: bool,
-    chat_open: bool,
-    last_ult: Option<f64>,
+    /// Live ult filtering (layer 1).
+    ult: ult::UltTracker,
+    /// Base ult cooldowns from Data Dragon, filled in the background.
+    ult_cd: std::sync::Arc<std::sync::Mutex<Option<Vec<f64>>>>,
+    ult_cd_started: bool,
+    patch: Option<String>,
 }
 
 impl Default for LeagueIntegration {
@@ -155,8 +191,10 @@ impl LeagueIntegration {
             mode: None,
             result: None,
             in_progress: false,
-            chat_open: false,
-            last_ult: None,
+            ult: ult::UltTracker::new(ult::default_binds(), None, ult::UltRules::builtin()),
+            ult_cd: Default::default(),
+            ult_cd_started: false,
+            patch: None,
         }
     }
 
@@ -179,8 +217,65 @@ impl LeagueIntegration {
         self.mode = None;
         self.result = None;
         self.in_progress = false;
-        self.chat_open = false;
-        self.last_ult = None;
+        let manual = self.ult.manual.clone();
+        self.ult = ult::UltTracker::new(ult::default_binds(), manual, ult::UltRules::load(data_dir()));
+        self.ult_cd = Default::default();
+        self.ult_cd_started = false;
+        self.patch = None;
+    }
+
+    /// League's own key binds and patch, read at the start of each match (cheap file reads).
+    fn read_league_config(&mut self) {
+        let dir = queues::install_dirs(&self.client_dir).into_iter().find(|d| d.join("Config").is_dir());
+        let Some(dir) = dir else {
+            log::info!("ult keys: League's Config folder not found; using League's default binds");
+            return;
+        };
+        if let Some(b) = ult::read_binds(&dir) {
+            let keys: Vec<String> = b.cast.iter().map(|b| b.label()).collect();
+            log::info!("ult keys from League's settings: {}{}", keys.join(", "), if b.mouse.is_empty() { String::new() } else { format!(" (and mouse: {})", b.mouse.join(", ")) });
+            self.ult.binds = b;
+        }
+        self.patch = ult::read_game_cfg(&dir).patch;
+    }
+
+    /// Facts the live ult filter needs: R rank and ability haste (every poll, small request),
+    /// whether we're dead (only polled while dead), and the base cooldowns (once, background).
+    async fn update_ult_state(&mut self, game_mode: &str, new_events: &[GameEvent]) {
+        if self.ult.game_mode.is_none() && !game_mode.is_empty() {
+            self.ult.game_mode = Some(game_mode.to_string());
+        }
+        if let Ok(a) = self.get::<ActivePlayer>("activeplayer").await {
+            let r = a.abilities.get("R").and_then(|r| r.ability_level);
+            self.ult.update_active(r, a.champion_stats.ability_haste);
+        }
+        if self.ult.champion.is_none() {
+            self.ult.champion = self.player.as_ref().and_then(|p| p.character_id.clone());
+        }
+        if !self.ult_cd_started {
+            if let Some(champ) = self.ult.champion.clone() {
+                self.ult_cd_started = true;
+                let slot = self.ult_cd.clone();
+                let patch = self.patch.clone();
+                tokio::spawn(async move {
+                    let cd = ddragon::ult_cooldown(data_dir(), patch.as_deref(), &champ).await;
+                    *slot.lock().unwrap() = cd;
+                });
+            }
+        }
+        if self.ult.base_cd.is_none() {
+            self.ult.base_cd = self.ult_cd.lock().unwrap().clone();
+        }
+        if new_events.iter().any(|e| e.kind == EventKind::Death) {
+            self.ult.dead = true;
+        }
+        if self.ult.dead {
+            if let Ok(players) = self.get::<Vec<Player>>("playerlist").await {
+                if let Some(p) = players.iter().find(|p| p.names().iter().any(|n| self.ctx.me.contains(n))) {
+                    self.ult.dead = p.is_dead;
+                }
+            }
+        }
     }
 
     /// Reads who we are and the scoreboard (every ~10 s, or until we've found ourselves).
@@ -284,7 +379,7 @@ impl GameIntegration for LeagueIntegration {
                 key: "ult_key",
                 label: "Ult key",
                 kind: "key",
-                help: "The key you cast your ultimate with. Presses are marked as \"Ult pressed\" (the game can't confirm the cast).",
+                help: "Leave empty: your ult keys are read from League's own settings (normal, quick and self cast). Set a key only to override them. After the game, casts are confirmed from the recording.",
             },
             ConfigField {
                 key: "client_dir",
@@ -295,15 +390,17 @@ impl GameIntegration for LeagueIntegration {
         ]
     }
     fn default_config(&self) -> serde_json::Value {
-        serde_json::json!({ "riot_id": "", "ult_key": "R", "client_dir": "" })
+        serde_json::json!({ "riot_id": "", "ult_key": "", "client_dir": "" })
     }
     fn configure(&mut self, config: &serde_json::Value) {
         self.riot_id = config["riot_id"].as_str().unwrap_or("").trim().to_string();
-        self.ult_key = cv_core::settings::normalize_key(config["ult_key"].as_str().unwrap_or("R"));
+        self.ult_key = cv_core::settings::normalize_key(config["ult_key"].as_str().unwrap_or(""));
         self.client_dir = config["client_dir"].as_str().unwrap_or("").trim().to_string();
-        if self.ult_key.is_empty() {
-            self.ult_key = "R".into();
-        }
+        // Empty (or the old default "R"): League's own binds. Anything else overrides them.
+        self.ult.manual = match self.ult_key.as_str() {
+            "" | "R" | "Auto" => None,
+            k => Some(ult::Bind::plain(k)),
+        };
         // Hidden option used by the built-in game simulator.
         self.base = match config["api_base"].as_str().filter(|s| !s.is_empty()) {
             Some(b) => b.trim_end_matches('/').to_string(),
@@ -313,6 +410,7 @@ impl GameIntegration for LeagueIntegration {
 
     async fn start(&mut self) -> anyhow::Result<()> {
         self.reset_match();
+        self.read_league_config();
         Ok(())
     }
 
@@ -500,6 +598,9 @@ impl GameIntegration for LeagueIntegration {
                 }
             }
         }
+        if u.phase == MatchPhase::InProgress && self.result.is_none() {
+            self.update_ult_state(&stats.game_mode, &u.events).await;
+        }
         if self.result.is_some() {
             u.phase = MatchPhase::Ended;
         }
@@ -513,30 +614,30 @@ impl GameIntegration for LeagueIntegration {
     }
 
     fn on_key(&mut self, key: &KeyPress, game_time: f64) -> Option<GameEvent> {
-        // Rough chat detection: Enter opens/sends chat, Escape closes it.
-        match key.key.as_str() {
-            "Enter" => {
-                self.chat_open = !self.chat_open;
-                return None;
-            }
-            "Escape" => {
-                self.chat_open = false;
-                return None;
-            }
-            _ => {}
-        }
-        // Ctrl+R levels up the ult instead of casting it.
-        if self.chat_open || key.ctrl || !key.key.eq_ignore_ascii_case(&self.ult_key) {
+        if !self.ult.press(key, game_time) {
             return None;
         }
-        if self.last_ult.is_some_and(|t| (game_time - t).abs() < 0.75) {
-            return None;
-        }
-        self.last_ult = Some(game_time);
         Some(
             GameEvent::new(format!("ult-{:.2}", game_time), EventKind::UltPressed, game_time, "Ult pressed")
-                .with_details("Key press. The game can't confirm the ult was cast."),
+                .with_details("Ult key pressed. Checked against the recording after the game."),
         )
+    }
+
+    fn take_key_marks(&mut self) -> Vec<cv_core::game::KeyMark> {
+        self.ult.take_marks()
+    }
+
+    fn verify_recording(
+        &self,
+        session: &mut cv_core::session::GameSession,
+        video: &mut dyn cv_core::game::FrameSource,
+        cancel: &dyn Fn() -> bool,
+    ) -> Option<anyhow::Result<()>> {
+        Some(verify::verify(session, video, &ult::UltRules::load(data_dir()), cancel))
+    }
+
+    fn verify_version(&self) -> u32 {
+        verify::VERSION
     }
 }
 
@@ -553,13 +654,19 @@ mod tests {
         let mut l = LeagueIntegration::new();
         l.configure(&serde_json::json!({"ult_key": "r"}));
         assert!(l.on_key(&kp("R", false), 100.0).is_some());
-        assert!(l.on_key(&kp("R", false), 100.3).is_none(), "debounced");
+        // No API data yet (level, cooldown unknown): a second press counts too; the recording decides.
+        assert!(l.on_key(&kp("R", false), 100.3).is_some());
+        assert!(l.on_key(&kp("R", false), 100.33).is_none(), "key bounce");
         assert!(l.on_key(&kp("R", true), 110.0).is_none(), "ctrl+R levels up");
         assert!(l.on_key(&kp("Enter", false), 120.0).is_none());
         assert!(l.on_key(&kp("R", false), 121.0).is_none(), "typing in chat");
         assert!(l.on_key(&kp("Enter", false), 122.0).is_none());
         assert!(l.on_key(&kp("R", false), 123.0).is_some());
         assert!(l.on_key(&kp("Q", false), 130.0).is_none());
+        let marks = l.take_key_marks();
+        assert_eq!(marks.iter().filter(|m| m.accepted).count(), 3);
+        assert!(marks.iter().any(|m| m.reason.as_deref() == Some("chat")), "{marks:?}");
+        assert!(l.take_key_marks().is_empty());
     }
 
     #[test]

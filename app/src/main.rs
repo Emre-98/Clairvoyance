@@ -304,6 +304,8 @@ fn main() {
                 gpu.as_ref().map(|g| g.encoder.clone()).unwrap_or_default(),
             ));
             let recorder = Arc::new(cv_capture::NativeRecorder::new());
+            // League: Data Dragon cache and the user's ult_rules.json override live here.
+            cv_game_league::set_data_dir(paths.data_dir.clone());
             let engine = Engine::new(
                 games::all(),
                 recorder.clone(),

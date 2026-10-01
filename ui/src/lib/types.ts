@@ -8,6 +8,8 @@ export type EventKind =
   | "first_blood"
   | "ace"
   | "ult_pressed"
+  | "ult_used"
+  | "ult_unconfirmed"
   | "tower"
   | "inhibitor"
   | "dragon"
@@ -166,6 +168,20 @@ export interface GameSession {
   mode_key?: string | null;
   record_mode?: "full" | "clips_only" | null;
   warnings: string[];
+  verification?: Verification | null;
+}
+
+/** Live key presses checked against the recording after the game (League: ult casts). */
+export interface Verification {
+  version: number;
+  status: "verified" | "skipped" | "failed";
+  reason?: string | null;
+  confidence: number;
+  casts: number;
+  confirmed: number;
+  video_only: number;
+  unconfirmed: number;
+  analysis_ms: number;
 }
 
 export interface SessionView {

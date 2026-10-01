@@ -42,7 +42,14 @@
   over the storage limit during a game → nothing deleted while recording, oldest game
   removed 24 s after the game; every recording finalized (faststart); app killed mid-recording →
   the game got its 34 s video back. Self-test: keyframes every 1.00 s (max 1.02 s) at 54.6 fps.
-- **Waiting for the owner**: play a real League game with v1.2.x and check the timeline,
+- **Accurate ult tracking (2026-10-01):** live filtering from League's own keybinds + level /
+  cooldown / death gates, then a post-game check of every press against the R icon in the
+  recording (hardware decoding, low priority). On the owner's 3 real games (25 R presses, 24 real
+  casts, 1 "r" typed in the shop): before 25 "Ult pressed" (precision 96%), after 24 "Ult used"
+  at the cast frame + 1 hidden "pressed, no cast" (precision 100%, recall 100%). A 33 min game
+  is checked in 2.7–3.3 s inside the app (target ≤ 15 s). Details in "Ult tracking".
+- **Waiting for the owner**: the scripted Practice Tool ult test + a performance test with the
+  ult build (see "Ult tracking" > Owner test); play a real League game with v1.2.x and check the timeline,
   thumbnail and Settings > Advanced > Responsiveness numbers (see "Known issues").
 
 ## What we're building
@@ -210,9 +217,8 @@ Compared:
   `/activeplayername` (the Riot ID setting is a fallback); names matched with and without `#TAG`.
   Victim/killer names shown as champions; turrets/minions/monsters get readable names.
 - Ult: **Windows Raw Input**, not a keyboard hook (can't add input lag, doesn't touch the game),
-  registered only while a game runs, only counted while the game window is focused.
-  Ctrl+R (level up) is ignored; Enter/Escape track the chat so typing "r" doesn't count;
-  held-key auto-repeat ignored. Labelled "Ult pressed".
+  registered only while a game runs, only counted while the game window is focused. Filtered
+  live and checked against the recording after the game: see "Ult tracking".
 - Hotkeys use the same Raw Input path, so they never steal the key from the game.
 - After a League match ends the process often stays open (victory screen): the engine won't
   start a new session until it exits.
@@ -408,6 +414,69 @@ video or the markers worked. Measured, not guessed (`scripts`/jobs + `--bench-re
 - Interrupted games (crash, power cut, killed app) get their partial video back: the maintenance
   pass links the leftover recording to the game (with a warning) and finalizes it.
 
+### Ult tracking (2026-10-01, owner's request)
+Rules: nothing may cost in-game FPS / CPU / RAM / input latency; no memory reading or injection
+(only the Live Client Data API, League's config files, Data Dragon and our own recording); video
+analysis only after the game in the maintenance pass, stopped when a game starts; nothing shown
+in game.
+- **Layer 1, live (`games/league/src/ult.rs`):**
+  - Keybinds from League's `Config\PersistedSettings.json` (authoritative; falls back to
+    `input.ini`): smart-cast, cast-with-indicator, self-cast, normal and plain cast of spell 4,
+    several binds per action, modifiers, mouse buttons. Owner's PC (16.19): `[r]`, `[Alt][r]`,
+    `[Shift][r]`; `[Ctrl][r]` = level up (ignored). Settings > Games > League > Ult key: empty
+    (or the old "R") = League's binds; any other key = manual override.
+  - Gates (from `/activeplayer` each poll, `/playerlist` only while dead): R not learned
+    (`abilityLevel` 0) → ignored; dead → ignored unless `usable_while_dead` (Karthus); chat open
+    (Enter/Escape) → ignored; on cooldown → ignored. Cooldown = Data Dragon base cooldown for the
+    patch and rank × 100 / (100 + ability haste); presses inside 85% of it after the last
+    accepted press are filtered. Data Dragon is fetched in the background at the loading screen
+    and cached per patch (`<data>\cache\ddragon\<ver>\<Champ>-R.json`); until it arrives the
+    cooldown filter is off.
+  - `games/league/ult_rules.json` (built in; `<data dir>\ult_rules.json` overrides it, no code
+    change needed): champions with recasts / charges / transforms / resets / stolen ults skip the
+    cooldown filter; per-champion delay from press to cooldown; the game modes where the cooldown
+    math holds (CLASSIC, ARAM, SWIFTPLAY, PRACTICETOOL; Arena/URF: filter off).
+  - Every press (accepted or not, with its reason) is kept in `session.json` `key_presses` for
+    layer 2; accepted ones show as "Ult pressed" until the check has run.
+- **Layer 2, after the game (`hud.rs`, `verify.rs`, `cv-capture/src/win/frames.rs`):**
+  - Finds the game image (letterbox) and the ability bar in 24 frames spread over the game:
+    the bottom HUD is anchored at the bottom centre and scales with the window height × HUD
+    scale; Q W E R are 38 px squares, 44 px apart at 1080 lines and HUD scale 0. The scale is
+    searched (0.8–2.6) by the contrast of the four icon borders against the gaps; confidence from
+    the score and how unique it is. No bar / low confidence (other mode, other HUD) → the check
+    is skipped, live presses stay, labelled "Ult pressed (unverified)". No mode list.
+  - Full scan: the R icon on every keyframe (no other frame decoded): blue cooldown overlay
+    share, white digit share, dark share → ready / cooldown / dimmed. A cast = the overlay
+    appearing (or coming back over a mostly-uncovered icon) compared with the last non-dimmed
+    look; "dimmed" (stun, silence, shop open, dead, not learned) is skipped, so the cooldown
+    reappearing after a stun isn't a cast. Then the frames between the two keyframes are decoded
+    for the exact cast frame; presses with no cast nearby get their own window (−0.3 s …
+    +delay) so short ready windows aren't missed.
+  - Matching: a press up to the champion's delay before the cast (closest; first press of a burst
+    for recast champions) → **"Ult used"** at the cast frame. A cast without a logged press →
+    "Ult used" (mouse / other bind). A press without a cast → **"Ult pressed, no cast"** with the
+    live reason, in the "Unconfirmed presses" filter chip, hidden by default.
+  - Decoding: Media Foundation with a D3D11 device manager (DXVA hardware decoding), low-latency
+    mode, GPU thread priority −7; only the requested region is copied from the decoded NV12
+    texture to a small staging texture and converted (BT.601 limited, same code as the Linux
+    tests). Software decoder fallback. Thread in background mode.
+  - Maintenance: newest first, only finalized videos, re-run when `verify_version` grows
+    (`verify::VERSION`), stops as soon as a game starts (done next run), re-reads session.json
+    before saving so user edits made meanwhile are kept. Result in `session.json`
+    `verification` (status, confidence, counts, time, geometry) and a line on the game page.
+- **Measured (owner's PC, RTX 5080):** in the app, 33 min game 3.3 s (verify 2.7 s), 23 min
+  2.9–3.1 s, 2 min 1.5 s; ~780 keyframe seeks + ~1,800 decoded frames for 33 min. The owner's
+  recordings from 2026-09-30 have keyframes every 2.0–2.5 s (newer ones: 1 s).
+- **Tests:** unit tests (input.ini / PersistedSettings parsing, cooldown math, rules file, gates,
+  matching, stun handling, HUD location incl. a synthetic 1.5× HUD with letterbox, R states on
+  real crops in `games/league/tests/hud/`); `tests/verify_clips.rs` (ignored by default, needs
+  the owner's clips, `CV_SAMPLES` / `CV_SAMPLES2`): 12 clips + 7 tricky windows → 9/9 casts,
+  0 extra, decoys and a press in the shop end up "no cast". Developer tool:
+  `mp4tool ultcheck <session dir> [--write]`.
+- **Owner test (to do):** Practice Tool, ~20 real ult casts, ~10 presses on cooldown, ~5
+  cancelled casts (Alt+R / indicator, then right-click or Esc), "r" typed in chat, a few presses
+  while dead. Compare old logic (every R press, 0.75 s debounce, chat) with the new result.
+
 ### Replay benchmark and end-to-end tests (developer tools)
 - `Clairvoyance.exe --bench-replays=<config.json>`: opens the given games N times in the real
   window and measures page / first frame / playable / marker jumps / "marker clicked right away"
@@ -457,6 +526,8 @@ video or the markers worked. Measured, not guessed (`scripts`/jobs + `--bench-re
 - [x] 21. Game modes: per-queue Record / Clips only / Off from the League client, dynamic list (v1.1.0)
 - [x] 22. Instant replays: faststart finalize, keyframe snapping, shared player, poster, queued jumps
 - [x] 23. Test tools: replay benchmark, end-to-end tests with a fake League client, test report
+- [x] 24. Accurate ult tracking: League keybinds + live gates, post-game check from the recording
+- [ ] Owner's scripted Practice Tool ult test + performance test with the ult build
 
 ## Known issues
 - The Windows-only parts added on 2026-10-01 (Media Foundation thumbnails, updater install,
@@ -478,6 +549,12 @@ video or the markers worked. Measured, not guessed (`scripts`/jobs + `--bench-re
 - A recording is finalized shortly after its game (seconds); if you open it in those seconds, it
   plays from the fragmented file (slow first frame) and is finalized the next time.
 - Hovering a game card starts loading its video: a few MB read from disk per hovered game.
+- Ult check: tuned on the owner's HUD (4K, HUD scale 0, numeric cooldowns, HUD animations off);
+  other HUD scales are found by the scale search (tested synthetically at 1.5×), but colour
+  thresholds for very different settings (colour-blind mode, HUD animations on) are untested.
+  Auto clips are cut right after the game, before the check, so an auto-clip rule on ult events
+  still uses the live presses. Typing in the shop search can't be told apart live (the check
+  marks it "no cast" afterwards).
 
 ## Next steps
 - Owner: play a real game on v1.1.x (timeline, thumbnail after the game, storage page), and

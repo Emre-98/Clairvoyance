@@ -107,6 +107,102 @@ pub struct KeyPress {
     pub alt: bool,
 }
 
+/// One press of a tracked game key (League: the ult), kept with the recording whether or not
+/// it became a timeline event, so the check against the video can decide afterwards.
+#[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize)]
+pub struct KeyMark {
+    /// In-game clock (seconds).
+    pub game_time: f64,
+    /// What the key does, e.g. "ult".
+    pub action: String,
+    /// The key as pressed, e.g. "Shift+R".
+    pub key: String,
+    /// True if it became a timeline event live.
+    pub accepted: bool,
+    /// Why it was filtered out live: "cooldown", "not_learned", "dead", "chat", ...
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// A rectangle in video pixels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
+pub struct Region {
+    pub x: u32,
+    pub y: u32,
+    pub w: u32,
+    pub h: u32,
+}
+
+/// An RGB image (3 bytes per pixel, rows top to bottom).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Rgb {
+    pub w: u32,
+    pub h: u32,
+    pub data: Vec<u8>,
+}
+
+impl Rgb {
+    pub fn px(&self, x: u32, y: u32) -> [u8; 3] {
+        let i = ((y * self.w + x) * 3) as usize;
+        [self.data[i], self.data[i + 1], self.data[i + 2]]
+    }
+    /// Reads a binary PPM (P6), the format of the detector test images.
+    pub fn from_ppm(b: &[u8]) -> Option<Rgb> {
+        let mut fields = Vec::new();
+        let mut i = 0;
+        while fields.len() < 4 && i < b.len() {
+            while i < b.len() && b[i].is_ascii_whitespace() {
+                i += 1;
+            }
+            if i < b.len() && b[i] == b'#' {
+                while i < b.len() && b[i] != b'\n' {
+                    i += 1;
+                }
+                continue;
+            }
+            let start = i;
+            while i < b.len() && !b[i].is_ascii_whitespace() {
+                i += 1;
+            }
+            fields.push(String::from_utf8_lossy(&b[start..i]).to_string());
+        }
+        if fields.first().map(|s| s.as_str()) != Some("P6") || fields.len() < 4 {
+            return None;
+        }
+        let (w, h): (u32, u32) = (fields[1].parse().ok()?, fields[2].parse().ok()?);
+        let data = b.get(i + 1..i + 1 + (w * h * 3) as usize)?.to_vec();
+        Some(Rgb { w, h, data })
+    }
+    pub fn to_ppm(&self) -> Vec<u8> {
+        let mut v = format!("P6\n{} {}\n255\n", self.w, self.h).into_bytes();
+        v.extend_from_slice(&self.data);
+        v
+    }
+    pub fn crop(&self, r: Region) -> Rgb {
+        let mut data = Vec::with_capacity((r.w * r.h * 3) as usize);
+        for y in r.y..(r.y + r.h).min(self.h) {
+            let a = ((y * self.w + r.x) * 3) as usize;
+            let b = ((y * self.w + (r.x + r.w).min(self.w)) * 3) as usize;
+            data.extend_from_slice(&self.data[a..b]);
+        }
+        Rgb { w: r.w.min(self.w - r.x), h: r.h.min(self.h - r.y), data }
+    }
+}
+
+/// Decoded frames of a finished recording, for checking events against the video after the
+/// game (only ever used by the maintenance pass, never during a game).
+pub trait FrameSource {
+    /// Video size in pixels.
+    fn size(&self) -> (u32, u32);
+    fn duration(&self) -> f64;
+    /// Keyframe times (seconds); decoding one of these needs no other frame.
+    fn keyframes(&self) -> &[f64];
+    /// The frame at (or just after) `t`, cropped to `region`. Fast when `t` is a keyframe.
+    fn frame_at(&mut self, t: f64, region: Region) -> anyhow::Result<Option<(f64, Rgb)>>;
+    /// Every frame from `t0` to `t1`, cropped; `f` returns false to stop early.
+    fn frames(&mut self, t0: f64, t1: f64, region: Region, f: &mut dyn FnMut(f64, &Rgb) -> bool) -> anyhow::Result<()>;
+}
+
 /// A setting a game module exposes in the Settings page (rendered generically).
 #[derive(Debug, Clone, Serialize)]
 pub struct ConfigField {
@@ -168,6 +264,21 @@ pub trait GameIntegration: Send + Sync {
     /// Return an event to put on the timeline. `game_time` is the estimated clock.
     fn on_key(&mut self, _key: &KeyPress, _game_time: f64) -> Option<GameEvent> {
         None
+    }
+    /// Presses of tracked keys since the last call (accepted or filtered), kept in the session.
+    fn take_key_marks(&mut self) -> Vec<KeyMark> {
+        Vec::new()
+    }
+
+    /// After the game (maintenance pass, low priority): check the session's live events
+    /// against the recording and correct them. `None` = this game has nothing to check.
+    /// `cancel` turns true when a game starts: stop and return an error.
+    fn verify_recording(&self, _session: &mut crate::session::GameSession, _video: &mut dyn FrameSource, _cancel: &dyn Fn() -> bool) -> Option<anyhow::Result<()>> {
+        None
+    }
+    /// Version of `verify_recording`: recordings checked by an older version are checked again.
+    fn verify_version(&self) -> u32 {
+        0
     }
 
     /// Groups for Settings > Game modes. Empty = this game has no per-mode recording rules.

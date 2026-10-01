@@ -3,11 +3,14 @@
 //!   mp4tool info <file.mp4>                      layout, codec, keyframes, fragments (JSON)
 //!   mp4tool finalize <in.mp4> <out.mp4>          fragmented -> faststart (no re-encode)
 //!   mp4tool loop <in.mp4> <out.mp4> <seconds>    repeat/cut a fragmented recording to a length
+//!   mp4tool cut <in.mp4> <out.mp4> <start s> <seconds>   a piece of a recording (no re-encode)
 //!   mp4tool benchsession <src session.json> <dst dir> <video file name> <seconds>
 //!                                                 session.json for a benchmark copy of a game
 //!   mp4tool fromes <in.h264> <in.aac> <fps> <w> <h> <out.mp4>
 //!                                                 Annex-B H.264 (with AUDs) + ADTS AAC -> a
 //!                                                 recording written by the recorder's own muxer
+//!   mp4tool ultcheck <session dir> [--write]       League ult check of a recorded game (Windows):
+//!                                                 the same code the maintenance pass runs
 
 use cv_capture::mp4::*;
 use cv_capture::remux;
@@ -25,8 +28,12 @@ fn main() {
         Some("loop") if a.len() == 5 => remux::loop_recording(Path::new(&a[2]), Path::new(&a[3]), a[4].parse().unwrap_or(60.0))
             .map(|d| format!("wrote {d:.1} s"))
             .map_err(|e| e.to_string()),
+        Some("cut") if a.len() == 6 => remux::cut(Path::new(&a[2]), Path::new(&a[3]), a[4].parse().unwrap_or(0.0), a[5].parse().unwrap_or(20.0))
+            .map(|t| format!("cut from {t:.3} s"))
+            .map_err(|e| e.to_string()),
         Some("benchsession") if a.len() == 6 => bench_session(&a[2], &a[3], &a[4], a[5].parse().unwrap_or(300.0)),
         Some("fromes") if a.len() == 8 => from_es(&a[2], &a[3], a[4].parse().unwrap(), a[5].parse().unwrap(), a[6].parse().unwrap(), &a[7]),
+        Some("ultcheck") if a.len() >= 3 => ult_check(Path::new(&a[2]), a.iter().any(|x| x == "--write")),
         _ => Err("usage: mp4tool info|finalize|loop|fromes ... (see the source)".into()),
     };
     match r {
@@ -133,4 +140,46 @@ fn bench_session(src: &str, dst_dir: &str, video: &str, secs: f64) -> Result<Str
     std::fs::create_dir_all(dst_dir).map_err(|e| e.to_string())?;
     std::fs::write(Path::new(dst_dir).join("session.json"), serde_json::to_string_pretty(&v).unwrap()).map_err(|e| e.to_string())?;
     Ok(format!("{id}: {} events", v["events"].as_array().map(|a| a.len()).unwrap_or(0)))
+}
+
+#[cfg(windows)]
+fn ult_check(dir: &Path, write: bool) -> Result<String, String> {
+    use cv_core::game::FrameSource;
+    let file = dir.join("session.json");
+    let text = std::fs::read_to_string(&file).map_err(|e| e.to_string())?;
+    let mut s: cv_core::session::GameSession = serde_json::from_str(text.trim_start_matches('\u{feff}')).map_err(|e| e.to_string())?;
+    let before: Vec<f64> = s.events.iter().filter(|e| e.kind == cv_core::EventKind::UltPressed).map(|e| e.game_time + s.video_offset).collect();
+    let video = dir.join(s.video_file.clone().ok_or("no video")?);
+    let t = Instant::now();
+    let mut v = cv_capture::win::frames::VideoFrames::open(&video).map_err(|e| format!("{e:#}"))?;
+    let open_ms = t.elapsed().as_millis();
+    let rules = cv_game_league::ult::UltRules::builtin();
+    cv_game_league::verify::verify(&mut s, &mut v, &rules, &|| false).map_err(|e| format!("{e:#}"))?;
+    let events: Vec<serde_json::Value> = s
+        .events
+        .iter()
+        .filter(|e| e.id.starts_with("ult"))
+        .map(|e| serde_json::json!({"video_t": (e.game_time + s.video_offset), "kind": e.kind, "title": e.title, "details": e.details}))
+        .collect();
+    let report = serde_json::json!({
+        "video": video,
+        "hardware_decoding": v.hardware,
+        "frames_decoded": v.frames_decoded,
+        "seeks": v.seeks,
+        "keyframes": v.keyframes().len(),
+        "open_ms": open_ms,
+        "total_ms": t.elapsed().as_millis(),
+        "before_ult_pressed_video_t": before,
+        "verification": s.verification,
+        "events": events,
+    });
+    if write {
+        std::fs::write(&file, serde_json::to_string_pretty(&s).unwrap()).map_err(|e| e.to_string())?;
+    }
+    Ok(serde_json::to_string_pretty(&report).unwrap())
+}
+
+#[cfg(not(windows))]
+fn ult_check(_dir: &Path, _write: bool) -> Result<String, String> {
+    Err("ultcheck needs Windows (Media Foundation)".into())
 }

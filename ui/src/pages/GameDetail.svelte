@@ -4,7 +4,7 @@
   import { videoUrl } from "../lib/videopool";
   import { app, go, toast, cachedSession, fetchSession } from "../lib/store.svelte";
   import { clock, kda, kdaRatio, num, relativeDate } from "../lib/format";
-  import { KIND, type Group } from "../lib/eventmeta";
+  import { HIDDEN_BY_DEFAULT, KIND, type Group } from "../lib/eventmeta";
   import type { GameEvent, SessionView } from "../lib/types";
   import Player from "../components/Player.svelte";
   import ClipEditor from "../components/ClipEditor.svelte";
@@ -22,7 +22,7 @@
   let error = $state<string | null>(null);
   let player = $state<ReturnType<typeof Player>>();
   let current = $state(0);
-  let hidden = $state(new Set<Group>(["game"]));
+  let hidden = $state(new Set<Group>(HIDDEN_BY_DEFAULT));
   let range = $state<[number, number] | null>(null);
   let listEl = $state<HTMLDivElement>();
 
@@ -161,6 +161,16 @@
           <h3>Events</h3>
           <span class="muted">{s ? listEvents.length : ""}</span>
         </div>
+        {#if s?.verification}
+          {@const v = s.verification}
+          <div class="verify muted" title="Ult key presses are checked against the ability bar in the recording after the game.">
+            {#if v.status === "verified"}
+              <Icon name="check" size={12} /> Ult casts checked against the recording{v.unconfirmed ? ` · ${v.unconfirmed} press${v.unconfirmed === 1 ? "" : "es"} without a cast (Unconfirmed presses)` : ""}
+            {:else}
+              <Icon name="info" size={12} /> Ult presses not checked: {v.reason ?? v.status}
+            {/if}
+          </div>
+        {/if}
         <div class="ev-list" bind:this={listEl}>
           {#if !s}
             {#each [70, 55, 80, 60, 75] as w}<div class="ev"><span class="skeleton-line" style="width:{w}%"></span></div>{/each}
@@ -536,5 +546,12 @@
     .charts {
       grid-template-columns: 1fr;
     }
+  }
+  .verify {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    padding: 0 14px 8px;
   }
 </style>

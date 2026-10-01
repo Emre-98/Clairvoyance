@@ -1,6 +1,6 @@
 import type { EventKind } from "./types";
 
-export type Group = "kills" | "deaths" | "assists" | "ult" | "structures" | "objectives" | "rounds" | "markers" | "game";
+export type Group = "kills" | "deaths" | "assists" | "ult" | "unconfirmed" | "structures" | "objectives" | "rounds" | "markers" | "game";
 
 export interface KindMeta {
   label: string;
@@ -17,6 +17,8 @@ export const KIND: Record<EventKind, KindMeta> = {
   death: { label: "Death", color: "var(--ev-death)", icon: "skull", group: "deaths" },
   assist: { label: "Assist", color: "var(--ev-assist)", icon: "assist", group: "assists" },
   ult_pressed: { label: "Ult pressed", color: "var(--ev-ult)", icon: "bolt", group: "ult" },
+  ult_used: { label: "Ult used", color: "var(--ev-ult)", icon: "bolt", group: "ult" },
+  ult_unconfirmed: { label: "Ult pressed, no cast", color: "var(--muted)", icon: "bolt", group: "unconfirmed" },
   tower: { label: "Tower", color: "var(--ev-structure)", icon: "tower", group: "structures" },
   inhibitor: { label: "Inhibitor", color: "var(--ev-structure)", icon: "gem", group: "structures" },
   dragon: { label: "Dragon", color: "var(--ev-epic)", icon: "flame", group: "objectives" },
@@ -35,6 +37,7 @@ export const GROUPS: { id: Group; label: string; color: string; icon: string }[]
   { id: "deaths", label: "Deaths", color: "var(--ev-death)", icon: "skull" },
   { id: "assists", label: "Assists", color: "var(--ev-assist)", icon: "assist" },
   { id: "ult", label: "Ult", color: "var(--ev-ult)", icon: "bolt" },
+  { id: "unconfirmed", label: "Unconfirmed presses", color: "var(--muted)", icon: "bolt" },
   { id: "structures", label: "Towers", color: "var(--ev-structure)", icon: "tower" },
   { id: "objectives", label: "Objectives", color: "var(--ev-epic)", icon: "flame" },
   { id: "rounds", label: "Rounds", color: "var(--ev-neutral)", icon: "flag" },
@@ -43,6 +46,9 @@ export const GROUPS: { id: Group; label: string; color: string; icon: string }[]
 ];
 
 /** Kinds offered for auto-clips / callouts in Settings. */
+/** Hidden on the timeline and in the event list until the user turns them on. */
+export const HIDDEN_BY_DEFAULT: Group[] = ["game", "unconfirmed"];
+
 export const USER_KINDS: EventKind[] = [
   "kill",
   "multikill",
@@ -50,6 +56,7 @@ export const USER_KINDS: EventKind[] = [
   "ace",
   "death",
   "assist",
+  "ult_used",
   "ult_pressed",
   "tower",
   "inhibitor",

@@ -678,7 +678,12 @@ impl Engine {
             return;
         }
         let gt = self.game_time_at(ev.at);
-        if let Some(e) = self.games[idx].on_key(&ev.key, gt) {
+        let event = self.games[idx].on_key(&ev.key, gt);
+        let marks = self.games[idx].take_key_marks();
+        if let Some(a) = self.active.as_mut() {
+            a.session.key_presses.extend(marks);
+        }
+        if let Some(e) = event {
             self.push_event(e);
             self.emit_status();
         }
