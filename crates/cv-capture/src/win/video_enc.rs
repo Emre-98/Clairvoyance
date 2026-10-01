@@ -121,44 +121,88 @@ unsafe fn get_string(a: &IMFAttributes, key: &GUID) -> String {
     }
 }
 
-/// Hardware H.264 encoders, best match first: same GPU, then the preferred vendor.
-pub unsafe fn list_encoders(gpu_luid: i64, gpu_vendor: u32, prefer: &str) -> Result<Vec<(IMFActivate, EncoderDesc)>> {
+/// MFT_ENUM_ADAPTER_LUID: some drivers store it as a UINT64, others as a LUID blob.
+unsafe fn adapter_luid(a: &IMFAttributes) -> Option<i64> {
+    if let Ok(v) = unsafe { a.GetUINT64(&MFT_ENUM_ADAPTER_LUID) } {
+        return Some(v as i64);
+    }
+    let mut b = [0u8; 8];
+    let mut n = 0u32;
+    unsafe { a.GetBlob(&MFT_ENUM_ADAPTER_LUID, &mut b, Some(&mut n)) }.ok()?;
+    (n == 8).then(|| i64::from_le_bytes(b))
+}
+
+/// Hardware H.264 encoders of one GPU (MFTEnum2), or with `luid: None` the plain MFTEnumEx
+/// list, which only covers the GPU driving the display: on hybrid laptops that's the Intel
+/// one, so the NVIDIA/AMD encoder of the GPU we record on would be missing.
+unsafe fn enum_hw(luid: Option<(i64, bool)>) -> Result<Vec<IMFActivate>> {
     let input = MFT_REGISTER_TYPE_INFO { guidMajorType: MFMediaType_Video, guidSubtype: MFVideoFormat_NV12 };
     let output = MFT_REGISTER_TYPE_INFO { guidMajorType: MFMediaType_Video, guidSubtype: MFVideoFormat_H264 };
+    let flags = MFT_ENUM_FLAG_HARDWARE | MFT_ENUM_FLAG_SORTANDFILTER;
     let mut ptr: *mut Option<IMFActivate> = std::ptr::null_mut();
     let mut count = 0u32;
     unsafe {
-        MFTEnumEx(
-            MFT_CATEGORY_VIDEO_ENCODER,
-            MFT_ENUM_FLAG_HARDWARE | MFT_ENUM_FLAG_SORTANDFILTER,
-            Some(&input),
-            Some(&output),
-            &mut ptr,
-            &mut count,
-        )?;
+        match luid {
+            Some((l, as_blob)) => {
+                let mut attrs = None;
+                MFCreateAttributes(&mut attrs, 1)?;
+                let attrs = attrs.context("no attribute store")?;
+                if as_blob {
+                    attrs.SetBlob(&MFT_ENUM_ADAPTER_LUID, &l.to_le_bytes())?;
+                } else {
+                    attrs.SetUINT64(&MFT_ENUM_ADAPTER_LUID, l as u64)?;
+                }
+                MFTEnum2(MFT_CATEGORY_VIDEO_ENCODER, flags, Some(&input), Some(&output), &attrs, &mut ptr, &mut count)?;
+            }
+            None => MFTEnumEx(MFT_CATEGORY_VIDEO_ENCODER, flags, Some(&input), Some(&output), &mut ptr, &mut count)?,
+        }
     }
-    let mut out: Vec<(IMFActivate, EncoderDesc, i32)> = Vec::new();
+    let mut out = Vec::new();
     if !ptr.is_null() {
         let slice = unsafe { std::slice::from_raw_parts_mut(ptr, count as usize) };
-        let want_vendor = vendor_code(prefer).map(str::to_string).unwrap_or_else(|| format!("VEN_{gpu_vendor:04X}"));
-        for a in slice.iter_mut() {
-            if let Some(act) = a.take() {
-                let attrs: IMFAttributes = act.cast()?;
-                let name = unsafe { get_string(&attrs, &MFT_FRIENDLY_NAME_Attribute) };
-                let ven = unsafe { get_string(&attrs, &MFT_ENUM_HARDWARE_VENDOR_ID_Attribute) };
-                let luid = unsafe { attrs.GetUINT64(&MFT_ENUM_ADAPTER_LUID) }.ok().map(|v| v as i64);
-                let mut score = 0;
-                if luid == Some(gpu_luid) {
-                    score += 2;
-                }
-                if ven.eq_ignore_ascii_case(&want_vendor) {
-                    score += 1;
-                }
-                let vid = u32::from_str_radix(ven.trim_start_matches("VEN_"), 16).unwrap_or(0);
-                out.push((act, EncoderDesc { name, vendor: vendor_name(vid).to_string() }, score));
-            }
-        }
+        out.extend(slice.iter_mut().filter_map(Option::take));
         unsafe { CoTaskMemFree(Some(ptr as _)) };
+    }
+    Ok(out)
+}
+
+/// Hardware H.264 encoders that can use the GPU at `gpu_luid`, best match first: same GPU,
+/// then the preferred vendor. Encoders of another GPU are left out: they refuse our device.
+pub unsafe fn list_encoders(gpu_luid: i64, gpu_vendor: u32, prefer: &str) -> Result<Vec<(IMFActivate, EncoderDesc)>> {
+    let mut found = Vec::new();
+    for as_blob in [true, false] {
+        match unsafe { enum_hw(Some((gpu_luid, as_blob))) } {
+            Ok(l) if !l.is_empty() => {
+                found = l;
+                break;
+            }
+            Ok(_) => {}
+            Err(e) => log::info!("encoder list for the recording GPU failed: {e}"),
+        }
+    }
+    if found.is_empty() {
+        found = unsafe { enum_hw(None) }?;
+    }
+    let mut out: Vec<(IMFActivate, EncoderDesc, i32)> = Vec::new();
+    let want_vendor = vendor_code(prefer).map(str::to_string).unwrap_or_else(|| format!("VEN_{gpu_vendor:04X}"));
+    for act in found {
+        let attrs: IMFAttributes = act.cast()?;
+        let name = unsafe { get_string(&attrs, &MFT_FRIENDLY_NAME_Attribute) };
+        let ven = unsafe { get_string(&attrs, &MFT_ENUM_HARDWARE_VENDOR_ID_Attribute) };
+        let luid = unsafe { adapter_luid(&attrs) };
+        if luid.is_some_and(|l| l != gpu_luid) {
+            log::info!("encoder {name} skipped: it belongs to another GPU");
+            continue;
+        }
+        let mut score = 0;
+        if luid == Some(gpu_luid) {
+            score += 2;
+        }
+        if ven.eq_ignore_ascii_case(&want_vendor) {
+            score += 1;
+        }
+        let vid = u32::from_str_radix(ven.trim_start_matches("VEN_"), 16).unwrap_or(0);
+        out.push((act, EncoderDesc { name, vendor: vendor_name(vid).to_string() }, score));
     }
     out.sort_by(|a, b| b.2.cmp(&a.2));
     Ok(out.into_iter().map(|(a, d, _)| (a, d)).collect())
