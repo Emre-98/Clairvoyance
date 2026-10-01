@@ -5,14 +5,13 @@
     "skip_cooldown_filter: ults with recasts, charges/ammo, transforms, resets or stolen ults, where 'pressed again before the cooldown is over' is normal. Live presses for these are never filtered for cooldown.",
     "usable_while_dead: ults that can be cast while dead.",
     "cooldown_delay: seconds from the key press until the ability bar shows the ult on cooldown (cast times, channels, recasts). Default: default_cooldown_delay.",
-    "cooldown_filter_game_modes: game modes (Live Client Data API gameMode) where the normal cooldown math applies. Modes with global haste or different rules (URF, Arena...) aren't listed: the cooldown filter is off there and the recording decides."
+    "cooldown_filter_game_modes: game modes (Live Client Data API gameMode) where the normal cooldown math applies. Modes with global haste or different rules (URF, Arena, Practice Tool with its No Cooldowns option...) aren't listed: the cooldown filter is off there and the recording decides."
   ],
   "default_cooldown_delay": 1.2,
   "cooldown_filter_game_modes": [
     "CLASSIC",
     "ARAM",
-    "SWIFTPLAY",
-    "PRACTICETOOL"
+    "SWIFTPLAY"
   ],
   "skip_cooldown_filter": {
     "Ahri": "Spirit Rush: 3 dashes",

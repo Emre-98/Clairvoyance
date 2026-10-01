@@ -22,7 +22,7 @@ use cv_core::{EventKind, GameEvent};
 use std::time::Instant;
 
 /// Bump when the checking logic improves: older results are redone by the maintenance pass.
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 /// Below this the ability bar isn't trusted.
 pub const MIN_CONFIDENCE: f64 = 0.35;
 const CALIBRATION_FRAMES: usize = 24;
@@ -254,6 +254,14 @@ pub fn verify(s: &mut GameSession, v: &mut dyn FrameSource, rules: &UltRules, ca
     // 3b. Around presses without a cast nearby (ready windows shorter than a keyframe gap).
     let marks = presses_of(s);
     let delay = rules.delay(&champ);
+    let dur = v.duration();
+    // Presses outside the video (app started mid-game, or after the recording stopped) can't be
+    // checked: they stay as live presses, labelled unverified.
+    let (inside, outside): (Vec<KeyMark>, Vec<KeyMark>) = marks.into_iter().partition(|m| {
+        let t = m.game_time + offset;
+        t >= 0.5 && t <= dur - 0.5
+    });
+    let marks = inside;
     let presses: Vec<f64> = marks.iter().map(|m| m.game_time + offset).collect();
     let mut windows: Vec<(f64, f64)> = presses
         .iter()
@@ -270,14 +278,23 @@ pub fn verify(s: &mut GameSession, v: &mut dyn FrameSource, rules: &UltRules, ca
     }
     for (a, b) in merged {
         stop()?;
+        let (a, b) = (a.max(0.0), b.min(dur));
+        if b <= a {
+            continue;
+        }
         let mut tr = CastTracker::default();
         let mut found: Vec<f64> = Vec::new();
-        v.frames(a, b, rreg, &mut |pt, f| {
+        let r = v.frames(a, b, rreg, &mut |pt, f| {
             if tr.push(hud::look(f, at, &fit)) && !found.iter().any(|t| pt - t < 1.0) {
                 found.push(pt);
             }
             true
-        })?;
+        });
+        if let Err(e) = r {
+            // One unreadable stretch (e.g. a damaged end of file) doesn't spoil the rest.
+            log::warn!("ult check: frames {a:.1}-{b:.1} s unreadable: {e:#}");
+            continue;
+        }
         for t in found {
             if !casts.iter().any(|c| (c.t - t).abs() < 1.0) {
                 casts.push(Cast { t, from_scan: false });
@@ -318,8 +335,15 @@ pub fn verify(s: &mut GameSession, v: &mut dyn FrameSource, rules: &UltRules, ca
             }
         }
     }
+    for m in outside.iter().filter(|m| m.accepted) {
+        s.events.push(
+            GameEvent::new(format!("ult-{:.2}", m.game_time), EventKind::UltPressed, m.game_time, "Ult pressed (unverified)")
+                .with_details(format!("Ult key pressed ({}). Not checked: this moment isn't in the recording.", m.key)),
+        );
+    }
     s.events.sort_by(|a, b| a.game_time.partial_cmp(&b.game_time).unwrap_or(std::cmp::Ordering::Equal));
     let mut details = details_v;
+    details["presses_outside_video"] = serde_json::json!(outside.len());
     details["keyframes"] = serde_json::json!(series.len());
     details["casts_from_scan"] = serde_json::json!(casts.iter().filter(|c| c.from_scan).count());
     s.verification = Some(Verification {

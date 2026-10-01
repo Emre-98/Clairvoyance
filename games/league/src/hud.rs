@@ -355,8 +355,11 @@ pub fn look(crop: &Rgb, origin: (u32, u32), fit: &HudFit) -> RLook {
 
 /// A cast between two samples: the cooldown overlay appears, or comes back over an icon that
 /// was mostly uncovered (recast right after the cooldown ended).
+/// Two signs, either is enough: the blue overlay jumps up (most icons), or the cooldown number
+/// appears where there was none (icons that are blue themselves, e.g. Ashe's).
 pub fn is_cast(prev: &RLook, cur: &RLook) -> bool {
-    cur.blue >= 0.5 && cur.digits >= 0.06 && cur.blue - prev.blue >= 0.25
+    let on_cooldown = cur.blue >= 0.5 && cur.digits >= 0.06;
+    on_cooldown && (cur.blue - prev.blue >= 0.25 || (prev.digits < 0.03 && cur.digits - prev.digits >= 0.06))
 }
 
 /// The whole icon darkened: abilities disabled (stunned, silenced, dead, out of mana...) or not
@@ -369,6 +372,20 @@ pub fn dimmed(l: &RLook) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Ashe's ult icon is blue itself: the cast shows as the cooldown number appearing.
+    #[test]
+    fn blue_icon_cast() {
+        let at = (934, 987);
+        let fit = HudFit { content: Content::full(1920, 1080), g: 1.0, dx: 0.0, dy: 0.0, score: 40.0, confidence: 1.0 };
+        let ready = look(&fixture("r-ashe-ready.ppm"), at, &fit);
+        let cd = look(&fixture("r-ashe-cooldown.ppm"), at, &fit);
+        assert!(ready.blue > 0.6, "{ready:?}");
+        assert_eq!(ready.state(), RState::Ready, "{ready:?}");
+        assert_eq!(cd.state(), RState::Cooldown, "{cd:?}");
+        assert!(is_cast(&ready, &cd));
+        assert!(!is_cast(&cd, &cd));
+    }
 
     #[test]
     fn dimmed_icons() {

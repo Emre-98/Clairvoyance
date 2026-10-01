@@ -9,7 +9,8 @@
 //!   mp4tool fromes <in.h264> <in.aac> <fps> <w> <h> <out.mp4>
 //!                                                 Annex-B H.264 (with AUDs) + ADTS AAC -> a
 //!                                                 recording written by the recorder's own muxer
-//!   mp4tool ultcheck <session dir> [--write]       League ult check of a recorded game (Windows):
+//!   mp4tool ultcheck <session dir> [--write] [--offset <s>]
+//!                                                 League ult check of a recorded game (Windows):
 //!                                                 the same code the maintenance pass runs
 
 use cv_capture::mp4::*;
@@ -33,7 +34,10 @@ fn main() {
             .map_err(|e| e.to_string()),
         Some("benchsession") if a.len() == 6 => bench_session(&a[2], &a[3], &a[4], a[5].parse().unwrap_or(300.0)),
         Some("fromes") if a.len() == 8 => from_es(&a[2], &a[3], a[4].parse().unwrap(), a[5].parse().unwrap(), a[6].parse().unwrap(), &a[7]),
-        Some("ultcheck") if a.len() >= 3 => ult_check(Path::new(&a[2]), a.iter().any(|x| x == "--write")),
+        Some("ultcheck") if a.len() >= 3 => {
+            let offset = a.iter().position(|x| x == "--offset").and_then(|i| a.get(i + 1)).and_then(|x| x.parse().ok());
+            ult_check(Path::new(&a[2]), a.iter().any(|x| x == "--write"), offset)
+        }
         _ => Err("usage: mp4tool info|finalize|loop|fromes ... (see the source)".into()),
     };
     match r {
@@ -143,11 +147,14 @@ fn bench_session(src: &str, dst_dir: &str, video: &str, secs: f64) -> Result<Str
 }
 
 #[cfg(windows)]
-fn ult_check(dir: &Path, write: bool) -> Result<String, String> {
+fn ult_check(dir: &Path, write: bool, offset: Option<f64>) -> Result<String, String> {
     use cv_core::game::FrameSource;
     let file = dir.join("session.json");
     let text = std::fs::read_to_string(&file).map_err(|e| e.to_string())?;
     let mut s: cv_core::session::GameSession = serde_json::from_str(text.trim_start_matches('\u{feff}')).map_err(|e| e.to_string())?;
+    if let Some(o) = offset {
+        s.video_offset = o;
+    }
     let before: Vec<f64> = s.events.iter().filter(|e| e.kind == cv_core::EventKind::UltPressed).map(|e| e.game_time + s.video_offset).collect();
     let video = dir.join(s.video_file.clone().ok_or("no video")?);
     let t = Instant::now();
@@ -180,6 +187,6 @@ fn ult_check(dir: &Path, write: bool) -> Result<String, String> {
 }
 
 #[cfg(not(windows))]
-fn ult_check(_dir: &Path, _write: bool) -> Result<String, String> {
+fn ult_check(_dir: &Path, _write: bool, _offset: Option<f64>) -> Result<String, String> {
     Err("ultcheck needs Windows (Media Foundation)".into())
 }

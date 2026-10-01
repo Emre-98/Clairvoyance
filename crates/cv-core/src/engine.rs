@@ -542,7 +542,9 @@ impl Engine {
                 a.clock = Some((Instant::now(), gt));
                 if let Some(el) = rec_elapsed.filter(|_| gt > 0.5) {
                     a.offset_samples.push(el - gt);
-                    a.session.video_offset = median(&a.offset_samples).max(0.0);
+                    // Negative when the recording started after the game clock (app started or
+                    // restarted mid-game): events before the video then sit before its start.
+                    a.session.video_offset = median(&a.offset_samples);
                 }
                 if gt >= a.next_stat_sample {
                     if let Some(st) = &u.stats {

@@ -44,12 +44,14 @@
   the game got its 34 s video back. Self-test: keyframes every 1.00 s (max 1.02 s) at 54.6 fps.
 - **Accurate ult tracking (2026-10-01):** live filtering from League's own keybinds + level /
   cooldown / death gates, then a post-game check of every press against the R icon in the
-  recording (hardware decoding, low priority). On the owner's 3 real games (25 R presses, 24 real
-  casts, 1 "r" typed in the shop): before 25 "Ult pressed" (precision 96%), after 24 "Ult used"
-  at the cast frame + 1 hidden "pressed, no cast" (precision 100%, recall 100%). A 33 min game
-  is checked in 2.7–3.3 s inside the app (target ≤ 15 s). Details in "Ult tracking".
-- **Waiting for the owner**: the scripted Practice Tool ult test + a performance test with the
-  ult build (see "Ult tracking" > Owner test); play a real League game with v1.2.x and check the timeline,
+  recording (hardware decoding, low priority). Owner's scripted Practice Tool test (Ashe, 141 key
+  presses, 34 real casts): before 56 "Ult pressed" markers (22 false, precision 61%, recall 100%);
+  after 34 "Ult used" (precision 100%, recall 100%, cast frame = ground truth to the frame), 107
+  presses kept as hidden "no cast" (on cooldown 88, dead 12, chat 7). Owner's 3 real games: 24/24
+  casts, the shop-typed "r" marked no cast (before: precision 96%). A 33 min game is checked in
+  2.7–3.3 s inside the app (target ≤ 15 s). Details in "Ult tracking".
+- **Waiting for the owner**: a performance test (Settings > Performance test) with the ult build;
+  play a real League game with v1.2.x and check the timeline,
   thumbnail and Settings > Advanced > Responsiveness numbers (see "Known issues").
 
 ## What we're building
@@ -473,9 +475,25 @@ in game.
   the owner's clips, `CV_SAMPLES` / `CV_SAMPLES2`): 12 clips + 7 tricky windows → 9/9 casts,
   0 extra, decoys and a press in the shop end up "no cast". Developer tool:
   `mp4tool ultcheck <session dir> [--write]`.
-- **Owner test (to do):** Practice Tool, ~20 real ult casts, ~10 presses on cooldown, ~5
-  cancelled casts (Alt+R / indicator, then right-click or Esc), "r" typed in chat, a few presses
-  while dead. Compare old logic (every R press, 0.75 s debounce, chat) with the new result.
+- **Owner test (2026-10-01, Practice Tool, Ashe, 2 min recording):** the owner had Practice
+  Tool's No Cooldowns on, so the ult came back within ~1 s: 141 presses (R spam, Alt+R cancels,
+  chat, dead), 34 real casts (ground truth: every frame of the R icon, checked by eye on a frame
+  sheet).
+  | | markers | false | missed | precision | recall | time error |
+  |---|---|---|---|---|---|---|
+  | before (every R, 0.75 s debounce, chat) | 56 | 22 | 0 | 61% | 100% | press time (median 22 ms, max 0.93 s) |
+  | live layer only | 2 | 0 | 32 | 100% | 6% | — |
+  | after (layer 2) | 34 | 0 | 0 | 100% | 100% | 0 frames |
+  Lessons, fixed: (1) Ashe's ult icon is blue itself, so a cast is also "the cooldown number
+  appears" (`hud::is_cast`); (2) No Cooldowns makes the live cooldown filter wrong, so Practice
+  Tool is no longer in `cooldown_filter_game_modes`; (3) the app was restarted mid-game and the
+  engine clamped the video offset to 0 (should be −30 s): negative offsets are now kept, presses
+  outside the video stay "unverified", and an unreadable stretch no longer fails the whole check
+  (it failed with MF_E_INVALID_POSITION on a seek past the end). Check time on the PC: 4.4 s for
+  this game (107 press windows). `verify::VERSION` = 2, so older checks are redone.
+- **Performance:** the live part only adds `/activeplayer` per poll (and `/playerlist` while
+  dead); the check runs only after the game. Previous in-game numbers: 140.7 → 140.3 FPS, 1% low
+  102.5 → 100.2 (recording on vs off). A performance test with the ult build is still to do.
 
 ### Replay benchmark and end-to-end tests (developer tools)
 - `Clairvoyance.exe --bench-replays=<config.json>`: opens the given games N times in the real
@@ -527,7 +545,8 @@ in game.
 - [x] 22. Instant replays: faststart finalize, keyframe snapping, shared player, poster, queued jumps
 - [x] 23. Test tools: replay benchmark, end-to-end tests with a fake League client, test report
 - [x] 24. Accurate ult tracking: League keybinds + live gates, post-game check from the recording
-- [ ] Owner's scripted Practice Tool ult test + performance test with the ult build
+- [x] Owner's scripted Practice Tool ult test (34/34 casts, 0 false)
+- [ ] Performance test with the ult build
 
 ## Known issues
 - The Windows-only parts added on 2026-10-01 (Media Foundation thumbnails, updater install,

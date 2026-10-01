@@ -197,3 +197,26 @@ fn no_casts_from_stuns_or_death() {
         assert_eq!(ver.unconfirmed, presses.len(), "{name}");
     }
 }
+
+/// Any recording + its session.json: `CV_VIDEO=... CV_SESSION=... [CV_OFFSET=-30.1]`. Prints the
+/// casts and outcomes (for the owner's scripted tests).
+#[test]
+#[ignore]
+fn one_recording() {
+    let (Ok(video), Ok(session)) = (std::env::var("CV_VIDEO"), std::env::var("CV_SESSION")) else {
+        eprintln!("set CV_VIDEO and CV_SESSION");
+        return;
+    };
+    let text = std::fs::read_to_string(&session).unwrap();
+    let mut s: GameSession = serde_json::from_str(text.trim_start_matches('\u{feff}')).unwrap();
+    if let Ok(o) = std::env::var("CV_OFFSET") {
+        s.video_offset = o.parse().unwrap();
+    }
+    let mut v = Ffmpeg::open(Path::new(&video));
+    let t = std::time::Instant::now();
+    cv_game_league::verify::verify(&mut s, &mut v, &cv_game_league::ult::UltRules::builtin(), &|| false).unwrap();
+    println!("{} ms; {}", t.elapsed().as_millis(), serde_json::to_string(&s.verification).unwrap());
+    for e in s.events.iter().filter(|e| e.id.starts_with("ult")) {
+        println!("RESULT {:.3} {:?} {} | {}", e.game_time + s.video_offset, e.kind, e.title, e.details.clone().unwrap_or_default());
+    }
+}
