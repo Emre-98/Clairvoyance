@@ -1,5 +1,6 @@
 //! Data Dragon (Riot's public static data): the ult's base cooldown per rank for the game's
-//! patch, cached on disk per patch. Fetched in the background at the loading screen; never
+//! patch and its texts (to guess the ult's kind for champions the rules file doesn't know),
+//! cached on disk per patch. Fetched in the background at the loading screen; never
 //! blocks anything (until it arrives, the cooldown filter is simply off).
 
 use std::path::{Path, PathBuf};
@@ -27,15 +28,88 @@ pub fn parse_ult_cooldown(json: &str, champ: &str) -> Option<Vec<f64>> {
     (!cd.is_empty()).then_some(cd)
 }
 
-fn cache_file(dir: &Path, version: &str, champ: &str) -> PathBuf {
-    let safe: String = champ.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
-    dir.join("ddragon").join(version).join(format!("{safe}-R.json"))
+/// The ult part of a champion file: cooldowns, charges and texts.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct UltData {
+    pub cooldown: Vec<f64>,
+    #[serde(default)]
+    pub max_ammo: Option<i64>,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub tooltip: String,
 }
 
-/// Base cooldowns of `champ`'s ult for `patch`, from the disk cache or Data Dragon.
-pub async fn ult_cooldown(cache_dir: Option<&Path>, patch: Option<&str>, champ: &str) -> Option<Vec<f64>> {
+/// `data.<champ>.spells[3]` of a champion file.
+pub fn parse_ult(json: &str, champ: &str) -> Option<UltData> {
+    let v: serde_json::Value = serde_json::from_str(json).ok()?;
+    let data = v["data"].as_object()?;
+    let c = data.get(champ).or_else(|| data.values().next())?;
+    ult_of(c)
+}
+
+/// The R spell of one champion object (`data.<champ>`).
+pub fn ult_of(c: &serde_json::Value) -> Option<UltData> {
+    let r = c["spells"].get(3)?;
+    let cooldown: Vec<f64> = r["cooldown"].as_array()?.iter().filter_map(|x| x.as_f64()).collect();
+    if cooldown.is_empty() {
+        return None;
+    }
+    let max_ammo = r["maxammo"].as_str().and_then(|s| s.parse().ok()).or_else(|| r["maxammo"].as_i64());
+    let s = |k: &str| r[k].as_str().unwrap_or("").to_string();
+    Some(UltData { cooldown, max_ammo, name: s("name"), description: s("description"), tooltip: s("tooltip") })
+}
+
+/// What the game needs: the base cooldowns and, from the texts, a guess of the ult's kind.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UltInfo {
+    pub cooldown: Vec<f64>,
+    pub kind_guess: Option<crate::ultkind::UltKind>,
+}
+
+impl From<UltData> for UltInfo {
+    fn from(d: UltData) -> Self {
+        let (kind_guess, _) = crate::ultkind::classify_text(&d.description, &d.tooltip, d.max_ammo, &d.cooldown);
+        UltInfo { cooldown: d.cooldown, kind_guess }
+    }
+}
+
+fn cache_file(dir: &Path, version: &str, champ: &str) -> PathBuf {
+    let safe: String = champ.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+    dir.join("ddragon").join(version).join(format!("{safe}-R2.json"))
+}
+
+/// The ult of `champ` for `patch`, from the disk cache or Data Dragon.
+pub async fn ult_info(cache_dir: Option<&Path>, patch: Option<&str>, champ: &str) -> Option<UltInfo> {
     let client = reqwest::Client::builder().timeout(Duration::from_secs(8)).user_agent("Clairvoyance").build().ok()?;
-    // The version list (cached for a day).
+    let version = version_for(&client, cache_dir, patch).await?;
+    if let Some(d) = cache_dir {
+        if let Some(u) = std::fs::read_to_string(cache_file(d, &version, champ)).ok().and_then(|t| serde_json::from_str::<UltData>(&t).ok()) {
+            return Some(u.into());
+        }
+    }
+    let url = format!("https://ddragon.leagueoflegends.com/cdn/{version}/data/en_US/champion/{champ}.json");
+    let text = client.get(&url).send().await.ok()?.error_for_status().ok()?.text().await.ok()?;
+    let u = parse_ult(&text, champ)?;
+    if let Some(d) = cache_dir {
+        let f = cache_file(d, &version, champ);
+        let _ = std::fs::create_dir_all(f.parent().unwrap());
+        let _ = std::fs::write(f, serde_json::to_string(&u).unwrap_or_default());
+    }
+    let info: UltInfo = u.into();
+    log::info!("ult of {champ} (Data Dragon {version}): cooldown {:?}, text looks {}", info.cooldown, info.kind_guess.map(|k| k.as_str()).unwrap_or("normal"));
+    Some(info)
+}
+
+/// Base cooldowns of `champ`'s ult for `patch` (see [`ult_info`]).
+pub async fn ult_cooldown(cache_dir: Option<&Path>, patch: Option<&str>, champ: &str) -> Option<Vec<f64>> {
+    ult_info(cache_dir, patch, champ).await.map(|i| i.cooldown)
+}
+
+/// The Data Dragon version for `patch` (version list cached for a day).
+pub async fn version_for(client: &reqwest::Client, cache_dir: Option<&Path>, patch: Option<&str>) -> Option<String> {
     let versions_file = cache_dir.map(|d| d.join("ddragon").join("versions.json"));
     let fresh = versions_file
         .as_ref()
@@ -60,22 +134,7 @@ pub async fn ult_cooldown(cache_dir: Option<&Path>, patch: Option<&str>, champ: 
             Err(_) => cached_versions.clone()?,
         },
     };
-    let version = pick_version(&versions, patch)?;
-    if let Some(d) = cache_dir {
-        if let Some(cd) = std::fs::read_to_string(cache_file(d, &version, champ)).ok().and_then(|t| serde_json::from_str::<Vec<f64>>(&t).ok()) {
-            return Some(cd);
-        }
-    }
-    let url = format!("https://ddragon.leagueoflegends.com/cdn/{version}/data/en_US/champion/{champ}.json");
-    let text = client.get(&url).send().await.ok()?.error_for_status().ok()?.text().await.ok()?;
-    let cd = parse_ult_cooldown(&text, champ)?;
-    if let Some(d) = cache_dir {
-        let f = cache_file(d, &version, champ);
-        let _ = std::fs::create_dir_all(f.parent().unwrap());
-        let _ = std::fs::write(f, serde_json::to_string(&cd).unwrap_or_default());
-    }
-    log::info!("ult cooldown of {champ} (Data Dragon {version}): {cd:?}");
-    Some(cd)
+    pick_version(&versions, patch)
 }
 
 #[cfg(test)]
@@ -88,6 +147,16 @@ mod tests {
         assert_eq!(pick_version(&v, Some("16.19")).as_deref(), Some("16.19.1"));
         assert_eq!(pick_version(&v, Some("15.1")).as_deref(), Some("16.20.1"), "unknown patch: newest");
         assert_eq!(pick_version(&v, None).as_deref(), Some("16.20.1"));
+    }
+
+    #[test]
+    fn ult_texts_and_kind_guess() {
+        let j = r#"{"data":{"Annie":{"spells":[{},{},{},{"name":"Summon: Tibbers","cooldown":[130,115,100],"maxammo":"-1","description":"Annie wills her bear Tibbers to life.","tooltip":"Summons Tibbers.<br><br><recast>Recast:</recast> Manually issue orders to Tibbers."}]}}}"#;
+        let u = parse_ult(j, "Annie").unwrap();
+        assert_eq!(u.max_ammo, Some(-1));
+        let i: UltInfo = u.into();
+        assert_eq!(i.cooldown, vec![130.0, 115.0, 100.0]);
+        assert_eq!(i.kind_guess, Some(crate::ultkind::UltKind::MultiCast), "a recast; 'orders' isn't the command keyword");
     }
 
     #[test]

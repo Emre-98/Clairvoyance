@@ -2,7 +2,7 @@
 //   node --experimental-strip-types --test tests/bubbles.unit.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { aliveRange, animation, geometry, layout, sampleFrameOf, syntheticActions, SAMPLE_ACTIONS, type BubbleOptions, type PressArrays } from "../src/lib/bubbles.ts";
+import { aliveRange, animation, draw, geometry, layout, sampleFrameOf, syntheticActions, RECAST_SCALE, SAMPLE_ACTIONS, type BubbleOptions, type PressArrays } from "../src/lib/bubbles.ts";
 
 const Q = 0, W = 1, R = 3;
 const opts = (o: Partial<BubbleOptions> = {}): BubbleOptions => ({ on: true, fade: 1, cats: {}, unconfirmed: false, ...o });
@@ -131,4 +131,43 @@ test("sample data: frames and a long game's layout stay fast", () => {
   assert.ok(n > 2500);
   assert.ok(L.ms < 50, `${n} presses laid out in ${L.ms.toFixed(1)} ms`);
   console.log(`layout of ${n} presses (40 min game, 3 s fade): ${L.ms.toFixed(2)} ms`);
+});
+
+test("ult recasts: a smaller, outlined R bubble at the exact spot, shown with the filter off", () => {
+  // Two R presses: the first is the ult (confirmed), the second a recast of it (state 3).
+  const { p, anchor } = presses([
+    [10, 300, 200, R, 1],
+    [10.5, 500, 200, R, 3],
+  ]);
+  const L = layout(p, SAMPLE_ACTIONS, opts(), BASE, anchor);
+  assert.deepEqual([...L.on], [1, 1], "a recast isn't an unconfirmed press: shown without the filter");
+  const arcs: { x: number; r: number; style: string }[] = [];
+  let fill = "";
+  let stroke = "";
+  const g: any = new Proxy(
+    {},
+    {
+      get: (_t, k) => {
+        if (k === "arc") return (x: number, _y: number, r: number) => arcs.push({ x, r, style: "" });
+        if (k === "fill") return () => arcs.length && (arcs[arcs.length - 1].style = "fill:" + fill);
+        if (k === "stroke") return () => arcs.length && !arcs[arcs.length - 1].style && (arcs[arcs.length - 1].style = "stroke:" + stroke);
+        if (k === "measureText") return () => ({ width: 10 });
+        return () => {};
+      },
+      set: (_t, k, v) => {
+        if (k === "fillStyle") fill = String(v);
+        if (k === "strokeStyle") stroke = String(v);
+        return true;
+      },
+    },
+  );
+  draw(g, p, SAMPLE_ACTIONS, L, opts({ fade: 3 }), BASE, 11);
+  // Bodies: the biggest circle drawn at each press's x.
+  const body = (x: number) => Math.max(...arcs.filter((a) => Math.abs(a.x - x) < 1e-6).map((a) => a.r));
+  const ratio = body(500) / body(300);
+  assert.ok(Math.abs(ratio - RECAST_SCALE) < 0.02, `recast body ${ratio.toFixed(2)}x the ult's`);
+  const solid = arcs.find((a) => Math.abs(a.x - 300) < 1e-6 && a.r === body(300))!;
+  const outlined = arcs.find((a) => Math.abs(a.x - 500) < 1e-6 && a.r === body(500))!;
+  assert.match(solid.style, /fill:#|fill:rgb\(1|fill:hsl/i, "the ult: filled with R's colour");
+  assert.match(outlined.style, /fill:rgba\(15,17,22/, "the recast: dark inside, outlined in R's colour");
 });

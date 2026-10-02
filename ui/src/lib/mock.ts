@@ -50,6 +50,7 @@ const detailEvents: GameEvent[] = [
   ev("7", "tower", 61, "Destroyed a tower"),
   ev("8", "herald", 68, "Stole Rift Herald", "", true),
   ev("u2", "ult_pressed", 77, "Ult pressed", "Key press. The game can't confirm the ult was cast."),
+  ev("u4", "ult_recast", 78.6, "Ult recast", "R pressed again during the same ult (command, second part or early end): not a new ult."),
   ev("9", "kill", 78, "Killed Lux"),
   ev("10", "kill", 79, "Killed Darius"),
   ev("11", "kill", 80, "Killed Vi", "Assists: Thresh"),

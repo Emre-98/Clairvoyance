@@ -76,9 +76,20 @@
   owner's PC: his real binds read correctly, all 91 R presses of his 4 real games agree with the
   ult check, ult results unchanged on his 5 games, replay open time unchanged (first frame 36 ms
   median before and after), spam with 44 bubbles on screen drawn in p95 0.4 ms.
-- **Waiting for the owner**: the Practice Tool test of the ability bubbles (see "Next steps"),
-  and a real League game with v1.4.x/v1.5.x: timeline, thumbnail and Settings > Advanced >
-  Responsiveness numbers (see "Known issues").
+- **v1.6 (2026-10-02), part A: fullscreen + timeline zoom + frame stepping.** The video fills
+  the screen with the controls as a see-through panel over its bottom (88 px at 1080 lines),
+  slid away with the arrow bubble or H, back from the bottom-centre arrow; Fit / Fill; timeline
+  zoom down to single frames (Ctrl+wheel, slider, ruler, frame ticks); frame-exact , / . steps.
+  Chromium: 94/94 fullscreen checks (5 screens × Fit/Fill × panel up/down, overlay ≤ 0.3 px),
+  frame steps exact across keyframes both ways, v1.5 overlay pixel-identical. Details in
+  "Fullscreen player, timeline zoom, frame stepping".
+- **v1.6 part B: ult kinds.** One ult = one "Ult used": recasts / summon commands are "Ult
+  recast", Jayce/Nidalee/Elise/Udyr swaps "Form swap" (both hidden chips), charges count per
+  cast. 49 champions classified against Data Dragon 16.19.1 + the wiki (`ultscan` dev tool).
+  `verify::VERSION` 3. The owner's 19 real clips give identical results. Details in "Ult kinds".
+- **Waiting for the owner**: the Practice Tool test of the ult kinds (v1.6, see "Next steps"),
+  the PC benchmark of the v1.6 player (`--bench-replays` with `"player": true`), and the older
+  Practice Tool test of the ability bubbles.
 
 ## What we're building
 A lightweight, Ascent/Outplayed-style game recorder for Windows. It starts with League of Legends,
@@ -786,6 +797,96 @@ Rules: player-only (nothing during the game); v1.3-v1.5 behaviour unchanged.
   5.4 s after a keyframe). Real numbers on the owner's PC: `--bench-replays` with `"player": true`
   (steps, zoom draw + frame intervals, fullscreen switch, panel), see "Current status".
 
+### Ult kinds: recasts and summon commands aren't new ults (2026-10-02, owner's request, v1.6 part B)
+Problem: Annie's R summons Tibbers, later R presses only command him, yet every press showed as
+an ult (live: Annie skipped the cooldown filter; the check: lockout blips / re-matched presses).
+Rule now: **one ult = one "Ult used", at its first activation**; later presses of the same ult
+are "Ult recast". Nothing new during the game except one field read from the `/activeplayer`
+response that's already fetched every poll; the analysis stays in the maintenance pass.
+- **Kinds (`games/league/ult_rules.json` v2 → `kinds`, `ultkind.rs`):** `command`, `multi_cast`,
+  `transform` ("Form swap" events instead of "Ult used"), `charges_or_reset` (every cast is an
+  ult; `ammo` = casts with charges left show no cooldown on the icon, so a press while the icon
+  isn't on cooldown counts), `normal` (not listed; the v1.3 logic, unchanged). Per champion:
+  `ends` (cooldown = the ult's long cooldown appears, icon = the R icon is back to its ready
+  look, duration = the cap, always applied), `duration` (s per rank), `grace` (Sylas: the stolen
+  ult's own recasts after Hijack's cooldown appears), `cast_delay`, `note` (where it was
+  checked). Every non-normal kind also skips the live cooldown filter. A v1 override file still
+  loads (all normal). `<data dir>\ult_rules.json` still overrides the built-in file.
+- **Verified champion list (Data Dragon 16.19.1 + League wiki, 2026-10-02):**
+  - command: Annie (Tibbers 45 s), Ivern (Daisy 60 s), Shaco (clone 18 s; recast only in the
+    wiki), Yorick (Maiden; recast frees her after 10 s), Viktor (rework: Recast moves the storm;
+    was multi_cast in the owner's list).
+  - multi_cast: Ahri, Akali, Akshan, Aurora, Draven, Gwen, Heimerdinger, Jarvan IV, Jhin (4
+    shots), Kayn, Kha'Zix, LeBlanc (Mimic: Distortion's return via R, wiki; Data Dragon says
+    maxammo 2 but the wiki has no charges), Lucian, Wukong (second cast), Naafiri, Nocturne,
+    Nunu & Willump, Ornn, Quinn, Riven, Sion, Swain (Demonflare with R), Sylas (Hijack + the
+    stolen ult, held ≤ 90 s, `grace` 20 s), Tahm Kench, Taliyah, Twisted Fate, Urgot, Vel'Koz
+    (recast ends the ray, wiki), Vex, Xerath, Zed. Added vs the owner's list: Aurora, Gwen,
+    Heimerdinger, Jarvan IV, Kha'Zix, Wukong, Naafiri, Ornn, Quinn, Sion, Tahm Kench, Vel'Koz, Vex.
+  - transform: Jayce, Nidalee, Elise, Udyr (stance + its Awaken recast).
+  - charges_or_reset: Kassadin, Kog'Maw, Corki (ammo 4), Teemo (ammo 3), Pyke, Darius, Bel'Veth
+    (1 s cooldown, each cast eats a coral; added).
+  - normal (checked): Shyvana (patch 16.19: one Fury-gated cast per transformation, no recast,
+    cooldown 0 — the owner's memory was right), Gnar.
+- **Data Dragon scan (developer tool, re-run each patch):** `cargo run -p cv-game-league
+  --example ultscan [-- championFull.json] [--save]` classifies every champion's R text
+  (`ultkind::classify_text`: recast / reactivate / second cast / command / instruct /
+  transform / charges / ammo / "fire N super shots" / "can cast … while transformed", with short
+  cooldowns deciding transform vs charges; word-exact so "distance" isn't "stance" and
+  "discharges" isn't "charges") and compares with the rules file: NEW = looks like a recast but
+  not listed, TEXT? = listed but the text shows nothing (must say "wiki" in its note). 16.19.1:
+  173 champions, 49 listed, 0 to check. The fixture `games/league/tests/ddragon/r-spells.json`
+  (all R texts) keeps that check in the unit tests. A champion not in the rules file whose R
+  text looks like a recast is treated as `multi_cast` (cap 15 s): Data Dragon's R text is
+  fetched with the cooldowns at the loading screen (cache `<data>\cache\ddragon\<ver>\<Champ>-R2.json`)
+  and the guess is saved with the game (`key_presses` action "ult_kind") so the check uses it.
+- **Live layer (`ult.rs` + `ultkind::LiveEpisodes`):** an accepted press starts an episode for
+  command / multi_cast (until press + cap(rank) + 1 s); presses inside it are "Ult recast" events
+  (mark reason "recast"), transform presses "Form swap", others as before. Dying ends a
+  multi_cast episode. `/activeplayer` R `id|displayName` is now parsed: each change is logged
+  ("ult: R ability changed to …") and kept (`key_presses` action "r_state"); when it differs from
+  the game's first value the episode stays open, when it's back the episode ends. Whether League
+  changes it during a recast is to be seen in the owner's test (`mp4tool ultcheck` prints
+  `r_states`).
+- **Check after the game (`verify.rs`, VERSION 3 → older recordings re-checked):** normal
+  champions take exactly the v1.3 path. Others: per keyframe also a 4×4-cell colour picture of
+  the R icon (`hud::signature`); the game's own ready look is the densest cluster of ready-state
+  pictures (`ready_reference`); a ready-state sample more than `ALT_DIST` (0.085) away = the
+  icon shows another picture (recast / command state); its exact first frame is found by
+  decoding from the keyframe before. Signals: casts (cooldown appearing; "long" if still on
+  cooldown 3 s later, else a recast lockout), alt intervals, ready samples, deaths.
+  `ultkind::episodes`: an activation (cast or alt start) outside an episode starts one; it ends
+  at the first long cooldown after it (+ grace), when the icon is back to its ready look (after
+  an alt state, if `ends` has icon), at death (multi_cast), or at the cap. `ultkind::label`: per
+  episode the first possible press = "Ult used" (at the bar's change, or at the press when the
+  bar showed it > cast delay later), later possible presses = "Ult recast", presses typed in
+  chat / while dead = "no cast"; presses outside episodes = "no cast". Transform: every cast is a
+  "Form swap"; charges: v1.3 matching plus the ammo rule. The verification details get
+  `ult_kind` {kind, recasts, form_swaps, episodes, alt_states, long_casts}.
+- **UI:** new event kinds `ult_recast` ("Ult recast", own colour `--ev-recast`, chip "Ult
+  recasts") and `form_swap` ("Form swap", `--ev-form`, chip "Form swaps"), both hidden by
+  default. Ability bubbles: an R press that's a recast is a smaller (0.72×), outlined R bubble at
+  its exact position/moment, shown regardless of the chips (it's a real press, not an
+  unconfirmed one); the ult's own press stays solid.
+- **Tests:** `ultkind` (rules file incl. v1 compatibility and unknown kinds; the scan on the
+  real Data Dragon texts — Ashe/Zeri not misread, every candidate decided, every listed kind
+  backed; episodes per kind: Annie 2 ults + 10 commands + a press on cooldown, icon end, Ahri
+  three dashes with presses right before / after the end, a new ult right after the old one,
+  the bar showing the ult late, death during a multi_cast vs a summon, Sylas stealing a recast
+  ult, transform, Kog'Maw and Corki charges, normal = v1.3; live episodes); `ult.rs` (live
+  recasts / form swaps, R state from the API ends or extends an episode, death);
+  `hud.rs` recast icon detector on real ready crops + `tests/hud/*-alt-synthetic.ppm` (the ready
+  crop with another icon's inside: real recast crops come from the owner's test), noise; verify
+  end to end on synthetic recordings built from the real crops (Annie: 2 used + 10 recasts + 1
+  no cast, Used on the exact frame; Caitlyn unchanged; Jayce 3 swaps); `verify_clips` on the
+  owner's 19 real clips: identical output to v1.5 (9/9 casts, 0 extra, same frames); bubbles
+  unit test (recast body 0.72×, outlined); the owner's Riven Practice Tool recording (no ult
+  cast, Riven is multi_cast now): 0 ults — the first version found one at the victory screen,
+  so an icon-picture change now needs a possible R press just before it and must end before the
+  game / video ends (`alt_states_dropped` in the details). Rust 128 tests (107 before).
+- **Before (v1.5) on the owner's scripted test:** to be filled in from his Practice Tool session
+  (see "Next steps"): `mp4tool-v16a ultcheck` (v1.5 logic) vs the new one on the same recording.
+
 ### Replay benchmark and end-to-end tests (developer tools)
 - `Clairvoyance.exe --bench-replays=<config.json>`: opens the given games N times in the real
   window and measures page / first frame / playable / marker jumps / "marker clicked right away"
@@ -842,8 +943,24 @@ Rules: player-only (nothing during the game); v1.3-v1.5 behaviour unchanged.
 - [x] Input tracking tested on the owner's PC (SendInput/DPI/video alignment, benchmark, ult regression, League performance test, owner's replay check)
 - [x] 26. Ability bubbles on the input overlay: League binds (all cast variants, saved per game), exact frame + interpolated position, overlap rules, ult tie-in, options (v1.5.0)
 - [ ] Owner's Practice Tool test of the ability bubbles (see "Next steps")
+- [x] 27. Fullscreen without black bars (overlay panel, drop-down, Fit/Fill) + zoomable timeline + frame-exact stepping (v1.6 part A)
+- [x] 28. Ult kinds: command / multi_cast / transform / charges, ult episodes live and after the game, "Ult recast" / "Form swap", Data Dragon scan tool (v1.6 part B)
+- [ ] Owner's Practice Tool test of the ult kinds (Annie, Ivern, Shaco, Ahri, Jhin, Jayce/Nidalee, Kog'Maw)
 
 ## Known issues
+- v1.6 player: the 4 ms timeline redraw / 60 fps zoom and the < 50 ms forward step were measured
+  in headless Chromium (software decoding and raster: redraw median 1 ms, p95 4-7 ms; steps
+  50-60 ms both ways); the GPU numbers come from `--bench-replays` with `"player": true` on the
+  owner's PC. Forward steps first try playing one frame (no keyframe decode); where frames
+  aren't handed over one by one (headless) it falls back to seeks for the session. Old
+  recordings (5.5 s keyframes): ~290 ms per step back in headless Chromium. The optional hover
+  thumbnail above the zoomed timeline isn't built (it needs a second decoder; skipped to keep
+  the targets).
+- v1.6 ult kinds: the recast-icon detector is calibrated on the owner's real ready / cooldown
+  crops plus synthetic recast icons; real recast/command icons (Tibbers, Daisy...) come with the
+  owner's Practice Tool test. Champions whose R doesn't change the icon or show a cooldown until
+  the end rely on presses + the duration cap. Old recordings with 2-5.5 s keyframes may miss a
+  short recast state (a cast still shows by its cooldown).
 - The Windows-only parts added on 2026-10-01 (Media Foundation thumbnails, updater install,
   migration on a real old install) compile and were checked on the owner's PC where noted in
   "Current status"; watch the log for "thumbnail for ... failed" (then ffmpeg is used if present).
@@ -884,6 +1001,21 @@ Rules: player-only (nothing during the game); v1.3-v1.5 behaviour unchanged.
   v1.4); the bubbles arrive in parallel and don't add to it.
 
 ## Next steps
+- **Owner, Practice Tool test of the ult kinds (v1.6, ~15 min):** see the steps in the v1.6
+  test report (also below). Practice Tool with cooldowns ON (not "No Cooldowns"; use the "Reset
+  cooldowns" button between ults), Settings > Game modes > Practice Tool on "Record". Level 16+
+  so R is rank 3. Then the helper job collects the recording; before/after per champion goes
+  into "Ult kinds", and real recast-icon crops replace the synthetic ones in `tests/hud/`.
+  1. Annie: R on a spot (Tibbers), then R 10 times on different spots, 1 s apart (commands).
+     Wait for Tibbers to vanish, press R once (on cooldown). Reset cooldowns, R, then R 3 more
+     times. Expected: 2 ults, 13 recasts, 1 no cast.
+  2. Ivern: R (Daisy), R 5 times. Reset, R once. Expected 2 ults, 5 recasts.
+  3. Shaco: R (clone), R 5 times. Expected 1 ult, 5 recasts.
+  4. Ahri: R and both recasts (3 dashes). Reset, again 3 dashes. Expected 2 ults, 4 recasts.
+  5. Jhin: R, then R 4 times (the 4 shots). Expected 1 ult, 4 recasts.
+  6. Jayce (or Nidalee): R 6 times, ~7 s apart (Nidalee ~4 s). Expected 6 form swaps.
+  7. Kog'Maw: R 5 times, 2-3 s apart. Expected 5 ults.
+  8. Caitlyn (control): R once. Expected 1 ult.
 - **Owner, Practice Tool test of the ability bubbles (v1.5.0, ~10 min):**
   1. Clairvoyance on v1.5.0 (Settings > General & updates). Settings > Game modes: Practice Tool
      on "Record" for this test (it's Off by default).

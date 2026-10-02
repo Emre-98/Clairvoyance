@@ -15,6 +15,7 @@ pub mod queues;
 pub mod ddragon;
 pub mod hud;
 pub mod ult;
+pub mod ultkind;
 pub mod verify;
 
 use async_trait::async_trait;
@@ -114,6 +115,9 @@ struct ActivePlayer {
 #[serde(rename_all = "camelCase", default)]
 struct AbilityInfo {
     ability_level: Option<u32>,
+    /// e.g. "AnnieR"; some recast ults swap it while the recast is available.
+    id: Option<String>,
+    display_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -155,6 +159,10 @@ pub struct LeagueIntegration {
     /// Base ult cooldowns from Data Dragon, filled in the background.
     ult_cd: std::sync::Arc<std::sync::Mutex<Option<Vec<f64>>>>,
     ult_cd_started: bool,
+    /// The ult kind Data Dragon's R text suggests (filled in the background with the cooldowns).
+    ult_guess: std::sync::Arc<std::sync::Mutex<Option<ultkind::UltKind>>>,
+    /// A guessed kind (champion not in the rules file) to save with the game once.
+    ult_kind_mark: Option<ultkind::UltKind>,
     patch: Option<String>,
     /// Action keys (abilities, summoners, items, ward) with League's binds for this match.
     actions: Vec<cv_core::input::actions::ActionKey>,
@@ -197,6 +205,8 @@ impl LeagueIntegration {
             ult: ult::UltTracker::new(ult::default_binds(), None, ult::UltRules::builtin()),
             ult_cd: Default::default(),
             ult_cd_started: false,
+            ult_guess: Default::default(),
+            ult_kind_mark: None,
             patch: None,
             actions: actions::default_actions(),
         }
@@ -225,6 +235,8 @@ impl LeagueIntegration {
         self.ult = ult::UltTracker::new(ult::default_binds(), manual, ult::UltRules::load(data_dir()));
         self.ult_cd = Default::default();
         self.ult_cd_started = false;
+        self.ult_guess = Default::default();
+        self.ult_kind_mark = None;
         self.patch = None;
         self.actions = actions::default_actions();
     }
@@ -250,13 +262,17 @@ impl LeagueIntegration {
 
     /// Facts the live ult filter needs: R rank and ability haste (every poll, small request),
     /// whether we're dead (only polled while dead), and the base cooldowns (once, background).
-    async fn update_ult_state(&mut self, game_mode: &str, new_events: &[GameEvent]) {
+    async fn update_ult_state(&mut self, game_mode: &str, new_events: &[GameEvent], game_time: f64) {
         if self.ult.game_mode.is_none() && !game_mode.is_empty() {
             self.ult.game_mode = Some(game_mode.to_string());
         }
         if let Ok(a) = self.get::<ActivePlayer>("activeplayer").await {
             let r = a.abilities.get("R").and_then(|r| r.ability_level);
             self.ult.update_active(r, a.champion_stats.ability_haste);
+            // The R spell's id + name: logged when it changes (a recast state), used to keep
+            // a live ult episode open (see ult::update_r_state).
+            let rs = a.abilities.get("R").map(|r| format!("{}|{}", r.id.as_deref().unwrap_or(""), r.display_name.as_deref().unwrap_or("")));
+            self.ult.update_r_state(rs.filter(|s| s != "|"), game_time);
         }
         if self.ult.champion.is_none() {
             self.ult.champion = self.player.as_ref().and_then(|p| p.character_id.clone());
@@ -266,22 +282,36 @@ impl LeagueIntegration {
                 self.ult_cd_started = true;
                 let slot = self.ult_cd.clone();
                 let patch = self.patch.clone();
+                let guess = self.ult_guess.clone();
                 tokio::spawn(async move {
-                    let cd = ddragon::ult_cooldown(data_dir(), patch.as_deref(), &champ).await;
-                    *slot.lock().unwrap() = cd;
+                    let info = ddragon::ult_info(data_dir(), patch.as_deref(), &champ).await;
+                    *slot.lock().unwrap() = info.as_ref().map(|i| i.cooldown.clone());
+                    *guess.lock().unwrap() = info.and_then(|i| i.kind_guess);
                 });
             }
         }
         if self.ult.base_cd.is_none() {
             self.ult.base_cd = self.ult_cd.lock().unwrap().clone();
         }
+        if self.ult.guess.is_none() {
+            if let Some(g) = *self.ult_guess.lock().unwrap() {
+                self.ult.guess = Some(g);
+                if let Some(c) = self.ult.champion.as_deref() {
+                    if self.ult.rules.kind_rule(c).is_none() && g != ultkind::UltKind::Normal {
+                        log::info!("ult: {c} isn't in the rules file; Data Dragon's R text looks like {}", g.as_str());
+                        // Saved with the game so the check after it uses the same kind.
+                        self.ult_kind_mark = Some(g);
+                    }
+                }
+            }
+        }
         if new_events.iter().any(|e| e.kind == EventKind::Death) {
-            self.ult.dead = true;
+            self.ult.set_dead(true);
         }
         if self.ult.dead {
             if let Ok(players) = self.get::<Vec<Player>>("playerlist").await {
                 if let Some(p) = players.iter().find(|p| p.names().iter().any(|n| self.ctx.me.contains(n))) {
-                    self.ult.dead = p.is_dead;
+                    self.ult.set_dead(p.is_dead);
                 }
             }
         }
@@ -611,7 +641,7 @@ impl GameIntegration for LeagueIntegration {
             }
         }
         if u.phase == MatchPhase::InProgress && self.result.is_none() {
-            self.update_ult_state(&stats.game_mode, &u.events).await;
+            self.update_ult_state(&stats.game_mode, &u.events, stats.game_time).await;
         }
         if self.result.is_some() {
             u.phase = MatchPhase::Ended;
@@ -626,17 +656,22 @@ impl GameIntegration for LeagueIntegration {
     }
 
     fn on_key(&mut self, key: &KeyPress, game_time: f64) -> Option<GameEvent> {
-        if !self.ult.press(key, game_time) {
-            return None;
-        }
-        Some(
-            GameEvent::new(format!("ult-{:.2}", game_time), EventKind::UltPressed, game_time, "Ult pressed")
-                .with_details("Ult key pressed. Checked against the recording after the game."),
-        )
+        use ultkind::LivePress;
+        let (kind, title, details) = match self.ult.press_live(key, game_time) {
+            LivePress::None => return None,
+            LivePress::Used => (EventKind::UltPressed, "Ult pressed", "Ult key pressed. Checked against the recording after the game."),
+            LivePress::Recast => (EventKind::UltRecast, "Ult recast", "The same ult pressed again (command, second part or early end). Checked after the game."),
+            LivePress::FormSwap => (EventKind::FormSwap, "Form swap", "Form / stance swap. Checked against the recording after the game."),
+        };
+        Some(GameEvent::new(format!("ult-{:.2}", game_time), kind, game_time, title).with_details(details))
     }
 
     fn take_key_marks(&mut self) -> Vec<cv_core::game::KeyMark> {
-        self.ult.take_marks()
+        let mut m = self.ult.take_marks();
+        if let Some(g) = self.ult_kind_mark.take() {
+            m.push(cv_core::game::KeyMark { game_time: 0.0, action: "ult_kind".into(), key: g.as_str().into(), accepted: false, reason: Some("ddragon".into()) });
+        }
+        m
     }
 
     fn input_tracking(&self) -> bool {

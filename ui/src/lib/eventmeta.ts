@@ -1,6 +1,6 @@
 import type { EventKind } from "./types";
 
-export type Group = "kills" | "deaths" | "assists" | "ult" | "unconfirmed" | "structures" | "objectives" | "rounds" | "markers" | "game";
+export type Group = "kills" | "deaths" | "assists" | "ult" | "recasts" | "forms" | "unconfirmed" | "structures" | "objectives" | "rounds" | "markers" | "game";
 
 export interface KindMeta {
   label: string;
@@ -19,6 +19,8 @@ export const KIND: Record<EventKind, KindMeta> = {
   ult_pressed: { label: "Ult pressed", color: "var(--ev-ult)", icon: "bolt", group: "ult" },
   ult_used: { label: "Ult used", color: "var(--ev-ult)", icon: "bolt", group: "ult" },
   ult_unconfirmed: { label: "Ult pressed, no cast", color: "var(--muted)", icon: "bolt", group: "unconfirmed" },
+  ult_recast: { label: "Ult recast", color: "var(--ev-recast)", icon: "repeat", group: "recasts" },
+  form_swap: { label: "Form swap", color: "var(--ev-form)", icon: "swap", group: "forms" },
   tower: { label: "Tower", color: "var(--ev-structure)", icon: "tower", group: "structures" },
   inhibitor: { label: "Inhibitor", color: "var(--ev-structure)", icon: "gem", group: "structures" },
   dragon: { label: "Dragon", color: "var(--ev-epic)", icon: "flame", group: "objectives" },
@@ -37,6 +39,8 @@ export const GROUPS: { id: Group; label: string; color: string; icon: string }[]
   { id: "deaths", label: "Deaths", color: "var(--ev-death)", icon: "skull" },
   { id: "assists", label: "Assists", color: "var(--ev-assist)", icon: "assist" },
   { id: "ult", label: "Ult", color: "var(--ev-ult)", icon: "bolt" },
+  { id: "recasts", label: "Ult recasts", color: "var(--ev-recast)", icon: "repeat" },
+  { id: "forms", label: "Form swaps", color: "var(--ev-form)", icon: "swap" },
   { id: "unconfirmed", label: "Unconfirmed presses", color: "var(--muted)", icon: "bolt" },
   { id: "structures", label: "Towers", color: "var(--ev-structure)", icon: "tower" },
   { id: "objectives", label: "Objectives", color: "var(--ev-epic)", icon: "flame" },
@@ -47,7 +51,7 @@ export const GROUPS: { id: Group; label: string; color: string; icon: string }[]
 
 /** Kinds offered for auto-clips / callouts in Settings. */
 /** Hidden on the timeline and in the event list until the user turns them on. */
-export const HIDDEN_BY_DEFAULT: Group[] = ["game", "unconfirmed"];
+export const HIDDEN_BY_DEFAULT: Group[] = ["game", "unconfirmed", "recasts", "forms"];
 
 export const USER_KINDS: EventKind[] = [
   "kill",
@@ -79,6 +83,8 @@ export const ICONS: Record<string, string> = {
   skull: "M12 3a8 8 0 0 0-8 8c0 2.6 1.3 4.5 3 5.6V20h10v-3.4c1.7-1.1 3-3 3-5.6a8 8 0 0 0-8-8zM9 11.5h.01M15 11.5h.01M10 20v-2M14 20v-2",
   assist: "M8 12l3 3 5-6M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z",
   bolt: "M13 2L4 14h7l-1 8 9-12h-7z",
+  repeat: "M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3",
+  swap: "M7 4L3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7",
   tower: "M7 21h10M8 21l1-11h6l1 11M7 10h10M8 10V5l2 1 2-2 2 2 2-1v5",
   gem: "M6 3h12l4 6-10 12L2 9zM2 9h20M12 21L8 9l4-6 4 6z",
   flame: "M12 22c4 0 7-2.7 7-6.8 0-3.7-2.6-6-4.4-8.2-.5 2.3-1.8 3.5-2.8 3.5.4-3.2-.6-6.2-3.3-8.5.1 3.9-3.5 6.4-3.5 11.2C5 19.3 8 22 12 22z",

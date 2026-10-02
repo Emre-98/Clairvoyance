@@ -10,6 +10,8 @@ export type EventKind =
   | "ult_pressed"
   | "ult_used"
   | "ult_unconfirmed"
+  | "ult_recast"
+  | "form_swap"
   | "tower"
   | "inhibitor"
   | "dragon"

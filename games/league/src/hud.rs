@@ -353,6 +353,55 @@ pub fn look(crop: &Rgb, origin: (u32, u32), fit: &HudFit) -> RLook {
     RLook { blue: blue / cnt.max(1.0), dark: dark / cnt.max(1.0), digits: white / wn }
 }
 
+/// A small picture of the R icon (4×4 cells of mean colour over its inside), to tell its normal
+/// "ready" look from another picture (a recast / command icon, e.g. Tibbers' head for Annie).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct IconSig(pub [f32; 48]);
+
+/// Two icon pictures differ by more than this (mean absolute difference of the cells, 0..1):
+/// video noise and the ready glow stay well under it, another picture is well over it.
+pub const ALT_DIST: f32 = 0.085;
+
+pub fn signature(crop: &Rgb, origin: (u32, u32), fit: &HudFit) -> IconSig {
+    let (x, y, s) = fit.icon(3);
+    let n = 38.0;
+    let mut sum = [0f32; 48];
+    let mut cnt = [0f32; 16];
+    for j in 5..33 {
+        for i in 5..33 {
+            let px = ((x + (i as f64 + 0.5) * s / n).floor() as i64 - origin.0 as i64).clamp(0, crop.w as i64 - 1) as u32;
+            let py = ((y + (j as f64 + 0.5) * s / n).floor() as i64 - origin.1 as i64).clamp(0, crop.h as i64 - 1) as u32;
+            let p = crop.px(px, py);
+            let c = ((j - 5) / 7) * 4 + (i - 5) / 7;
+            for k in 0..3 {
+                sum[c * 3 + k] += p[k] as f32 / 255.0;
+            }
+            cnt[c] += 1.0;
+        }
+    }
+    for c in 0..16 {
+        for k in 0..3 {
+            sum[c * 3 + k] /= cnt[c].max(1.0);
+        }
+    }
+    IconSig(sum)
+}
+
+pub fn sig_dist(a: &IconSig, b: &IconSig) -> f32 {
+    a.0.iter().zip(b.0.iter()).map(|(x, y)| (x - y).abs()).sum::<f32>() / 48.0
+}
+
+/// The icon's own ready look in this game: the ready-state picture most others are close to
+/// (champions spend more time with their normal icon than in a recast state).
+pub fn ready_reference(sigs: &[IconSig]) -> Option<IconSig> {
+    let step = (sigs.len() / 200).max(1);
+    let pool: Vec<&IconSig> = sigs.iter().step_by(step).collect();
+    pool.iter()
+        .map(|a| (pool.iter().filter(|b| sig_dist(a, b) < ALT_DIST * 0.6).count(), *a))
+        .max_by_key(|(n, _)| *n)
+        .map(|(_, s)| *s)
+}
+
 /// A cast between two samples: the cooldown overlay appears, or comes back over an icon that
 /// was mostly uncovered (recast right after the cooldown ended).
 /// Two signs, either is enough: the blue overlay jumps up (most icons), or the cooldown number
@@ -496,6 +545,51 @@ mod tests {
         assert!(is_cast(&late, &look(&fixture("r-twitch-cooldown.ppm"), RCROP, &fit)), "recast at the end of a cooldown");
         assert!(is_cast(&ready, &cd), "{ready:?} -> {cd:?}");
         assert!(!is_cast(&cd, &cd));
+    }
+
+    /// Recast / command icons: the R icon showing another picture than its ready look. Real crops
+    /// come from the owner's Practice Tool test; until then: the ready crops of this folder with
+    /// the inside of another champion's icon pasted in (`*-alt-synthetic.ppm`), plus noise.
+    #[test]
+    fn recast_icon_picture() {
+        let fit = located("band-caitlyn");
+        let sig = |n: &str| signature(&fixture(n), RCROP, &fit);
+        let ready = ["r-caitlyn-ready.ppm", "r-yunara-ready.ppm", "r-twitch-ready.ppm", "r-ashe-ready.ppm"];
+        for a in ready {
+            assert_eq!(sig_dist(&sig(a), &sig(a)), 0.0);
+            for b in ready {
+                if a != b {
+                    let d = sig_dist(&sig(a), &sig(b));
+                    assert!(d > ALT_DIST, "{a} vs {b}: {d:.3}: another icon must count as another picture");
+                }
+            }
+        }
+        for (base, alt) in [("r-caitlyn-ready.ppm", "r-caitlyn-alt-synthetic.ppm"), ("r-yunara-ready.ppm", "r-yunara-alt-synthetic.ppm")] {
+            let (r, a) = (sig(base), sig(alt));
+            let d = sig_dist(&r, &a);
+            assert!(d > ALT_DIST, "{alt}: {d:.3}");
+            // The alt crops are still "ready" (no cooldown overlay, not dimmed): only the picture
+            // tells the recast state.
+            let l = look(&fixture(alt), RCROP, &fit);
+            assert_eq!(l.state(), RState::Ready, "{alt}: {l:?}");
+            assert!(!dimmed(&l));
+        }
+        // Video noise and a brighter frame (the ready glow) stay the same picture.
+        let mut noisy = fixture("r-caitlyn-ready.ppm");
+        let mut seed = 7u32;
+        for v in noisy.data.iter_mut() {
+            seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+            let n = ((seed >> 16) % 13) as i32 - 6;
+            *v = (*v as i32 + n + 8).clamp(0, 255) as u8;
+        }
+        let d = sig_dist(&signature(&noisy, RCROP, &fit), &sig("r-caitlyn-ready.ppm"));
+        assert!(d < ALT_DIST * 0.5, "noise: {d:.3}");
+        // The game's own ready look wins the reference even with recast samples around.
+        let mut sigs = vec![sig("r-caitlyn-ready.ppm"); 30];
+        sigs.extend(vec![sig("r-caitlyn-alt-synthetic.ppm"); 12]);
+        sigs.push(signature(&noisy, RCROP, &fit));
+        let r = ready_reference(&sigs).unwrap();
+        assert!(sig_dist(&r, &sig("r-caitlyn-ready.ppm")) < ALT_DIST * 0.5);
     }
 
     #[test]

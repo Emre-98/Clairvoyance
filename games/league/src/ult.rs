@@ -8,6 +8,7 @@
 //!   so the check against the recording after the game (layer 2, `verify.rs`) decides.
 //! No game memory, no injection: only the Live Client Data API, config files and Data Dragon.
 
+use crate::ultkind::{KindRule, LiveEpisodes, LivePress, UltKind};
 use cv_core::game::{KeyMark, KeyPress};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -317,6 +318,9 @@ pub struct UltRules {
     pub usable_while_dead: HashMap<String, String>,
     #[serde(default)]
     pub cooldown_delay: HashMap<String, f64>,
+    /// v1.6: what one ult is per champion (see `ultkind`). Not listed = normal.
+    #[serde(default)]
+    pub kinds: HashMap<String, KindRule>,
 }
 
 fn default_delay() -> f64 {
@@ -351,7 +355,24 @@ impl UltRules {
         map.keys().any(|k| norm(k) == c)
     }
     pub fn skips_cooldown(&self, champ: &str) -> bool {
-        Self::has(&self.skip_cooldown_filter, champ)
+        Self::has(&self.skip_cooldown_filter, champ) || self.kind_rule(champ).is_some_and(|k| k.kind != UltKind::Normal)
+    }
+    /// The champion's entry in `kinds` (None = not listed).
+    pub fn kind_rule(&self, champ: &str) -> Option<&KindRule> {
+        let norm = |s: &str| s.chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>().to_ascii_lowercase();
+        let c = norm(champ);
+        self.kinds.iter().find(|(k, _)| norm(k) == c).map(|(_, v)| v)
+    }
+    /// The rule to use: the rules file, else `guess` (Data Dragon's R text, see
+    /// `ultkind::classify_text`), else normal.
+    pub fn kind_for(&self, champ: &str, guess: Option<UltKind>) -> KindRule {
+        match self.kind_rule(champ) {
+            Some(k) => k.clone(),
+            None => match guess {
+                Some(g) if g != UltKind::Normal => KindRule::guessed(g),
+                _ => KindRule::normal(),
+            },
+        }
     }
     pub fn usable_while_dead(&self, champ: &str) -> bool {
         Self::has(&self.usable_while_dead, champ)
@@ -405,11 +426,36 @@ pub struct UltTracker {
     last_cast: Option<(f64, f64)>,
     last_press: Option<f64>,
     marks: Vec<KeyMark>,
+    /// The kind Data Dragon's R text suggests (champions not in the rules file).
+    pub guess: Option<UltKind>,
+    /// Live ult episodes (command / multi_cast).
+    episodes: LiveEpisodes,
+    /// The R ability's id/name from `/activeplayer`: the first one seen, and the current one.
+    r_base: Option<String>,
+    r_now: Option<String>,
 }
 
 impl UltTracker {
     pub fn new(binds: UltBinds, manual: Option<Bind>, rules: UltRules) -> Self {
-        Self { binds, manual, rules, champion: None, game_mode: None, r_level: None, haste: 0.0, base_cd: None, dead: false, chat_open: false, last_cast: None, last_press: None, marks: Vec::new() }
+        Self {
+            binds,
+            manual,
+            rules,
+            champion: None,
+            game_mode: None,
+            r_level: None,
+            haste: 0.0,
+            base_cd: None,
+            dead: false,
+            chat_open: false,
+            last_cast: None,
+            last_press: None,
+            marks: Vec::new(),
+            guess: None,
+            episodes: LiveEpisodes::default(),
+            r_base: None,
+            r_now: None,
+        }
     }
 
     fn is_cast(&self, k: &KeyPress) -> bool {
@@ -428,9 +474,39 @@ impl UltTracker {
         cooldown(self.base_cd.as_deref()?, self.r_level?, self.haste).map(|c| c * COOLDOWN_WINDOW)
     }
 
+    /// This game's ult kind rule.
+    pub fn kind(&self) -> KindRule {
+        self.rules.kind_for(self.champion.as_deref().unwrap_or(""), self.guess)
+    }
+
     /// A key press during the game. Returns true if it counts as an ult cast (a timeline
     /// event); every ult press is also kept as a mark (see [`Self::take_marks`]).
     pub fn press(&mut self, k: &KeyPress, game_time: f64) -> bool {
+        self.press_live(k, game_time) != LivePress::None
+    }
+
+    /// Like [`Self::press`], and says what the press is: a new ult, a recast of the current one
+    /// (command / multi_cast champions, within the ult's longest duration or while
+    /// `/activeplayer` shows R in its recast state), or a form swap.
+    pub fn press_live(&mut self, k: &KeyPress, game_time: f64) -> LivePress {
+        if !self.ult_key(k, game_time) {
+            return LivePress::None;
+        }
+        let Some(m) = self.marks.last_mut() else { return LivePress::None };
+        if !m.accepted {
+            return LivePress::None;
+        }
+        let rule = self.kind();
+        let what = self.episodes.press(rule.kind, rule.cap(self.r_level), game_time);
+        let m = self.marks.last_mut().unwrap();
+        if what == LivePress::Recast {
+            m.reason = Some("recast".into());
+        }
+        what
+    }
+
+    /// Gates + mark for one key press; true if it was an ult key press (a mark was added).
+    fn ult_key(&mut self, k: &KeyPress, game_time: f64) -> bool {
         match k.key.as_str() {
             // Rough chat detection: Enter opens/sends chat, Escape closes it.
             "Enter" if !k.ctrl && !k.alt => {
@@ -471,7 +547,41 @@ impl UltTracker {
             self.last_cast = Some((game_time, self.window().unwrap_or(0.0)));
         }
         self.marks.push(KeyMark { game_time, action: "ult".into(), key: press_label(k), accepted, reason });
-        accepted
+        true
+    }
+
+    /// The R ability's id/name from `/activeplayer` (every poll). Many recast ults swap the R
+    /// spell while the recast is available; when this one does, it keeps the live episode open
+    /// while the name differs from its normal one and ends it when it's back. Every change is
+    /// kept as a mark (action "r_state") for later analysis.
+    pub fn update_r_state(&mut self, r: Option<String>, game_time: f64) {
+        let Some(r) = r.filter(|s| !s.is_empty()) else { return };
+        if self.r_base.is_none() {
+            self.r_base = Some(r.clone());
+        }
+        if self.r_now.as_deref() != Some(r.as_str()) {
+            if self.r_now.is_some() {
+                log::info!("ult: R ability changed to {r} at {game_time:.1}");
+            }
+            self.marks.push(KeyMark { game_time, action: "r_state".into(), key: r.clone(), accepted: false, reason: None });
+            self.r_now = Some(r.clone());
+        }
+        if !self.kind().kind.has_episodes() {
+            return;
+        }
+        if self.r_base.as_deref() == Some(r.as_str()) {
+            self.episodes.ended(game_time);
+        } else {
+            self.episodes.extend(game_time);
+        }
+    }
+
+    /// Death: a multi_cast ult's recasts end with it.
+    pub fn set_dead(&mut self, dead: bool) {
+        if dead && !self.dead && self.kind().kind == UltKind::MultiCast {
+            self.episodes.reset();
+        }
+        self.dead = dead;
     }
 
     /// Mouse-button presses (from the input recording, after the game) on a button bound to the
@@ -625,6 +735,59 @@ evtPlayerMoveClick=[Button 2],[Shift][Button 2]
         let reasons: Vec<Option<&str>> = marks.iter().map(|m| m.reason.as_deref().map(|r| r.split(' ').next().unwrap())).collect();
         assert_eq!(reasons, vec![Some("not_learned"), None, Some("cooldown"), None, Some("dead"), Some("chat"), None]);
         assert!(t.take_marks().is_empty());
+    }
+
+    #[test]
+    fn recasts_and_form_swaps_live() {
+        use crate::ultkind::LivePress;
+        let r = kp("R", false, false, false);
+        // Annie: Tibbers, then commands within his 45 s; after that a new ult.
+        let mut t = tracker("Annie");
+        t.update_active(Some(1), None);
+        assert_eq!(t.press_live(&r, 400.0), LivePress::Used);
+        assert_eq!(t.press_live(&r, 402.0), LivePress::Recast);
+        assert_eq!(t.press_live(&r, 430.0), LivePress::Recast);
+        assert_eq!(t.press_live(&r, 520.0), LivePress::Used);
+        // Chat and death still filter (no marker, kept as a mark).
+        t.press(&kp("Enter", false, false, false), 521.0);
+        assert_eq!(t.press_live(&r, 522.0), LivePress::None);
+        let marks = t.take_marks();
+        assert_eq!(marks.iter().filter(|m| m.reason.as_deref() == Some("recast")).count(), 2);
+        assert!(marks.iter().filter(|m| m.reason.as_deref() == Some("recast")).all(|m| m.accepted));
+        // Jayce: every press a form swap.
+        let mut t = tracker("Jayce");
+        t.update_active(Some(1), None);
+        assert_eq!(t.press_live(&r, 10.0), LivePress::FormSwap);
+        assert_eq!(t.press_live(&r, 17.0), LivePress::FormSwap);
+        // Caitlyn: unchanged (one press, one ult, cooldown filter).
+        let mut t = tracker("Caitlyn");
+        t.update_active(Some(1), None);
+        assert_eq!(t.press_live(&r, 400.0), LivePress::Used);
+        assert_eq!(t.press_live(&r, 401.0), LivePress::None);
+    }
+
+    #[test]
+    fn r_state_from_the_api_ends_or_extends_the_episode() {
+        use crate::ultkind::LivePress;
+        let r = kp("R", false, false, false);
+        let mut t = tracker("Zed");
+        t.update_active(Some(1), None);
+        t.update_r_state(Some("ZedR|Death Mark".into()), 399.0);
+        assert_eq!(t.press_live(&r, 400.0), LivePress::Used);
+        t.update_r_state(Some("ZedR2|Death Mark".into()), 400.5);
+        assert_eq!(t.press_live(&r, 402.0), LivePress::Recast);
+        // Back to the normal spell: the ult is over, the next press is a new one.
+        t.update_r_state(Some("ZedR|Death Mark".into()), 404.0);
+        assert_eq!(t.press_live(&r, 404.5), LivePress::Used);
+        let states: Vec<String> = t.take_marks().into_iter().filter(|m| m.action == "r_state").map(|m| m.key).collect();
+        assert_eq!(states, vec!["ZedR|Death Mark", "ZedR2|Death Mark", "ZedR|Death Mark"], "every change kept for the owner test analysis");
+        // Dying ends a multi-cast ult.
+        let mut t = tracker("Zed");
+        t.update_active(Some(1), None);
+        assert_eq!(t.press_live(&r, 400.0), LivePress::Used);
+        t.set_dead(true);
+        t.set_dead(false);
+        assert_eq!(t.press_live(&r, 401.0), LivePress::Used);
     }
 
     #[test]

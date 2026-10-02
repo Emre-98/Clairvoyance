@@ -1,11 +1,12 @@
 {
-  "version": 1,
+  "version": 2,
   "_doc": [
     "Champion exceptions for ult tracking. Edit freely; no code changes needed. Names are Data Dragon ids (MonkeyKing = Wukong).",
     "skip_cooldown_filter: ults with recasts, charges/ammo, transforms, resets or stolen ults, where 'pressed again before the cooldown is over' is normal. Live presses for these are never filtered for cooldown.",
     "usable_while_dead: ults that can be cast while dead.",
     "cooldown_delay: seconds from the key press until the ability bar shows the ult on cooldown (cast times, channels, recasts). Default: default_cooldown_delay.",
-    "cooldown_filter_game_modes: game modes (Live Client Data API gameMode) where the normal cooldown math applies. Modes with global haste or different rules (URF, Arena, Practice Tool with its No Cooldowns option...) aren't listed: the cooldown filter is off there and the recording decides."
+    "cooldown_filter_game_modes: game modes (Live Client Data API gameMode) where the normal cooldown math applies. Modes with global haste or different rules (URF, Arena, Practice Tool with its No Cooldowns option...) aren't listed: the cooldown filter is off there and the recording decides.",
+    "kinds (v1.6): what one ult is. command = the first R summons something, later R presses command it until it's gone; multi_cast = one ult with several activations / an early end / a second part; transform = every press is a real cast with a short cooldown (shown as 'Form swap'); charges_or_reset = every press is a real cast (ammo, charges, resets); champions not listed are normal. ends: what ends an episode (cooldown = the ult's long cooldown appears, icon = the R icon returns to its ready look, duration = the longest duration in seconds per rank, always applied). grace: seconds after the ending cooldown that still count as recasts (Sylas: the stolen ult's own recasts). ammo: casts with charges left show no cooldown on the icon. cast_delay: press -> first change on the R icon. Checked against Data Dragon 16.19.1 (cargo run -p cv-game-league --example ultscan) and the League wiki; re-run the scan each patch. A champion not listed whose R text looks like a recast is treated as multi_cast."
   ],
   "default_cooldown_delay": 1.2,
   "cooldown_filter_game_modes": [
@@ -97,5 +98,492 @@
     "Annie": 1.5,
     "Ivern": 1.5,
     "Kassadin": 1.0
+  },
+  "kinds": {
+    "Annie": {
+      "kind": "command",
+      "ends": [
+        "icon",
+        "cooldown",
+        "duration"
+      ],
+      "duration": [
+        45
+      ],
+      "note": "Summon: Tibbers: Tibbers lasts 45 s; Recast: order Tibbers (DDragon tooltip)"
+    },
+    "Ivern": {
+      "kind": "command",
+      "ends": [
+        "icon",
+        "cooldown",
+        "duration"
+      ],
+      "duration": [
+        60
+      ],
+      "note": "Daisy!: Daisy stays 60 s; Recast: instruct Daisy to attack or move (DDragon)"
+    },
+    "Shaco": {
+      "kind": "command",
+      "ends": [
+        "icon",
+        "cooldown",
+        "duration"
+      ],
+      "duration": [
+        18
+      ],
+      "note": "Hallucinate: clone up to 18 s; Recast: command the clone to move (League wiki; not in Data Dragon's text)"
+    },
+    "Yorick": {
+      "kind": "command",
+      "ends": [
+        "icon",
+        "cooldown",
+        "duration"
+      ],
+      "duration": [
+        120
+      ],
+      "note": "Eulogy of the Isles: the Maiden stays until killed; after 10 s Recast frees her down a lane (DDragon)"
+    },
+    "Viktor": {
+      "kind": "command",
+      "ends": [
+        "icon",
+        "cooldown",
+        "duration"
+      ],
+      "duration": [
+        7
+      ],
+      "note": "Arcane Storm (rework): Recast moves the storm, ~6.5 s (DDragon)"
+    },
+    "Ahri": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "duration"
+      ],
+      "duration": [
+        20
+      ],
+      "note": "Spirit Rush: Recast up to 2 more times within 10 s, extended by Essence Theft (DDragon)"
+    },
+    "Akali": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        10.5
+      ],
+      "note": "Perfect Execution: Recast (second dash) within 10 s (DDragon)"
+    },
+    "Akshan": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        3
+      ],
+      "note": "Comeuppance: channel up to 2.5 s, Recast fires (DDragon)"
+    },
+    "Aurora": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        6
+      ],
+      "note": "Between Worlds: Recast ends the zone early (DDragon)"
+    },
+    "Draven": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        8
+      ],
+      "note": "Whirling Death: Recast returns the axes early (DDragon)"
+    },
+    "Gwen": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        6.5
+      ],
+      "note": "Needlework: up to 2 recasts within 6 s (DDragon)"
+    },
+    "Heimerdinger": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        6
+      ],
+      "note": "UPGRADE!!!: Recast cancels (DDragon)"
+    },
+    "JarvanIV": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        4
+      ],
+      "note": "Cataclysm: Recast collapses the arena (DDragon)"
+    },
+    "Jhin": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        10.5
+      ],
+      "note": "Curtain Call: 4 shots during a 10 s channel (DDragon)"
+    },
+    "Kayn": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        3
+      ],
+      "note": "Umbral Trespass: Recast to burst out (2.5 s) (DDragon)"
+    },
+    "Khazix": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        10.5
+      ],
+      "note": "Void Assault: Recast once within 10 s (DDragon)"
+    },
+    "Leblanc": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        5
+      ],
+      "note": "Mimic: recast blinks back to Mimic: Distortion's own pad (League wiki). Data Dragon lists maxammo 2, the wiki has no charges (cooldown 45/35/25): kept multi_cast"
+    },
+    "Lucian": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        3.5
+      ],
+      "note": "The Culling: 3 s or until Recast (DDragon)"
+    },
+    "MonkeyKing": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        8.5
+      ],
+      "note": "Cyclone: second cast within 8 s (DDragon)"
+    },
+    "Naafiri": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        12
+      ],
+      "note": "Hounds' Pursuit: recast once after a takedown (DDragon)"
+    },
+    "Nocturne": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        6.5
+      ],
+      "note": "Paranoia: Recast during the 6 s to launch (DDragon)"
+    },
+    "Nunu": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        3.5
+      ],
+      "note": "Absolute Zero: 3 s channel, Recast ends early (DDragon)"
+    },
+    "Ornn": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        5
+      ],
+      "note": "Call of the Forge God: Recast to headbutt the elemental (DDragon)"
+    },
+    "Quinn": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        120
+      ],
+      "note": "Behind Enemy Lines: Recast (Skystrike) ends Valor form, which lasts until then (DDragon)"
+    },
+    "Riven": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        15.5
+      ],
+      "note": "Blade of the Exile: 15 s, Recast fires Wind Slash (DDragon)"
+    },
+    "Sion": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        8.5
+      ],
+      "note": "Unstoppable Onslaught: 8 s charge, Recast stops (DDragon)"
+    },
+    "Swain": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        60
+      ],
+      "note": "Demonic Ascension: Demonflare is cast with R during the form, which lasts while draining (DDragon)"
+    },
+    "TahmKench": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        6
+      ],
+      "note": "Devour: Recast to spit out (DDragon)"
+    },
+    "Taliyah": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        6
+      ],
+      "note": "Weaver's Wall: Recast to ride the wall (DDragon)"
+    },
+    "TwistedFate": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        6.5
+      ],
+      "note": "Destiny: Recast teleports (6 s) (DDragon)"
+    },
+    "Urgot": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        5
+      ],
+      "note": "Fear Beyond Death: Recast drags the impaled target (DDragon)"
+    },
+    "Velkoz": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        3
+      ],
+      "note": "Life Form Disintegration Ray: 2.6 s, Recast after 1 s ends it (League wiki; not in Data Dragon's text)"
+    },
+    "Vex": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        4.5
+      ],
+      "note": "Shadow Surge: Recast dashes to the mark (4 s); a takedown resets the cooldown (DDragon)"
+    },
+    "Xerath": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        10.5
+      ],
+      "note": "Rite of the Arcane: Recast fires the shots during 10 s (DDragon)"
+    },
+    "Zed": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "icon",
+        "duration"
+      ],
+      "duration": [
+        7.5
+      ],
+      "note": "Death Mark: Recast swaps with the shadow (DDragon)"
+    },
+    "Sylas": {
+      "kind": "multi_cast",
+      "ends": [
+        "cooldown",
+        "duration"
+      ],
+      "duration": [
+        95
+      ],
+      "grace": 20,
+      "note": "Hijack: the stolen ult is held up to 90 s (League wiki) and can itself be multi-cast; its recasts after Hijack's cooldown appears still belong to it"
+    },
+    "Jayce": {
+      "kind": "transform",
+      "note": "Transform: Mercury Cannon / Hammer, 6 s cooldown (DDragon)"
+    },
+    "Nidalee": {
+      "kind": "transform",
+      "note": "Aspect of the Cougar: form swap, 3 s cooldown (DDragon)"
+    },
+    "Elise": {
+      "kind": "transform",
+      "note": "Spider Form: form swap, 3 s cooldown (DDragon)"
+    },
+    "Udyr": {
+      "kind": "transform",
+      "note": "Wingborne Storm: stance (6 s shared cooldown) and its Awaken recast (DDragon)"
+    },
+    "Kassadin": {
+      "kind": "charges_or_reset",
+      "note": "Riftwalk: 5/3.5/2 s cooldown, stacking cost (DDragon)"
+    },
+    "KogMaw": {
+      "kind": "charges_or_reset",
+      "note": "Living Artillery: 2/1.5/1 s cooldown, stacking cost (DDragon)"
+    },
+    "Corki": {
+      "kind": "charges_or_reset",
+      "ammo": true,
+      "note": "Missile Barrage: 4 charges (maxammo) (DDragon)"
+    },
+    "Teemo": {
+      "kind": "charges_or_reset",
+      "ammo": true,
+      "note": "Noxious Trap: 3 charges (maxammo) (DDragon)"
+    },
+    "Pyke": {
+      "kind": "charges_or_reset",
+      "note": "Death From Below: free recast within 20 s after a kill: a new execution (DDragon)"
+    },
+    "Darius": {
+      "kind": "charges_or_reset",
+      "note": "Noxian Guillotine: recast after a kill; at rank 3 kills refresh it (DDragon)"
+    },
+    "Belveth": {
+      "kind": "charges_or_reset",
+      "note": "Endless Banquet: 1 s cooldown, each cast eats a Void Coral (DDragon)"
+    },
+    "Shyvana": {
+      "kind": "normal",
+      "note": "Dragon's Descent (patch 16.19): one cast per transformation, Fury-gated, no recast (DDragon cooldown 0)"
+    },
+    "Gnar": {
+      "kind": "normal",
+      "note": "GNAR!: only in Mega form, no recast (DDragon)"
+    }
   }
 }

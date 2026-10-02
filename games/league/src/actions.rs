@@ -8,7 +8,8 @@
 //! gives no bubble. The bubble shows the action ("Q", "4", a ward), never the physical key; a
 //! small hint shows the key when it isn't League's default for that action.
 //!
-//! Ult tie-in ([`press_states`]): R presses take the result of the post-game ult check (v1.3):
+//! Ult tie-in ([`press_states`]): R presses take the result of the post-game ult check (v1.3;
+//! v1.6: recasts of the same ult are smaller outlined bubbles):
 //! "Ult used" → solid, "Ult pressed, no cast" → faded (hidden with "Unconfirmed presses").
 
 use crate::ult::{self, key_name};
@@ -244,14 +245,20 @@ pub fn press_states(s: &GameSession, actions: &[ActionKey], presses: &mut [Actio
     }
     let verified = s.verification.as_ref().is_some_and(|v| v.status == "verified");
     let no_cast: Vec<f64> = s.events.iter().filter(|e| e.kind == EventKind::UltUnconfirmed).map(|e| e.game_time).collect();
+    // v1.6: later presses of the same ult (recast / command) are small outlined bubbles.
+    let recast: Vec<f64> = s.events.iter().filter(|e| e.kind == EventKind::UltRecast).map(|e| e.game_time).collect();
     let offset = s.video_offset;
     let state_of = |m: &KeyMark| -> PressState {
         if verified {
             if no_cast.iter().any(|&g| (g - m.game_time).abs() < 0.005) {
                 PressState::Unconfirmed
+            } else if recast.iter().any(|&g| (g - m.game_time).abs() < 0.005) {
+                PressState::Recast
             } else {
                 PressState::Confirmed
             }
+        } else if m.accepted && m.reason.as_deref() == Some("recast") {
+            PressState::Recast
         } else if m.accepted {
             PressState::Normal
         } else {

@@ -100,6 +100,8 @@ pub enum PressState {
     /// Pressed, but the recording shows no cast (faded/outlined; hidden with the timeline's
     /// "Unconfirmed presses" filter).
     Unconfirmed,
+    /// A later press of the same ult (a recast / command): a smaller, outlined bubble.
+    Recast,
 }
 
 /// One press of an action key during the game.
@@ -318,7 +320,7 @@ pub struct PressArrays {
     pub x: Vec<f32>,
     pub y: Vec<f32>,
     pub action: Vec<u16>,
-    /// 0 normal, 1 confirmed, 2 unconfirmed.
+    /// 0 normal, 1 confirmed, 2 unconfirmed, 3 recast.
     pub state: Vec<u8>,
     /// Index into `hints` + 1 (0 = no hint).
     pub hint: Vec<u16>,
@@ -337,6 +339,7 @@ pub fn to_arrays(p: &[ActionPress]) -> PressArrays {
             PressState::Normal => 0,
             PressState::Confirmed => 1,
             PressState::Unconfirmed => 2,
+            PressState::Recast => 3,
         });
         a.hint.push(match &q.hint {
             None => 0,

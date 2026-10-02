@@ -39,7 +39,10 @@ games, clips and downloaded tools over; the Home page then offers to uninstall t
   The window stays available, so you can alt-tab to it in the loading screen; the tray icon
   turns red. Closing the window hides it to the tray (paused, reopens instantly).
 - In game: **F8** saves the last 30 seconds as a clip, **F9** adds a marker. Change them in
-  Settings > Hotkeys. Your ult key (default R) is logged as "Ult pressed".
+  Settings > Hotkeys. Your ult key (default R) is logged as "Ult pressed"; after the game the
+  recording confirms each cast ("Ult used"). One ult gives one marker: commanding Tibbers,
+  Ahri's extra dashes, Jhin's shots and other recasts of the same ult are "Ult recast", Jayce /
+  Nidalee / Elise / Udyr swaps are "Form swap" (both under their own hidden filter chips).
 - Afterwards open the game from **Games**: click any marker (or event in the list) to jump
   to 5 seconds before it; **N / P** = next / previous event, **Space** play/pause,
   **← / →** ±5 s, **, / .** one frame back / forward (Shift: 10 frames; hold to repeat; the

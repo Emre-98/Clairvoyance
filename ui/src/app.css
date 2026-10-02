@@ -58,6 +58,8 @@
   --ev-death: light-dark(#e0294a, #ff4d6d);
   --ev-assist: light-dark(#2f7fe0, #4da3ff);
   --ev-ult: light-dark(#8b4dea, #b36bff);
+  --ev-recast: light-dark(#a983e8, #8f74c4);
+  --ev-form: light-dark(#0e8fa8, #4fd1e8);
   --ev-structure: light-dark(#dc6f09, #ff9f43);
   --ev-epic: light-dark(#b8860b, #f5c542);
   --ev-marker: light-dark(#5b6275, #d5d9e6);

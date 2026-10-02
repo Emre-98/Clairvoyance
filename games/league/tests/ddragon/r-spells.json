@@ -1,0 +1,1913 @@
+{
+"version": "16.19.1",
+"source": "Data Dragon championFull.json (en_US), R spells only; made by `cargo run -p cv-game-league --example ultscan -- --save`",
+"champions": {
+"Aatrox": {
+"name": "World Ender",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "Aatrox unleashes his demonic form, fearing nearby enemy minions and gaining attack damage, increased healing, and Move Speed. If he gets a takedown, this effect is extended.",
+"tooltip": "Aatrox reveals his true demonic form, <status>Fearing</status> nearby minions for {{ rminionfearduration }} seconds and gaining <speed>{{ rmovementspeedbonus*100 }}% Move Speed</speed> decaying over {{ rduration }} seconds. He also gains <scaleAD>{{ rtotaladamp*100 }}% Attack Damage</scaleAD> and increases <healing>self-healing by {{ rhealingamp*100 }}%</healing> for the duration.<br /><br />Champion takedowns extend the duration of this effect by {{ rextension }} seconds and refresh the <speed>Move Speed</speed> effect.{{ spellmodifierdescriptionappend }}"
+},
+"Ahri": {
+"name": "Spirit Rush",
+"cooldown": [
+140,
+120,
+100
+],
+"maxammo": "-1",
+"description": "Ahri dashes forward and fires essence bolts, damaging nearby enemies. Spirit Rush can be cast up to three times before going on cooldown, and gains additional recasts when taking down enemy champions.",
+"tooltip": "Ahri nimbly dashes, firing {{ rmaxtargetspercast }} essence bolts at nearby enemies, prioritizing champions. These bolts deal <magicDamage>{{ rcalculateddamage }} magic damage</magicDamage> each. <spellName>Spirit Rush</spellName> can be <recast>Recast</recast> up to 2 more times within {{ rrecastwindow }} seconds.<br /><br />Consuming a champion's Essence with <spellName>Essence Theft</spellName> during this period extends the recast window by up to {{ pdurationextension }} seconds and grants an additional recast of <spellName>Spirit Rush</spellName> (up to {{ rmaxcasts }} stored).{{ spellmodifierdescriptionappend }}"
+},
+"Akali": {
+"name": "Perfect Execution",
+"cooldown": [
+120,
+90,
+60
+],
+"maxammo": "-1",
+"description": "Akali leaps in a direction, damaging enemies she strikes. Re-cast: Akali dashes in a direction, executing all enemies she strikes.",
+"tooltip": "Akali vaults over an enemy champion, dealing <magicDamage>{{ cast1damage }} magic damage</magicDamage> to all enemies in her path. <br /><br />Akali can <recast>Recast</recast> after {{ cooldownbetweencasts }} seconds to execute a piercing thrust, dashing and dealing <magicDamage>{{ cast2damagemin }}</magicDamage> to <magicDamage>{{ cast2damagemax }} magic damage</magicDamage> based on missing Health.{{ spellmodifierdescriptionappend }}"
+},
+"Akshan": {
+"name": "Comeuppance",
+"cooldown": [
+100,
+85,
+70
+],
+"maxammo": "-1",
+"description": "Akshan locks onto an enemy champion and starts storing bullets. When released, he fires all stored bullets, dealing damage based on missing health to the first champion, minion, or structure hit.",
+"tooltip": "Akshan locks onto a champion and begins overcharging his gun for up to {{ channelduration }} seconds, storing up to {{ numberofbullets }} bullets.<br /><br /><recast>Recast:</recast> Akshan unleashes the stored bullets, each dealing at least <physicalDamage>{{ damageperbulletwithcrit }} physical damage</physicalDamage> to the first enemy or structure hit, increased up to <physicalDamage>{{ maxdamageperbullet }} physical damage</physicalDamage> based on missing Health.{{ spellmodifierdescriptionappend }}"
+},
+"Alistar": {
+"name": "Unbreakable Will",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "Alistar lets out a wild roar, removing all crowd control effects on himself, and reducing incoming physical and magical damage for the duration.",
+"tooltip": "Alistar immediately cleanses all <status>Disabling</status> effects and takes {{ rdamagereduction }}% reduced damage for {{ rduration }} seconds.{{ spellmodifierdescriptionappend }}"
+},
+"Ambessa": {
+"name": "Public Execution",
+"cooldown": [
+130,
+115,
+100
+],
+"maxammo": "-1",
+"description": "Ambessa blinks to the farthest enemy champion in a line of her choosing and suppresses them upon her arrival. She then slams the enemy into the ground where they take damage and are stunned.",
+"tooltip": "<spellPassive>Passive</spellPassive>: Ambessa gains <armorPen>{{ armor_penetration*100 }}% %i:scaleAPen% Armor Penetration</armorPen> and her Abilities <healing>heal her for {{ calc_omnivamp }} of the damage she dealt</healing>.<br /><br /><spellActive>Active</spellActive>: Ambessa becomes <attention>Unstoppable</attention> and blinks to the farthest enemy champion in a line, <status>Suppressing</status> the target for {{ suppress_duration }} seconds and then slamming them into the ground, dealing <physicalDamage>{{ calc_damage }} physical damage</physicalDamage> and <status>Stunning</status> them for {{ stun_duration }} seconds.{{ spellmodifierdescriptionappend }}"
+},
+"Amumu": {
+"name": "Curse of the Sad Mummy",
+"cooldown": [
+150,
+125,
+100
+],
+"maxammo": "-1",
+"description": "Amumu entangles surrounding enemy units in bandages, applying his <keywordMajor>Curse</keywordMajor>, damaging and stunning them.",
+"tooltip": "Amumu flares out his bandages, <status>Stunning</status> for {{ rduration }} seconds, dealing <magicDamage>{{ rcalculateddamage }} magic damage</magicDamage> and applying <keywordMajor>Curse</keywordMajor>.{{ spellmodifierdescriptionappend }}"
+},
+"Anivia": {
+"name": "Glacial Storm",
+"cooldown": [
+4,
+3,
+2
+],
+"maxammo": "-1",
+"description": "Anivia summons a driving rain of ice and hail to damage her enemies and slow their advance.",
+"tooltip": "<toggle>Toggle:</toggle> Anivia calls forth a driving rain of ice and hail that <status>Slows</status> enemies by {{ slowamount }}% and deals <magicDamage>{{ totaldamagepersecond }} magic damage per second</magicDamage>. The storm increases in size over {{ growthtime }} seconds.<br /><br />When the storm is fully formed, it <keywordMajor>Chills</keywordMajor>, <status>Slows</status> by {{ slowpercentempoweredtt }}%, and does <magicDamage>{{ empowereddamagepersecondtooltiponly }} magic damage per second</magicDamage> instead.{{ spellmodifierdescriptionappend }}"
+},
+"Annie": {
+"name": "Summon: Tibbers",
+"cooldown": [
+130,
+115,
+100
+],
+"maxammo": "-1",
+"description": "Annie wills her bear Tibbers to life, dealing damage to units in the area. Tibbers can attack and also burns enemies that stand near him.",
+"tooltip": "<spellPassive>Passive:</spellPassive> Annie gains <magicPen>{{ rpercentpenbuff*100 }}% Magic Penetration</magicPen>.<br /><br />Annie summons her bear Tibbers, dealing <magicDamage>{{ initialburstdamage }} magic damage</magicDamage>. For the next {{ tibberslifetime }} seconds, Tibbers burns nearby enemies for <magicDamage>{{ tibbersauradamage }} magic damage per second</magicDamage>.<br /><br />Tibbers becomes enraged when summoned, if Annie stuns an enemy champion, and if Annie dies. When enraged, Tibbers gains <attackSpeed>275% Attack Speed</attackSpeed> and <speed>100% Move Speed</speed> decaying over 3 seconds.<br /><br /><recast>Recast:</recast> Manually issue orders to Tibbers.{{ spellmodifierdescriptionappend }}"
+},
+"Aphelios": {
+"name": "Moonlight Vigil",
+"cooldown": [
+120,
+110,
+100
+],
+"maxammo": "-1",
+"description": "Fire a concentrated blast of moonlight that explodes on enemy champions. Applies the unique effect of Aphelios' main-hand gun.",
+"tooltip": "Aphelios fires a concentrated blast of moonlight that explodes when it hits a champion, dealing <physicalDamage>{{ maxdamage }} physical damage</physicalDamage> to surrounding enemies.<br /><br />Then, Aphelios attacks all champions hit with his main-hand weapon. {{ Spell_ApheliosR_WeaponMod_{{ f1 }} }}{{ spellmodifierdescriptionappend }}"
+},
+"Ashe": {
+"name": "Enchanted Crystal Arrow",
+"cooldown": [
+100,
+80,
+60
+],
+"maxammo": "-1",
+"description": "Ashe fires a missile of ice in a straight line. If the arrow collides with an enemy Champion, it deals damage and stuns the Champion, stunning for longer the farther arrow has traveled. In addition, surrounding enemy units take damage and are slowed.",
+"tooltip": "Ashe launches a crystal arrow of ice that <status>Stuns</status> the first champion hit and deals <magicDamage>{{ rmaindamage }} magic damage</magicDamage>. The <status>Stun</status> duration increases with distance travelled, up to {{ maxstunduration }} seconds. Surrounding enemies are <status>Slowed</status> by <spellName>Frost Shot</spellName>.{{ spellmodifierdescriptionappend }}"
+},
+"AurelionSol": {
+"name": "Falling Star / The Skies Descend",
+"cooldown": [
+120,
+110,
+100
+],
+"maxammo": "-1",
+"description": "Falling Star: Aurelion Sol crashes a star into the earth. This impact deals magic damage and stuns enemies while also granting Stardust for each enemy champion it hits. Gathering enough Stardust transforms Aurelion Sol's next Falling Star into The Skies Descend.<br><br>The Skies Descend: Aurelion Sol drags a giant star down from the heavens with an increased impact zone and increased damage, knocking up enemies rather than stunning them. A shockwave then spreads from the edge of the impact zone, which damages and slows the enemies it hits. Stardust increases the impact area of both Falling Star and The Skies Descend.",
+"tooltip": "Aurelion Sol plucks a star from the heavens and crashes it into the earth, dealing <magicDamage>{{ maxdamagetooltip }} magic damage</magicDamage>, <status>Stunning</status> enemies {{ stunduration }} second, and absorbing <span class=\"color3458eb\">{{ massstolen }} Stardust</span> for each champion hit.<br /><br />Gathering <span class=\"color3458eb\">{{ calamitystacks }} Stardust</span> transforms the next <spellName>Falling Star</spellName> into <spellName>The Skies Descend</spellName>.<br /><br /><spellName>The Skies Descend</spellName>: Aurelion Sol drags a constellation's worth of fury down from the cosmos, dealing <magicDamage>{{ r2damage }} magic damage</magicDamage> in a larger area, <status>Knocking Up</status> enemies hit for {{ stunduration }} second, and unleashing a massive shockwave that deals <magicDamage>{{ shockwavedamage }} magic damage</magicDamage> to champions and Epic Monsters and <status>Slows</status> all enemies hit by {{ shockwaveslow*100 }}% for 1 second.{{ spellmodifierdescriptionappend }}"
+},
+"Aurora": {
+"name": "Between Worlds",
+"cooldown": [
+140,
+120,
+100
+],
+"maxammo": "-1",
+"description": "Aurora leaps in a direction of her choosing, releasing a shockwave that damages and slows any enemies it hits. Afterward, she creates an area that slows enemies within it and allows Aurora to teleport from one side of the area to the other.",
+"tooltip": "Leap in a direction. Upon landing, Aurora converges the realms, sending out a pulse of spirit energy that deals <magicDamage>{{ damagecalc }} magic damage</magicDamage> and <status>Slows</status> enemies hit by {{ slowpercent*-100 }}% for 2 seconds.<br /><br />The area of convergence stays active for {{ areaduration }} seconds, granting Aurora <keywordMajor>Realm Hopper</keywordMajor> for {{ rbuffduration }} seconds, allowing her to jump from one edge of the area to another.<br /><br />Enemies attempting to enter or leave the area are <status>Slowed</status> by {{ exitslowpercent*-100 }}% for {{ stunduration }} seconds.<br /><br />Aurora can <recast>Recast</recast> this Ability to end the effect early.{{ spellmodifierdescriptionappend }}"
+},
+"Azir": {
+"name": "Emperor's Divide",
+"cooldown": [
+120,
+105,
+90
+],
+"maxammo": "-1",
+"description": "Azir summons a wall of soldiers which charge forward, knocking back and damaging enemies.",
+"tooltip": "Azir summons a wall of armored soldiers that charges forward, <status>Knocking Back</status> enemies and dealing <magicDamage>{{ totaldamage }} magic damage</magicDamage>. The soldiers remain, blocking enemy paths for {{ wallduration }} seconds.{{ spellmodifierdescriptionappend }}"
+},
+"Bard": {
+"name": "Tempered Fate",
+"cooldown": [
+110,
+95,
+80
+],
+"maxammo": "-1",
+"description": "Bard sends spirit energy arcing to a location, putting all champions, minions, monsters, and turrets hit into stasis for a brief time.",
+"tooltip": "Bard hurls magical protective energy to an area, placing all units and structures hit into Stasis for {{ rstasisduration }} seconds.{{ spellmodifierdescriptionappend }}"
+},
+"Belveth": {
+"name": "Endless Banquet",
+"cooldown": [
+1,
+1,
+1
+],
+"maxammo": "-1",
+"description": "Bel'Veth consumes Void coral remnants, transforming into her true form and increasing her max health, attack range, and attack speed. Consuming the Void coral remnants of a Void epic monster will grant her the power to summon Void remora.",
+"tooltip": "<spellPassive>Passive:</spellPassive> Attacks deal an additional <trueDamage>{{ finalonhitdamage }} true damage</trueDamage>, stacking infinitely. Takedowns against champions and epic monsters leave behind a piece of Void Coral.<br /><br /><spellActive>Active:</spellActive> Bel'Veth consumes a Void Coral, gaining <keywordMajor>{{ passivestacksondevour }} Lavender</keywordMajor> stack and activating her true form. Void Coral from void epic monsters causes minions that die nearby to become Void Remora. While casting, Bel'Veth <status>Slows</status> nearby enemies before exploding, dealing <trueDamage>{{ totalexplosiondamage }} + {{ missinghealthdamage*100 }}% missing-Health true damage</trueDamage>.<br /><br />In her true form, Bel'Veth gains <healing>{{ maxhealthondevour }} max Health</healing>, {{ bonusaarange }} Attack range, <attackSpeed>{{ totalasmod*100 }}% Total Attack Speed</attackSpeed>, and <spellName>Void Surge</spellName> can pass through walls.<br /><br /><rules>True form lasts {{ steroidduration }} seconds, increased to {{ steroiddurationupgrade }} seconds at <keywordMajor>{{ stackthresholdforupgrade }} Lavender</keywordMajor> stacks. At <keywordMajor>{{ stackthresholdforpermanent }} Lavender</keywordMajor> stacks, true form lasts until death.</rules><br /><br /><br />{{ spellmodifierdescriptionappend }}"
+},
+"Blitzcrank": {
+"name": "Static Field",
+"cooldown": [
+60,
+40,
+20
+],
+"maxammo": "-1",
+"description": "Enemies attacked by Blitzcrank are marked and take lightning damage after 1 second. Additionally, Blitzcrank can activate this ability to remove nearby enemies' shields, damage them, and silence them briefly.",
+"tooltip": "<spellPassive>Passive: </spellPassive>While this ability is available, lightning charges Blitzcrank's fists, marking those  Attacked. After 1 second, they are shocked for <magicDamage>{{ passivedamage }} magic damage</magicDamage>.<br /><br /><spellActive>Active: </spellActive>Blitzcrank overcharges, dealing <magicDamage>{{ activedamage }} magic damage</magicDamage> and <status>Silencing</status> nearby enemies for {{ silenceduration }} seconds. Their shields are also destroyed.{{ spellmodifierdescriptionappend }}"
+},
+"Brand": {
+"name": "Pyroclasm",
+"cooldown": [
+100,
+90,
+80
+],
+"maxammo": "-1",
+"description": "Brand unleashes a devastating torrent of fire that bounces up to 5 times off of Brand and nearby enemies, dealing magic damage to enemies each time bounce. Bounces prioritize stacking Blaze to max on Champions. If a target is ablaze, Pyroclasm will briefly slow them.",
+"tooltip": "Brand unleashes a devastating torrent of fire that can bounce to Brand or another enemy up to 5 times, dealing <magicDamage>{{ totaldamage }} magic damage</magicDamage> to enemies each bounce. Bounces prioritize stacking <keywordMajor>Blaze</keywordMajor> to max on champions.<br /><br />If the target is <keywordMajor>Ablaze</keywordMajor>, they are briefly <status>Slowed</status> by {{ slowamount }}%.{{ spellmodifierdescriptionappend }}"
+},
+"Braum": {
+"name": "Glacial Fissure",
+"cooldown": [
+130,
+115,
+100
+],
+"maxammo": "-1",
+"description": "Braum slams the ground, knocking up enemies nearby and in a line in front of him. A fissure is left along the line that slows enemies.",
+"tooltip": "Braum slams the ground sending forth a fissure that <status>Knocks Up</status> enemies in its path and nearby Braum, and deals <magicDamage>{{ totaldamage }} magic damage</magicDamage>. The first target hit is <status>Knocked Up</status> for between {{ minknockup }} and {{ maxknockup }} seconds, increasing with distance from Braum. All others hit are <status>Knocked Up</status> for {{ minknockup }} seconds.<br /><br />The fissure also creates a zone for {{ slowzoneduration }} seconds, that <status>Slows</status> by {{ movespeedmod }}%.<br />{{ spellmodifierdescriptionappend }}"
+},
+"Briar": {
+"name": "Certain Death",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "Briar kicks her pillory's hemolith gemstone, marking the first champion it hits as her prey. She then beelines straight to them, fearing other surrounding enemies upon arriving at her target, and enters a state of complete hemomania. She will pursue her prey until death, gaining the benefits of Blood Frenzy as well as additional Armor, Magic Resistance, Life Steal, and Move Speed.",
+"tooltip": "Briar kicks her pillory's hemolith gemstone and flies to the location of the first champion it hits, marking them as her prey. On landing, she deals <magicDamage>{{ damage }} magic damage</magicDamage> to everything nearby and causes enemies who are not her prey to <status>Flee</status> for {{ fearduration }} seconds. She then enters an empowered <keywordMajor>Blood Frenzy</keywordMajor> and will pursue her prey until death. During this time, she gains {{ totalresists }} <scaleArmor>Armor</scaleArmor> and <scaleMR>Magic Resist</scaleMR>, {{ lifestealpercent*100 }}% Lifesteal, and an additional <speed>{{ extramovespeedpercent*100 }}% Move Speed</speed>.{{ spellmodifierdescriptionappend }}"
+},
+"Caitlyn": {
+"name": "Ace in the Hole",
+"cooldown": [
+90,
+90,
+90
+],
+"maxammo": "-1",
+"description": "Caitlyn takes time to line up the perfect shot, dealing massive damage to a single target at a huge range. Enemy champions can intercept the bullet for their ally.",
+"tooltip": "Caitlyn takes a moment to channel and line up the perfect shot, then she fires, dealing <physicalDamage>{{ rtotaldamage }} physical damage</physicalDamage>, but other enemy champions can intercept it. This Ability grants <keywordStealth>True Sight</keywordStealth> of the target during the channel.<br /><br /><rules>Damage scales with Caitlyn's Critical Strike chance and Critical Strike Damage.</rules>{{ spellmodifierdescriptionappend }}"
+},
+"Camille": {
+"name": "The Hextech Ultimatum",
+"cooldown": [
+140,
+115,
+90
+],
+"maxammo": "-1",
+"description": "Camille dashes to target champion, anchoring them to the area. She also deals bonus magic damage to the target with her basic attacks.",
+"tooltip": "Camille briefly becomes Untargetable and leaps onto an enemy champion, interrupting channels and locking them into an area they cannot escape by any means for {{ rduration }} seconds. Other nearby enemies are <status>Knocked Away</status>. Her Attacks against the trapped enemy deal an additional <magicDamage>{{ rpercentcurrenthpdamage }}% current Health magic damage</magicDamage>.{{ spellmodifierdescriptionappend }}"
+},
+"Cassiopeia": {
+"name": "Petrifying Gaze",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "Cassiopeia releases a swirl of magical energy from her eyes, stunning any enemies in front of her that are facing her and slowing any others with their back turned.",
+"tooltip": "Cassiopeia unleashes a petrifying gaze, dealing <magicDamage>{{ rdamage }} magic damage</magicDamage> and <status>Stunning</status> enemies facing her for {{ rccduration }} seconds. Enemies facing away are <status>Slowed</status> by {{ rslowpercent }}% decaying over the same duration instead.{{ spellmodifierdescriptionappend }}"
+},
+"Chogath": {
+"name": "Feast",
+"cooldown": [
+80,
+70,
+60
+],
+"maxammo": "-1",
+"description": "Devours an enemy unit, dealing a high amount of true damage. If the target is killed, Cho'Gath grows, gaining maximum Health.",
+"tooltip": "Cho'Gath ravenously feeds on an enemy, dealing <trueDamage>{{ rdamage }} true damage</trueDamage> to champions or <trueDamage>{{ rmonsterdamage }}</trueDamage> to minions or jungle monsters. If this kills the target, Cho'Gath gains a stack, which causes him to grow in size and gain <healing>{{ rhealthperstack }} max Health</healing>. Only {{ rminionmaxstacks }} stacks can be gained from minions and non-epic jungle monsters. {{ spellmodifierdescriptionappend }}"
+},
+"Corki": {
+"name": "Missile Barrage",
+"cooldown": [
+2,
+2,
+2
+],
+"maxammo": "4",
+"description": "Corki fires a missile toward his target location that explodes on impact, dealing damage to enemies in an area. Corki stores missiles over time, up to a maximum. Every 3rd missile fired will be a Big One, dealing extra damage.",
+"tooltip": "Corki fires a missile that explodes on the first enemy hit, dealing <physicalDamage>{{ rsmallmissiledamage }} physical damage</physicalDamage> to surrounding enemies. Every third missile instead deals <physicalDamage>{{ rbigmissiledamage }} physical damage</physicalDamage>.<br /><br />This Ability has up to {{ maxammotooltip }} charges. Basic attacks against champions reduce the time between charges by <attention>{{ attackrefund }}</attention> seconds on hit.{{ spellmodifierdescriptionappend }}"
+},
+"Darius": {
+"name": "Noxian Guillotine",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "Darius leaps to an enemy champion and strikes a lethal blow, dealing true damage. This damage is increased for each stack of Hemorrhage on the target. If Noxian Guillotine is a killing blow, its cooldown is refreshed for a brief duration.",
+"tooltip": "Darius leaps to an enemy and strikes a lethal blow, dealing <trueDamage>{{ damage }} true damage</trueDamage>. For each <keywordMajor>Hemorrhage</keywordMajor> on the target, this Ability deals an additional {{ rdamagepercentperhemostack*100 }}% damage, up to a max of <trueDamage>{{ maximumdamage }} damage</trueDamage>.<br /><br />If this kills the target, Darius may <recast>Recast</recast> this Ability once within {{ rrecastduration }} seconds. At rank 3, this Ability has no Mana cost and kills refresh the Cooldown completely.{{ spellmodifierdescriptionappend }}"
+},
+"Diana": {
+"name": "Moonfall",
+"cooldown": [
+100,
+90,
+80
+],
+"maxammo": "-1",
+"description": "Diana reveals and draws in all nearby enemies and slows them.<br><br>If Diana pulls in one or more enemy champions, the moonlight crashes down onto her after a short delay, dealing magic damage in an area around her, increased for each target beyond the first pulled.",
+"tooltip": "Diana <status>Pulls In</status>, <status>Slows</status> by {{ slowtooltip }}%, and reveals nearby enemies for {{ slowduration }} seconds.<br /><br />If Diana hits at least one enemy champion, she calls to the moon, dealing <magicDamage>{{ rexplosiondamage }} magic damage</magicDamage> plus <magicDamage>{{ rmultihitamplification }}</magicDamage> for each champion pulled beyond the first, up to a max of an additional <magicDamage>{{ maxdamage }} damage</magicDamage>.{{ spellmodifierdescriptionappend }}"
+},
+"DrMundo": {
+"name": "Maximum Dosage",
+"cooldown": [
+120,
+120,
+120
+],
+"maxammo": "-1",
+"description": "Dr. Mundo pumps himself with chemicals, instantly healing a percent of his missing Health. He then gains Move Speed and regenerates a portion of his maximum Health over a long duration.",
+"tooltip": "Dr. Mundo pumps himself with chemicals, gaining <healing>{{ missinghealthheal*100 }}% of his missing Health as max Health</healing>, <speed>{{ speedboostamount*100 }}% Move Speed</speed>, and regenerating <healing>{{ maxhealthhot*100 }}% max Health</healing> over {{ duration }} seconds.<br /><br />At Rank 3, both healing effects are increased by an additional {{ bonuspernearbychampion*100 }}% per nearby enemy champion.{{ spellmodifierdescriptionappend }}"
+},
+"Draven": {
+"name": "Whirling Death",
+"cooldown": [
+100,
+90,
+80
+],
+"maxammo": "-1",
+"description": "Draven hurls two massive axes to deal physical damage to each unit struck. Whirling Death slowly reverses direction and returns to Draven after striking an enemy champion. Draven may also activate this ability while the axes are in flight to cause it to return early. Deals less damage for each unit hit and resets when the axes reverse direction. Executes enemies who have less health than Draven's number of Adoration stacks.",
+"tooltip": "Draven hurls two massive axes that deal <physicalDamage>{{ rcalculateddamage }} physical damage</physicalDamage>. Upon hitting a champion or <recast>Recasting</recast>, they reverse direction and return to Draven. The axes deal {{ rdamagereductionperhit*100 }}% less damage for each enemy hit, down to a minimum of {{ rmindamagepercent }}%.<br /><br />If <keywordMajor>Whirling Death</keywordMajor> would leave an enemy champion with less health than {{ rpassivestackscoefficient*100 }}% of Draven's current <keywordMajor>League of Draven</keywordMajor> stacks ({{ rpassivetruedamage }}), he will execute them.{{ spellmodifierdescriptionappend }}"
+},
+"Ekko": {
+"name": "Chronobreak",
+"cooldown": [
+110,
+80,
+50
+],
+"maxammo": "-1",
+"description": "Ekko shatters his timeline, becoming untargetable and rewinding to a more favorable point in time. He returns to whenever he was a few seconds ago, and heals for a percentage of the damage received in that duration. Enemies near his arrival zone take massive damage.",
+"tooltip": "Ekko turns back time, entering Stasis while teleporting to where he was 4 seconds ago and dealing <magicDamage>{{ totaldamage }} magic damage</magicDamage> to nearby enemies. In addition, Ekko restores <healing>{{ totalbaseheal }} Health</healing>, increased by {{ percenthealampperpercentmissinghealth }}% for each 1% Health he lost in last 4 seconds.{{ spellmodifierdescriptionappend }}"
+},
+"Elise": {
+"name": "Spider Form",
+"cooldown": [
+3,
+3,
+3,
+3
+],
+"maxammo": "-1",
+"description": "Transforms into a menacing spider, reducing her attack range in exchange for Move Speed, new abilities, and a Spiderling swarm that will attack her foes.",
+"tooltip": "<keywordMajor>Human Form</keywordMajor>: Elise transforms into a menacing spider, becoming melee, gaining access to <keywordMajor>Spider Form</keywordMajor> Abilities and summons all dormant <keywordMajor>Spiderlings</keywordMajor>.{{ spellmodifierdescriptionappend }}"
+},
+"Evelynn": {
+"name": "Last Caress",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "Evelynn briefly goes untargetable and decimates the area in front of her before warping backwards a long distance.",
+"tooltip": "Evelynn unleashes her demonic energy, dealing heavy damage, becoming Untargetable and teleporting backwards. She deals <magicDamage>{{ damage }} magic damage</magicDamage>, increased to <magicDamage>{{ critdamage }}</magicDamage> against enemies below <healing>30% Health</healing>. Upon cast, set Demon Shade to a 1.25 second cooldown.{{ spellmodifierdescriptionappend }}"
+},
+"Ezreal": {
+"name": "Trueshot Barrage",
+"cooldown": [
+120,
+105,
+90
+],
+"maxammo": "-1",
+"description": "Ezreal winds up before firing a powerful barrage of energy that deals massive damage to each unit it passes through (damage is reduced for minions and non-epic monsters).",
+"tooltip": "Ezreal fires a massive energy arc that deals <magicDamage>{{ damage }} magic damage</magicDamage>. Damage to minions and non-epic jungle monsters is reduced to <magicDamage>{{ damageminionmonster }} magic damage</magicDamage>.{{ spellmodifierdescriptionappend }}"
+},
+"Fiddlesticks": {
+"name": "Crowstorm",
+"cooldown": [
+140,
+110,
+80
+],
+"maxammo": "-1",
+"description": "A murder of crows flock wildly around Fiddlesticks, dealing damage per second to all enemy units in the area.",
+"tooltip": "Fiddlesticks channels for {{ channeltime }} seconds, then teleports and unleashes a murder of crows, dealing <magicDamage>{{ totaldamage }} magic damage</magicDamage> over {{ duration }} seconds.{{ spellmodifierdescriptionappend }}"
+},
+"Fiora": {
+"name": "Grand Challenge",
+"cooldown": [
+110,
+90,
+70
+],
+"maxammo": "-1",
+"description": "Fiora reveals all four Vitals on an enemy champion and gains Move Speed while near them. If Fiora hits all four Vitals or if the target dies after she has hit at least one, Fiora and her allies in the area are healed over the next few seconds.",
+"tooltip": "<spellPassive>Passive:</spellPassive> <spellName>Duelist's Dance</spellName> <speed>Move Speed</speed> bonus is increased to {{ percentms*100 }}%.<br /><br /><spellActive>Active:</spellActive> Fiora reveals all four <keywordMajor>Vitals</keywordMajor> on a champion for a max of <trueDamage>{{ spell.fiorapassive:rdamagetotal }} max Health true damage</trueDamage> and gains <spellName>Duelist's Dance's</spellName> <speed>Move Speed</speed> bonus while near the target.<br /><br />If Fiora strikes all four <keywordMajor>Vitals</keywordMajor> within {{ markduration }} seconds or if the target dies after she has hit at least one, Fiora restores <healing>{{ healpersecondcalc }} Health per second</healing> to surrounding allied champions for {{ healduration }} seconds.{{ spellmodifierdescriptionappend }}"
+},
+"Fizz": {
+"name": "Chum the Waters",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "Fizz tosses a fish in a direction that attaches to any champion that touches it, slowing the target. After a short delay, a shark erupts from the ground, knocking up the target and knocking any nearby enemies aside. All enemies hit are dealt magic damage and slowed.",
+"tooltip": "Fizz launches a fish that attaches to the first champion hit. The victim is afflicted with <keywordStealth>True Sight</keywordStealth> and <status>Slowed</status> by between 40% to 80% based on how far the fish travelled before attaching. <br /><br />After {{ detonationtime }} seconds a shark erupts on the target, <status>Knocking Up</status> the target with the fish for 1 second, <status>Knocking Back</status> everything else, and dealing between <magicDamage>{{ smallsharkdamage }} to {{ bigsharkdamage }} magic damage</magicDamage> based on how far the fish travelled before attaching.{{ spellmodifierdescriptionappend }}"
+},
+"Galio": {
+"name": "Hero's Entrance",
+"cooldown": [
+180,
+160,
+140
+],
+"maxammo": "-1",
+"description": "Galio designates an ally's position as his landing spot, granting all allies in the area a magic shield. After a delay Galio smashes down location, knocking up nearby enemies.",
+"tooltip": "Galio designates an allied champion's position as his landing spot, granting all allied champions in the area <spellName>Shield of Durand's</spellName> passive <shield>Shield</shield> for {{ temporarywshieldduration }} seconds. Galio then flies to his landing zone.<br /><br />When Galio lands, he <status>Knocks Up</status> for {{ stundurationouter }} seconds and deals <magicDamage>{{ totaldamage }} magic damage</magicDamage>.{{ spellmodifierdescriptionappend }}"
+},
+"Gangplank": {
+"name": "Cannon Barrage",
+"cooldown": [
+160,
+140,
+120
+],
+"maxammo": "-1",
+"description": "Gangplank signals his ship to bombard an area, slowing and damaging enemies.",
+"tooltip": "Gangplank signals his ship to fire {{ totalwavestooltip }} waves of cannonballs anywhere on the map over {{ zoneduration }} seconds. Each wave <status>Slows</status> by {{ slowpercent }}% for {{ slowduration }} seconds and deals <magicDamage>{{ onewavedamage }} magic damage</magicDamage>. Maximum damage: {{ totaldamagetooltip }}<br /><br />This Ability can be upgraded in the shop via <spellName>Parrrley</spellName>.<br /><br /><spellName>Fire at Will</spellName>: Fires 6 additional waves of cannonballs.<br /><spellName>Death's Daughter</spellName>: Fires a Mega-Cannonball that deals <trueDamage>{{ deathsdaughterdamage }} true damage</trueDamage> and <status>Slows</status> by {{ deathsdaughterslow }}% for {{ deathsdaughterslowduration }} second.<br /><spellName>Raise Morale</spellName>: Allies inside Cannon Barrage gain <speed>{{ raisemoralehaste }}% Move Speed</speed> for {{ raisemoralehasteduration }} seconds.{{ spellmodifierdescriptionappend }}"
+},
+"Garen": {
+"name": "Demacian Justice",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "Garen calls upon the might of Demacia to attempt to execute an enemy champion.",
+"tooltip": "Garen calls upon the might of Demacia to slay his enemy, dealing <trueDamage>{{ basedamage }} plus {{ executedamage*100 }}% missing Health true damage</trueDamage>.{{ spellmodifierdescriptionappend }}"
+},
+"Gnar": {
+"name": "GNAR!",
+"cooldown": [
+90,
+60,
+30
+],
+"maxammo": "-1",
+"description": "Mega Gnar throws everything around him in a chosen direction, dealing damage and slowing them.  Any enemy that hits a wall is stunned and takes bonus damage.",
+"tooltip": "<keywordMajor>Mini Gnar Passive:</keywordMajor> Increase <spellName>Hyper's</spellName> <speed>Move Speed</speed>.<br /><br /><keywordMajor>Mega Gnar:</keywordMajor> Gnar tosses nearby enemies, dealing <physicalDamage>{{ damage }} physical damage</physicalDamage>, <status>Knocking Back</status>, and <status>Slowing</status> them by {{ rslowpercent }}% for {{ rccduration }} seconds. Enemies that hit a wall instead take <physicalDamage>{{ walldamage }} physical damage</physicalDamage> and are <status>Stunned</status>.{{ spellmodifierdescriptionappend }}"
+},
+"Gragas": {
+"name": "Explosive Cask",
+"cooldown": [
+100,
+85,
+70
+],
+"maxammo": "-1",
+"description": "Gragas hurls his cask to a location, dealing damage and knocking back enemies caught in the blast radius.",
+"tooltip": "Gragas hurls his cask, dealing <magicDamage>{{ damagedone }} magic damage</magicDamage> and <status>Knocking Away</status> enemies from the impact zone.{{ spellmodifierdescriptionappend }}"
+},
+"Graves": {
+"name": "Collateral Damage",
+"cooldown": [
+100,
+80,
+60
+],
+"maxammo": "-1",
+"description": "Graves fires an explosive shell dealing heavy damage to the first champion it hits. After hitting a champion or reaching the end of its range, the shell explodes dealing damage in a cone.",
+"tooltip": "Graves fires an explosive cartridge, blasting himself backwards. The cartridge deals <physicalDamage>{{ damage }} physical damage</physicalDamage> to the first enemy hit. After hitting an enemy champion or reaching the end of its range, the cartridge explodes outward, dealing <physicalDamage>{{ falloffdamage }} physical damage</physicalDamage>.{{ spellmodifierdescriptionappend }}"
+},
+"Gwen": {
+"name": "Needlework",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "Gwen hurls a needle that slows enemies hit, deals magic damage, and applies A Thousand Cuts to champions hit. <br><br>This ability can be cast up to two more times, with each cast throwing additional needles and dealing more damage. ",
+"tooltip": "<spellActive>First Cast:</spellActive> Hurl a needle that deals <magicDamage>{{ totaldamage }} magic damage</magicDamage>, <status>Slows</status> by {{ initialslow*-100 }}% for {{ debuffduration }} seconds, and applies <spellName>A Thousand Cuts</spellName> to all enemies hit. Gwen can <recast>Recast</recast> this ability up to 2 additional times within 6 seconds ({{ lockouttime }}s cooldown between casts).<br /><br /><recast>Second Cast:</recast> Fire three needles to deal <magicDamage>{{ totaldamage3 }} magic damage</magicDamage><br /><recast>Third Cast:</recast> Fire five needles to deal <magicDamage>{{ totaldamage5 }} magic damage</magicDamage>{{ spellmodifierdescriptionappend }}"
+},
+"Hecarim": {
+"name": "Onslaught of Shadows",
+"cooldown": [
+140,
+120,
+100
+],
+"maxammo": "-1",
+"description": "Hecarim summons spectral riders and charges forward, dealing magic damage in a line. Hecarim creates a shockwave when he finishes his charge, causing nearby enemies to flee in terror.",
+"tooltip": "Hecarim summons spectral riders and charges forward, dealing <magicDamage>{{ damagedone }} magic damage</magicDamage>. Hecarim unleashes a shockwave at the end of the charge that <status>Fears</status> for between {{ feardurationmin }} to {{ feardurationmax }} seconds, increased by charge distance.{{ spellmodifierdescriptionappend }}"
+},
+"Heimerdinger": {
+"name": "UPGRADE!!!",
+"cooldown": [
+100,
+85,
+70
+],
+"maxammo": "-1",
+"description": "Heimerdinger invents an upgrade, causing his next spell to have increased effects. ",
+"tooltip": "Heimerdinger upgrades his next non-ultimate Ability.<br /><br /><spellName>H-28Q Apex Turret:</spellName> Place an upgraded <keywordMajor>Turret</keywordMajor> for 8 seconds that doesn't count towards Heimerdinger's max turrets, deals <magicDamage>{{ qultdamage }} magic damage</magicDamage> per shot and <magicDamage>{{ qultdamagebeam }} magic damage</magicDamage> per charged shot. Its attacks deal damage in an area, <status>Slow</status> by 25% for 2 seconds, and it is immune to crowd control.<br /><br /><spellName>Hextech Rocket Swarm:</spellName> Fires 4 waves of rockets that each deal <magicDamage>{{ wultdamage }} magic damage</magicDamage>. Champions and jungle monsters hit by additional rockets take reduced damage, and minions take increased damage. Max Damage: <magicDamage>{{ wulttotaldamage }} magic damage</magicDamage>. <br /><br /><spellName>CH-3X Lightning Grenade:</spellName> Throws a bouncing grenade that discharges three times, dealing <magicDamage>{{ eultdamage }} magic damage</magicDamage>. The <status>Stun</status> and <status>Slow</status> areas are larger.<br /><br /><recast>Recast:</recast> Cancel this Ability.{{ spellmodifierdescriptionappend }}"
+},
+"Hwei": {
+"name": "Spiraling Despair",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "Hwei paints a vision of pure despair. The first enemy champion struck becomes the center of an expanding painting that slows and damages nearby enemies. The vision explodes after reaching its maximum size or when the champion dies.",
+"tooltip": "Hwei launches a vision of pure despair that sticks to an enemy champion for {{ duration }} seconds. The vision expands over time applying a <status>Slow</status> to enemies for {{ slowpercentperstack }}% stacking every 0.25 seconds, and dealing <magicDamage>{{ damageovertime }} magic damage per second</magicDamage>.<br /><br />Upon completion, the vision shatters, dealing <magicDamage>{{ damage }} magic damage</magicDamage>.{{ spellmodifierdescriptionappend }}"
+},
+"Illaoi": {
+"name": "Leap of Faith",
+"cooldown": [
+120,
+95,
+70
+],
+"maxammo": "-1",
+"description": "Illaoi smashes her idol into the ground, dealing physical damage to nearby enemies. A Tentacle spawns for each enemy champion hit.",
+"tooltip": "Illaoi smashes her idol into the ground, dealing <physicalDamage>{{ damagecalc }} physical damage</physicalDamage> to nearby enemies and spawning a Tentacle for each enemy champion hit.<br /><br />For the next {{ duration }} seconds, Tentacles are untargetable and <keywordMajor>Slam</keywordMajor> 50% faster, and <spellName>Harsh Lesson</spellName> has a {{ spell.illaoiw:cooldownduringr }} second cooldown.{{ spellmodifierdescriptionappend }}"
+},
+"Irelia": {
+"name": "Vanguard's Edge",
+"cooldown": [
+125,
+105,
+85
+],
+"maxammo": "-1",
+"description": "Irelia fires a massive number of blades that explode outward upon hitting an enemy champion. Enemies hit by the blades are damaged and Marked. Afterwards the blades form a wall that will damage and slow enemies that walk through it.",
+"tooltip": "Irelia launches a barrage of blades, dealing <magicDamage>{{ missiledamage }} magic damage</magicDamage> and making champions and large jungle monsters <keywordMajor>Unsteady</keywordMajor> for {{ markduration }} seconds. The barrage explodes into a cage around the first champion hit for {{ zoneduration }} seconds. The cage deals <magicDamage>{{ zonedamage }} magic damage</magicDamage> and <status>Slows</status> by {{ slowamount }}% for {{ ccduration }} seconds.{{ spellmodifierdescriptionappend }}"
+},
+"Ivern": {
+"name": "Daisy!",
+"cooldown": [
+140,
+130,
+120
+],
+"maxammo": "-1",
+"description": "Ivern summons his Sentinel friend Daisy to fight with him. Re-cast command Daisy to attack or move.",
+"tooltip": "Ivern summons his sentinel friend Daisy to leap into the fray for {{ daisyduration }} seconds.<br /><br /><spellActive>Daisy, Slam!:</spellActive> Daisy's 3rd consecutive Attack on the same champion or epic monster will launch a shockwave, dealing<magicDamage> {{ totalshockwavedamage }} magic damage</magicDamage> to all enemies hit as well as <status>Knocking Up</status> for {{ shockwaveccduration }} second. This effect can only occur once every {{ shockwavecd }} seconds.<br /><br /><recast>Recast:</recast> Instruct Daisy to Attack or move.{{ spellmodifierdescriptionappend }}"
+},
+"Janna": {
+"name": "Monsoon",
+"cooldown": [
+130,
+115,
+100
+],
+"maxammo": "-1",
+"description": "Janna surrounds herself in a magical storm, throwing enemies back. After the storm has settled, soothing winds heal nearby allies while the ability is active.",
+"tooltip": "Janna summons a magical monsoon, <status>Knocking Back</status> nearby enemies then healing nearby allies for <healing>{{ totalheal }} Health</healing> over {{ duration }} seconds. Moving or using an Ability ends the monsoon early.{{ spellmodifierdescriptionappend }}"
+},
+"JarvanIV": {
+"name": "Cataclysm",
+"cooldown": [
+120,
+105,
+90
+],
+"maxammo": "-1",
+"description": "Jarvan IV heroically leaps into battle at a target with such force that he terraforms the surrounding area to create an arena around them. Nearby enemies are damaged at the moment of impact.",
+"tooltip": "Jarvan heroically leaps to an enemy Champion, dealing <physicalDamage>{{ damagecalc }} physical damage</physicalDamage> to them and surrounding enemies and creating an arena of impassable terrain around them for {{ wallduration }} seconds.<br /><br />Jarvan can <recast>Recast</recast> to collapse the terrain.{{ spellmodifierdescriptionappend }}"
+},
+"Jax": {
+"name": "Grandmaster-at-Arms",
+"cooldown": [
+110,
+100,
+90
+],
+"maxammo": "-1",
+"description": "Every third consecutive attack deals additional Magic Damage. Additionally, Jax can activate this ability to deal damage around himself and strengthen his resolve, increasing his Armor and Magic Resist for a short duration.",
+"tooltip": "<spellPassive>Passive:</spellPassive> Every third Attack within {{ passivefallofftime }} seconds deals an additional <magicDamage>{{ onhitdamage }} magic damage</magicDamage>.<br /><br /><spellActive>Active:</spellActive> Jax slams his lantern down, dealing <magicDamage>{{ swingdamagetotal }} magic damage</magicDamage> to nearby enemies. If he hits a champion he gains <scaleArmor>{{ basearmor }} Armor</scaleArmor> and <scaleMR>{{ basemr }} Magic Resist</scaleMR> plus <scaleArmor>{{ bonusarmor }} Armor</scaleArmor> and <scaleMR>{{ bonusmr }} Magic Resist</scaleMR> per additional champion hit for {{ duration }} seconds. During this time every second Attack deals additional <magicDamage>magic damage</magicDamage> instead of every third.{{ spellmodifierdescriptionappend }}"
+},
+"Jayce": {
+"name": "Mercury Cannon / Mercury Hammer",
+"cooldown": [
+6
+],
+"maxammo": "-1",
+"description": "Hammer Stance: Transforms the Mercury Hammer into the Mercury Cannon gaining new abilities and increased range. The first attack in this form reduces the target's Armor and Magic Resist.<br><br>Cannon Stance: Transforms the Mercury Cannon into the Mercury Hammer gaining new abilities and increasing Armor and Magic Resist. The first attack in this form deals additional magic damage.",
+"tooltip": "<keywordMajor>Mercury Hammer</keywordMajor>: Jayce transforms his weapon into the <keywordMajor>Mercury Cannon</keywordMajor>, gaining Attack Range and new Abilities. Jayce's next Attack removes <scaleArmor>{{ spell.jaycestancehtg:rangedformshred }} Armor</scaleArmor> and <scaleMR>Magic Resist</scaleMR> for {{ spell.jaycestancehtg:shredduration }} seconds.{{ spellmodifierdescriptionappend }}"
+},
+"Jhin": {
+"name": "Curtain Call",
+"cooldown": [
+120,
+105,
+90
+],
+"maxammo": "-1",
+"description": "Jhin channels, transforming Whisper into a shoulder-mounted mega-cannon. It is able to fire 4 super shots at extreme range that pierce through minions and monsters, but stop on the first champion impacted. Whisper cripples enemies hit, which slows them and deals execute damage. The 4th shot is perfectly crafted, epically powerful, and guaranteed to critically strike.",
+"tooltip": "Jhin sets up and channels, enabling him to fire 4 super shots, each dealing between <physicalDamage>{{ damagecalc }}</physicalDamage> and <physicalDamage>{{ maxincreasecalc }} physical damage</physicalDamage> to the first champion hit based on their percentage missing health and <status>Slowing</status> them by {{ slowpercent*100 }}% for {{ slowduration }} seconds. The fourth shot critically strikes for {{ fourthshotmultiplier*100 }}% damage.{{ spellmodifierdescriptionappend }}"
+},
+"Jinx": {
+"name": "Super Mega Death Rocket!",
+"cooldown": [
+85,
+65,
+45
+],
+"maxammo": "-1",
+"description": "Jinx fires a super rocket across the map that gains damage as it travels. The rocket will explode upon colliding with an enemy champion, dealing damage to it and surrounding enemies based on their missing Health.",
+"tooltip": "Jinx fires a rocket that explodes on the first enemy champion hit, dealing <physicalDamage>{{ damagefloor }} to {{ damagemax }} + {{ percentdamage }}% missing Health physical damage</physicalDamage>, gaining damage over the first second of travel time. Nearby enemies take {{ aoedamagemult*100 }}% Damage.<br /><br /><rules>Missing Health damage cannot exceed {{ monsterexecutemax }} against Monsters.</rules>{{ spellmodifierdescriptionappend }}"
+},
+"KSante": {
+"name": "All Out",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "K'Sante knocks an enemy back, launching them through any wall in their path. Then, K'Sante goes All Out and dashes after them, gaining increased damage, healing, and transformed abilities at the cost of reduced defenses.",
+"tooltip": "K'Sante shatters his ntofos to <status>Knock Back</status> an enemy champion, dealing <physicalDamage>{{ basedamage }} physical damage</physicalDamage>, then dashes behind them and goes <keywordMajor>All Out</keywordMajor> for {{ alloutduration }}s. If the enemy would hit a wall, they are <status>Knocked Back</status> through the wall and K'Sante strikes them again for <physicalDamage>{{ totaldamageslamdown }} physical damage</physicalDamage>.<br /><br />While <keywordMajor>All Out</keywordMajor>, K'Sante's Abilities are upgraded and he gains <attackSpeed>{{ attackspeed*100 }}% Attack Speed</attackSpeed>, {{ armorpenpercent*100 }}% Bonus Armor Penetration, and <omnivamp>{{ omnivamp*100 }}% Omnivamp</omnivamp>, but loses <healing>{{ healthlost*100 }}% max Health</healing>, <scaleArmor>{{ defenseslost*100 }}% Bonus Armor</scaleArmor>, and <scaleMR>{{ defenseslost*100 }}% Bonus Magic Resistance</scaleMR>.{{ spellmodifierdescriptionappend }}"
+},
+"Kaisa": {
+"name": "Killer Instinct",
+"cooldown": [
+130,
+100,
+70
+],
+"maxammo": "-1",
+"description": "Kai'Sa dashes near an enemy champion.",
+"tooltip": "Kai'Sa warps near an enemy champion affected by <keywordMajor>Plasma</keywordMajor> and gains <shield>{{ rcalculatedshieldvalue }} Shield</shield> for {{ rshieldduration }} seconds.{{ spellmodifierdescriptionappend }}"
+},
+"Kalista": {
+"name": "Fate's Call",
+"cooldown": [
+160,
+140,
+120
+],
+"maxammo": "-1",
+"description": "Kalista teleports the Oathsworn ally to herself. They gain the ability to dash toward a position, knocking enemy champions back.",
+"tooltip": "Kalista puts her <keywordMajor>Oathsworn</keywordMajor> into Stasis and draws them to herself for up to 4 seconds. The <keywordMajor>Oathsworn</keywordMajor> can click to launch themselves, stopping at the first champion hit and <status>Knocking Back</status> all nearby enemies. If the <keywordMajor>Oathsworn</keywordMajor> hits a champion, they are placed at their maximum attack range from it.{{ spellmodifierdescriptionappend }}"
+},
+"Karma": {
+"name": "Mantra",
+"cooldown": [
+40,
+38,
+36,
+34
+],
+"maxammo": "-1",
+"description": "Karma empowers her next ability to do an additional effect. Mantra is available at level 1 and does not require a skill point.",
+"tooltip": "Karma empowers her next Ability used within 8 seconds.<br /><li><spellName>Inner Flame</spellName>: Deals an additional <magicDamage>{{ rqimpactdamage }} magic damage</magicDamage> and leaves behind a circle of flame, <status>Slowing</status> enemies and dealing an additional <magicDamage>{{ rqfielddamage }} magic damage</magicDamage>.<li><spellName>Focused Resolve</spellName>: Karma will restore <healing>{{ rwhealamount }} missing Health</healing> at the beginning and end of the tether, and <status>Root</status> for {{ rwbonusroot }}s longer.<li><spellName>Inspire</spellName>: Karma shields her target for <shield>{{ rebonusshield }} more Shield</shield>, and also shields allies near her target, granting them <shield>{{ rebonusshieldarea }} Shield</shield> and <speed>{{ removespeed*100 }}% Move Speed</speed>.{{ spellmodifierdescriptionappend }}"
+},
+"Karthus": {
+"name": "Requiem",
+"cooldown": [
+200,
+180,
+160
+],
+"maxammo": "-1",
+"description": "After channeling for 3 seconds, Karthus deals damage to all enemy champions.",
+"tooltip": "Karthus channels for 3 seconds, then deals <magicDamage>{{ totaldamage }} magic damage</magicDamage> to enemy champions, regardless of distance.{{ spellmodifierdescriptionappend }}"
+},
+"Kassadin": {
+"name": "Riftwalk",
+"cooldown": [
+5,
+3.5,
+2
+],
+"maxammo": "-1",
+"description": "Kassadin teleports to a nearby location dealing damage to nearby enemy units. Multiple Riftwalks in a short period of time cost additional Mana but also deal additional damage.",
+"tooltip": "Kassadin teleports to a nearby location, dealing <magicDamage>{{ basedamage }} magic damage</magicDamage>.<br /><br />Each subsequent use of this Ability within the next {{ rstackduration }} seconds doubles the Mana cost and deals an additional <magicDamage>{{ bonusdamage }} magic damage</magicDamage>. The cost and damage increases can stack up to {{ maxstacks }} times.{{ spellmodifierdescriptionappend }}"
+},
+"Katarina": {
+"name": "Death Lotus",
+"cooldown": [
+75,
+60,
+45
+],
+"maxammo": "-1",
+"description": "Katarina becomes a flurry of blades, dealing massive magic damage while she channels to the 3 nearest enemy champions.",
+"tooltip": "Katarina becomes a flurry of blades, rapidly attacking the three nearest enemy champions with a flurry of knives. Each knife deals <magicDamage>{{ damagecalc }} magic damage</magicDamage> and <physicalDamage>{{ addamagecalc }} physical damage</physicalDamage>, and applies {{ grievousamount*100 }}% Grievous Wounds for {{ grievousduration }} seconds.<br /><br />Total over {{ duration }} seconds to each enemy: <magicDamage>{{ totaldamagecalc }} magic damage</magicDamage> and <physicalDamage>{{ totaladdamagecalc }} physical damage</physicalDamage>.{{ spellmodifierdescriptionappend }}"
+},
+"Kayle": {
+"name": "Divine Judgment",
+"cooldown": [
+160,
+120,
+80
+],
+"maxammo": "-1",
+"description": "Kayle makes an ally invulnerable and calls upon former Aspects of Justice to purify the area around her target with a holy rain of swords.",
+"tooltip": "Kayle makes an allied champion Invulnerable for {{ invulnduration }} seconds and then purifies the area around them, dealing <magicDamage>{{ totaldamage }} magic damage</magicDamage> to nearby enemies.{{ spellmodifierdescriptionappend }}"
+},
+"Kayn": {
+"name": "Umbral Trespass",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "Kayn hides in an enemy's body, dealing massive damage when he bursts out.",
+"tooltip": "<spellPassive>Passive:</spellPassive> Champions damaged by Kayn are marked for 3.15 seconds.<br /><br />Kayn infests a marked enemy, becoming Untargetable. After {{ infestduration }} seconds or after <recast>Recasting</recast>, Kayn bursts out, dealing <physicalDamage>{{ damage }} physical damage</physicalDamage> to the enemy.<br /><br /><keywordMajor>Shadow Assassin:</keywordMajor> Increases this Ability's range, the distance Kayn exits, and refreshes <spellName>The Darkin Scythe's</spellName> Cooldown on exit.<br /><br /><keywordMajor>Darkin Slayer:</keywordMajor> Instead deals <physicalDamage>{{ slayerdamage }} max Health physical damage</physicalDamage> and restores <healing>{{ healvalue }} Health</healing> ({{ slayerhealpercent*100 }}% damage amount).{{ spellmodifierdescriptionappend }}"
+},
+"Kennen": {
+"name": "Slicing Maelstrom",
+"cooldown": [
+120,
+120,
+120
+],
+"maxammo": "-1",
+"description": "Kennen summons a storm that strikes at nearby enemy champions for magical damage.",
+"tooltip": "Kennen unleashes a magical storm, dealing <magicDamage>{{ pertickdamagecalculated }} magic damage</magicDamage> to all nearby enemies every {{ kennenrtickrate }} seconds, and gaining <scaleArmor>{{ kennenrdefenses }} Armor</scaleArmor> and <scaleMR>{{ kennenrdefenses }} Magic Resist</scaleMR> for {{ kennenrduration }} seconds. Successive hits deal {{ damageamp*100 }}% increased damage for each hit the enemy has already suffered.{{ spellmodifierdescriptionappend }}"
+},
+"Khazix": {
+"name": "Void Assault",
+"cooldown": [
+100,
+85,
+70
+],
+"maxammo": "-1",
+"description": "Each rank allows Kha'Zix to evolve one of his abilities, giving it a unique additional effect. When activated, Kha'Zix becomes <font color='#91d7ee'>Invisible</font>, triggering Unseen Threat and increasing Move Speed. If he chooses to <font color='#00DD33'>Evolve Adaptive Cloaking</font>, Void Assault gains increased <font color='#91d7ee'>Invisibility</font> duration, and an additional use.",
+"tooltip": "<spellActive>Active:</spellActive> Kha'Zix becomes <keywordStealth>Invisible</keywordStealth> for {{ stealthduration }} seconds and gains <speed>{{ bonusmovementspeedpercent*100 }}% Move Speed</speed>. Kha'zix may <recast>Recast</recast> this Ability once within {{ recastwindow }} seconds.<br /><br /><spellPassive>Passive:</spellPassive> Leveling up this Ability allows Kha'zix to <evolve>Evolve</evolve> one of his Abilities, granting it additional effects.<li><spellName>Taste Their Fear:</spellName> Gain Ability range, Attack range, and lowers Cooldown by {{ spell.khazixq:effect4amount }}% against <keywordMajor>Isolated</keywordMajor> targets.<li><spellName>Void Spike:</spellName> Fires 3 spikes and <status>Slows</status> by {{ spell.khazixw:effect3amount }}%, increased against <keywordMajor>Isolated</keywordMajor> targets.<li><spellName>Leap:</spellName> Increased range and refreshes Cooldown on champion takedown.<li><spellName>Void Assault:</spellName> <keywordStealth>Invisibility</keywordStealth> duration lasts {{ evolvedstealthduration }} seconds and gains second <recast>Recast</recast>.{{ spellmodifierdescriptionappend }}"
+},
+"Kindred": {
+"name": "Lamb's Respite",
+"cooldown": [
+160,
+140,
+120
+],
+"maxammo": "-1",
+"description": "Lamb grants all living things inside a zone a respite from death. Until the effect ends, nothing can die. At the end, units are healed.",
+"tooltip": "Kindred blesses the ground for {{ buffduration }} seconds, allowing no unit, ally, enemy, or neutral to die while inside. Upon reaching 10% Health, units can't be damaged or healed while still inside the zone.<br /><br />When the blessing ends, all units inside heal for <healing>{{ healflat }} Health</healing>.{{ spellmodifierdescriptionappend }}"
+},
+"Kled": {
+"name": "Chaaaaaaaarge!!!",
+"cooldown": [
+140,
+125,
+110
+],
+"maxammo": "-1",
+"description": "Kled and Skaarl charge to a location, leaving a speed-granting trail behind them and gaining a shield. Skaarl locks onto and rams the first enemy champion encountered.",
+"tooltip": "Kled charges toward an area, leaving a trail that grants allies increasing <speed>Move Speed</speed>. While charging and for 2 seconds after Kled gains up to <shield>{{ maximumshield }} Shield</shield>. Skaarl rams the first enemy champion encountered, dealing <magicDamage>{{ minimumdamagetooltip }}</magicDamage> to <magicDamage>{{ maximumchargedamage }} max Health magic damage</magicDamage> (based on distance travelled) and briefly <status>Knocking Back</status>.{{ spellmodifierdescriptionappend }}"
+},
+"KogMaw": {
+"name": "Living Artillery",
+"cooldown": [
+2,
+1.5,
+1
+],
+"maxammo": "-1",
+"description": "Kog'Maw fires an artillery shell at a great distance dealing magic damage (increased significantly on low health enemies) and revealing non-stealthed targets. Additionally, multiple Living Artilleries in a short period of time cause them to cost additional Mana.",
+"tooltip": "Kog'Maw shoots acid at an area, dealing <magicDamage>{{ basedamagecalc }} plus {{ tooltipmissinghealthdamageamp }}% per 1% missing Health magic damage</magicDamage> and revealing enemies hit for 2 seconds. Enemies below <healing>40% Health</healing> instead take <magicDamage>{{ maxdamagecalc }} magic damage</magicDamage>.<br /><br />Subsequent shots within {{ manacostduration }} seconds cost an additional <scaleMana>{{ basecost }} Mana</scaleMana> (max: <scaleMana>{{ manacostcap }} Mana</scaleMana>).{{ spellmodifierdescriptionappend }}"
+},
+"Leblanc": {
+"name": "Mimic",
+"cooldown": [
+45,
+35,
+25
+],
+"maxammo": "2",
+"description": "LeBlanc casts a mimicked version of one of her basic spells.",
+"tooltip": "LeBlanc mimics her most recent Ability, using it again. The mimicked Ability deals increased damage.<br /><br /><spellName>Mimicked Sigil of Malice</spellName> deals <magicDamage>{{ rq1damage }} magic damage</magicDamage> when applied, and <magicDamage>{{ rq2damage }} magic damage</magicDamage> when consumed.<br /><spellName>Mimicked Distortion</spellName> deals <magicDamage>{{ rwdamage }} magic damage</magicDamage>.<br /><spellName>Mimicked Ethereal Chains</spellName> deals <magicDamage>{{ re1damage }} magic damage</magicDamage> when shackled and <magicDamage>{{ re2damage }} magic damage</magicDamage> when <status>Rooting</status>.{{ spellmodifierdescriptionappend }}"
+},
+"LeeSin": {
+"name": "Dragon's Rage",
+"cooldown": [
+110,
+85,
+60
+],
+"maxammo": "-1",
+"description": "Lee Sin performs a powerful roundhouse kick launching his target back, dealing physical damage to the target and any enemies they collide with. Enemies the target collides with are knocked into the air for a short duration. This technique was taught to him by Jesse Perring, although Lee Sin does not kick players off the map.",
+"tooltip": "Lee Sin performs a powerful roundhouse kick <status>Knocking Back</status> an enemy champion and dealing <physicalDamage>{{ damage }} physical damage</physicalDamage>.<br /><br />Enemies the target collides with are briefly <status>Knocked Up</status> and take <physicalDamage>{{ damage }} plus {{ percenthpcarrythrough }}% of the kicked enemy's bonus Health as physical damage</physicalDamage>.{{ spellmodifierdescriptionappend }}"
+},
+"Leona": {
+"name": "Solar Flare",
+"cooldown": [
+90,
+75,
+60
+],
+"maxammo": "-1",
+"description": "Leona calls down a beam of solar energy, dealing damage to enemies in an area. Enemies in the center of the area are stunned, while enemies on the outside are slowed.",
+"tooltip": "Leona calls down a radiant beam of solar energy dealing <magicDamage>{{ explosioncalculateddamage }} magic damage</magicDamage> and <status>Slowing</status> by {{ slowpercent }}% for {{ ccduration }} seconds. Enemies in the center of the flare are <status>Stunned</status> instead of <status>Slowed</status>.{{ spellmodifierdescriptionappend }}"
+},
+"Lillia": {
+"name": "Lilting Lullaby",
+"cooldown": [
+150,
+130,
+110
+],
+"maxammo": "-1",
+"description": "Lillia causes all enemies with Dream Dust on them to become Drowsy before falling asleep. Those enemies will take extra damage on being forcibly woken up.",
+"tooltip": "Lillia causes all enemy champions with <keywordMajor>Dream Dust</keywordMajor> to become <status>Drowsy</status> for {{ drowsyduration }} seconds. Afterward, they fall <status>Asleep</status> for {{ sleepduration }} seconds.<br /><br />When awakened by damage, they take an additional <magicDamage>{{ totaldamage }} magic damage</magicDamage>.{{ spellmodifierdescriptionappend }}"
+},
+"Lissandra": {
+"name": "Frozen Tomb",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "If cast on an enemy champion, the target is frozen solid, stunning it. If cast on Lissandra, she encases herself in dark ice, healing herself while becoming untargetable and invulnerable. Dark ice then emanates from the target dealing magic damage to enemies and slowing Move Speed.",
+"tooltip": "Lissandra encases herself or an enemy champion in ice. Enemies are <status>Stunned</status> for {{ enemycastduration }} seconds. When self cast, Lissandra enters Stasis for {{ selfcastduration }} seconds and restores <healing>{{ healamount }} Health</healing>, increased by {{ selfcastmissinghpratio }}% for each {{ selfcastmissinghpperabove }}% missing Health.<br /><br />In either case, dark ice eminates from the target, dealing <magicDamage>{{ calculateddamage }} magic damage</magicDamage>. The ice persists for {{ slowduration }} seconds, <status>Slowing</status> enemies by {{ slowamount*-100 }}%.{{ spellmodifierdescriptionappend }}"
+},
+"Locke": {
+"name": "Purgatory",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "Locke throws a binding artifact that deals damage and potentially executes enemies hit. Locke gains additional power for sealing away enemy champions.",
+"tooltip": "Locke throws a binding artifact to a location, dealing <magicDamage>{{ damage }} magic damage</magicDamage> and <status>Slowing</status> enemies in the area by {{ slowamount*100 }}%, decaying over {{ slowduration }} seconds. The artifact marks enemies hit for {{ duration }} seconds, sealing away marked enemy champions brought below <spellName>{{ executetooltipcalc }}</spellName>, and resetting the duration of the mark on other affected champions.<br /><br />After the duration ends, if at least one champion was sealed, the artifact lands on the ground. Locke can pick up the artifact to permanently increase its execution threshold by {{ executethresholdperstack*100 }}%, and refund {{ cooldownreduction }}% of his total Cooldown, for each champion sealed.<br />{{ spellmodifierdescriptionappend }}"
+},
+"Lucian": {
+"name": "The Culling",
+"cooldown": [
+110,
+100,
+90
+],
+"maxammo": "-1",
+"description": "Lucian unleashes a torrent of shots from his weapons.",
+"tooltip": "Lucian rapidly fires <keywordMajor>{{ totalnumshots }}</keywordMajor> shots in a direction for {{ duration }} seconds or until he <recast>Recasts</recast>. Each shot deals <physicalDamage>{{ damageperbullet }} physical damage</physicalDamage> to the first enemy hit.<br /><br />While firing, Lucian may use <spellName>Relentless Pursuit</spellName>.<br /><br />Total Damage: <physicalDamage>{{ totaldamage }} physical damage</physicalDamage><br />{{ spellmodifierdescriptionappend }}"
+},
+"Lulu": {
+"name": "Wild Growth",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "Lulu enlarges an ally, knocking nearby enemies into the air and granting the ally a large amount of bonus health. For the next few seconds, that ally gains an aura that slows nearby enemies.",
+"tooltip": "Lulu enlarges an ally, <status>Knocking Up</status> surrounding enemies for {{ knockbackduration }} second. The enlarged ally gains <healing>{{ totalbonushealth }} max Health</healing> and <status>Slows</status> surrounding enemies by {{ slowpercent }}% for {{ buffduration }} seconds.{{ spellmodifierdescriptionappend }}"
+},
+"Lux": {
+"name": "Final Spark",
+"cooldown": [
+60,
+50,
+40
+],
+"maxammo": "-1",
+"description": "After gathering energy, Lux fires a beam of light that deals damage to all targets in the area. In addition, triggers Lux's passive ability and refreshes the Illumination debuff duration.",
+"tooltip": "Lux fires a dazzling ray of light, dealing <magicDamage>{{ totaldamage }} magic damage</magicDamage> to all enemies in a line.{{ spellmodifierdescriptionappend }}"
+},
+"Malphite": {
+"name": "Unstoppable Force",
+"cooldown": [
+130,
+115,
+100
+],
+"maxammo": "-1",
+"description": "Malphite launches himself to a location at high speed, damaging enemies and knocking them into the air.",
+"tooltip": "Malphite charges with the force of a landslide, dashing Unstoppably. At the end of the dash, Malphite <status>Knocks Up</status> for {{ knockupduration }} seconds and deals <magicDamage>{{ totaldamage }} magic damage</magicDamage>.{{ spellmodifierdescriptionappend }}"
+},
+"Malzahar": {
+"name": "Nether Grasp",
+"cooldown": [
+140,
+110,
+80
+],
+"maxammo": "-1",
+"description": "Malzahar channels the essence of the Void to suppress an enemy champion over a zone of damaging negative energy.",
+"tooltip": "Malzahar <status>Suppresses</status> an enemy champion and deals <magicDamage>{{ totaldamagetooltip }} magic damage</magicDamage> over {{ ccduration }} seconds. A zone of negative energy is created around his target dealing <magicDamage>{{ zonedamagetooltip }} max Health magic damage</magicDamage> over {{ poolduration }} seconds.{{ spellmodifierdescriptionappend }}"
+},
+"Maokai": {
+"name": "Nature's Grasp",
+"cooldown": [
+130,
+110,
+90
+],
+"maxammo": "-1",
+"description": "Maokai summons a colossal wall of brambles and thorns that slowly advances forwards, damaging and rooting any enemies in the path.",
+"tooltip": "Maokai summons a colossal wave of brambles and thorns, <status>Rooting</status> enemies for {{ minrootduration }} to {{ maxrootduration }} seconds, increasing with distance travelled, and dealing <magicDamage>{{ totaldamage }} magic damage</magicDamage>. Hitting a champion gives Maokai <speed>{{ movehaste*100 }}% Move Speed</speed>, decaying over {{ hasteduration }} seconds. {{ spellmodifierdescriptionappend }}"
+},
+"MasterYi": {
+"name": "Highlander",
+"cooldown": [
+85,
+85,
+85
+],
+"maxammo": "-1",
+"description": "Master Yi moves with unparalleled agility, temporarily increasing his Move Speed and Attack Speed as well as making him immune to all slowing effects. While active, Champion kills or assists extend Highlander's duration. Passively reduces cooldown for his other abilities on a kill or assist.",
+"tooltip": "<spellPassive>Passive:</spellPassive> Champion takedowns reduce the remaining Cooldown of Master Yi's basic Abilities by {{ rcooldownrefund*100 }}%.<br /><br /><spellActive>Active:</spellActive> Master Yi enters a trance, gaining <speed>{{ rmsbonus }}% Move Speed</speed>, <attackSpeed>{{ rasbonus }}% Attack Speed</attackSpeed>, and immunity to <status>Slows</status> for {{ rduration }} seconds. Champion takedowns extend the duration of this Ability by {{ rkillassistextension }} seconds.{{ spellmodifierdescriptionappend }}"
+},
+"Mel": {
+"name": "Golden Eclipse",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "Mel strikes all enemies marked with Overwhelm regardless of their distance from her, dealing additional damage for each stack of Overwhelm.<br><br>Ranks of Golden Eclipse increase Overwhelm's damage.",
+"tooltip": "<spellPassive>Passive</spellPassive>: <keywordMajor>Overwhelm</keywordMajor> damage is increased to <magicDamage>{{ passiveflatdamage }} magic damage plus {{ passivestackdamage }} magic damage per stack</magicDamage>.<br /><br /><spellActive>Active</spellActive>: Mel unleashes her power on all enemies affected by <keywordMajor>Overwhelm</keywordMajor>, dealing <magicDamage>{{ ultflatdamage }} magic damage plus {{ ultstackdamage }} magic damage per <keywordMajor>Overwhelm</keywordMajor> stack</magicDamage>.<br /><br /><rules>Can only be cast when an enemy champion is affected by <keywordMajor>Overwhelm</keywordMajor>.</rules>{{ spellmodifierdescriptionappend }}"
+},
+"Milio": {
+"name": "Breath of Life",
+"cooldown": [
+160,
+145,
+130
+],
+"maxammo": "-1",
+"description": "Milio unleashes a wave of soothing flames that heal and remove crowd control effects from allies in range.",
+"tooltip": "Milio unleashes a wave of soothing flames on nearby ally champions, cleansing <status>Disabling</status> and <status>Immobilizing</status> effects, restoring <healing>{{ healcalc }} Health</healing>, and granting {{ tenacityamount*100 }}% Tenacity for {{ tenacityduration }} seconds.{{ spellmodifierdescriptionappend }}"
+},
+"MissFortune": {
+"name": "Bullet Time",
+"cooldown": [
+120,
+110,
+100
+],
+"maxammo": "-1",
+"description": "Miss Fortune channels a barrage of bullets into a cone in front of her, dealing large amounts of damage to enemies. Each wave of Bullet Time can critically strike",
+"tooltip": "Miss Fortune channels a barrage of bullets, firing {{ basewaves }} waves over {{ basechannelduration }} seconds, dealing <physicalDamage>{{ physicaldamageperwave }} physical damage</physicalDamage> per wave (total <physicalDamage>{{ totalphysicaldamage }} physical damage</physicalDamage>).<br /><br />Each wave can critically strike for %i:scaleCrit% <physicalDamage>{{ critdamageperwave }} physical damage</physicalDamage>.{{ spellmodifierdescriptionappend }}"
+},
+"MonkeyKing": {
+"name": "Cyclone",
+"cooldown": [
+130,
+110,
+90
+],
+"maxammo": "-1",
+"description": "Wukong's extends his staff and spins it around repeatedly, gaining Move Speed.<br><br>Enemies struck take damage and are knocked up.",
+"tooltip": "Wukong gains <speed>{{ movespeed*100 }}% Move Speed</speed> and spins his staff, <status>Knocking Up</status> nearby enemies for {{ knockupduration }} seconds and take <physicalDamage>{{ totaldamagett }} plus {{ percenthpdamagett }} max Health physical damage</physicalDamage> over {{ spinduration }} seconds.<br /><br />This Ability can be cast a second time within {{ recastwindow }} seconds before going on cooldown.{{ spellmodifierdescriptionappend }}"
+},
+"Mordekaiser": {
+"name": "Realm of Death",
+"cooldown": [
+140,
+120,
+100
+],
+"maxammo": "-1",
+"description": "Mordekaiser drags his victim to a different dimension with him and steals a portion of their stats. If he kills them, he keeps the stats until the victim respawns.",
+"tooltip": "Mordekaiser banishes a champion to the Death Realm with him for {{ spiritrealmduration }}s, stealing {{ statstealpercentscalar*100 }}% of their core stats for the duration.<br /><br />If Mordekaiser kills that enemy in the Death Realm he consumes their soul, keeping the stats he stole until the target respawns.{{ spellmodifierdescriptionappend }}"
+},
+"Morgana": {
+"name": "Soul Shackles",
+"cooldown": [
+120,
+110,
+100
+],
+"maxammo": "-1",
+"description": "Morgana unleashes the full force of her Celestial power as she unbinds her wings and hovers above the ground. She lashes chains of dark pain onto nearby enemy champions, gaining Move Speed. The chains slow and deal initial damage and, after a delay, stun those who are unable to break them.",
+"tooltip": "Morgana chains herself to nearby enemy Champions, dealing <magicDamage>{{ totaldamage }} magic damage</magicDamage> and <status>Slowing</status> them by {{ slowpercent }}%. After {{ chainduration }} seconds, enemies unable to break the chains take an additional <magicDamage>{{ totaldamage }} magic damage</magicDamage> and are <status>Stunned</status> for {{ stunduration }} seconds.<br /><br />While casting this Ability, Morgana gains <speed>{{ hastepercent }}% Move Speed</speed>.{{ spellmodifierdescriptionappend }}"
+},
+"Naafiri": {
+"name": "Hounds' Pursuit",
+"cooldown": [
+110,
+95,
+80
+],
+"maxammo": "-1",
+"description": "Naafiri and her packmates dash at a champion, dealing damage. Naafiri reveals nearby enemies if she scores a takedown and can recast this Ability once. The second cast grants a shield.",
+"tooltip": "Naafiri dashes at an enemy champion, dealing <physicalDamage>{{ totaldamage }} physical damage</physicalDamage> and briefly <status>Slowing</status> them. <keywordMajor>Packmates</keywordMajor> become Untargetable and dash alongside Naafiri, dealing <physicalDamage>{{ packmatedamage }} physical damage</physicalDamage> per <keywordMajor>Packmate</keywordMajor>.<br /><br />If Naafiri scores a Takedown within {{ takedownwindow }} seconds she reveals nearby enemies and can recast this Ability once. The second cast grants <shield>{{ shieldtotal }} Shield</shield> for {{ shieldduration }} seconds.<br /><br /><br />{{ spellmodifierdescriptionappend }}"
+},
+"Nami": {
+"name": "Tidal Wave",
+"cooldown": [
+120,
+110,
+100
+],
+"maxammo": "-1",
+"description": "Summons a massive Tidal Wave that knocks up, slows, and damages enemies. Allies hit gain double the effect of Surging Tides.",
+"tooltip": "Nami summons a tidal wave, <status>Knocking Up</status> for 0.5 seconds, <status>Slowing</status> by {{ slowamount }}%, and dealing <magicDamage>{{ totaldamage }} magic damage</magicDamage>. The duration of the <status>Slow</status> increases based on distance the wave traveled, up to {{ maxslowduration }} seconds.<br /><br />Allies hit by the wave gain double the effect of <spellName>Surging Tides</spellName>.{{ spellmodifierdescriptionappend }}"
+},
+"Nasus": {
+"name": "Fury of the Sands",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "Nasus unleashes a mighty sandstorm that batters nearby enemies. While the storm rages, he gains increased Health, Attack Range, damages nearby enemies, has a reduced cooldown on Siphoning Strike, and gains bonus Armor and Magic Resistance.",
+"tooltip": "Nasus becomes empowered in the sandstorm for 15 seconds, increasing his <healing>maximum Health by {{ bonushealth }}</healing> and <scaleArmor>Armor</scaleArmor> and <scaleMR>Magic Resistance</scaleMR> by {{ initialresistgain }}.<br /><br />While the storm rages, nearby enemies take <magicDamage>{{ damagecalc }} of their maximum Health as magic damage</magicDamage> each second and <spellName>Siphoning Strike</spellName> has a {{ qcdr*100 }}% reduced Cooldown.{{ spellmodifierdescriptionappend }}"
+},
+"Nautilus": {
+"name": "Depth Charge",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "Nautilus fires a shockwave into the earth that chases an opponent. This shockwave rips up the earth above it, knocking enemies into the air. When it reaches the opponent, the shockwave erupts, knocking his target into the air and stunning them.",
+"tooltip": "Nautilus fires a shockwave that chases an enemy champion, dealing <magicDamage>{{ primarytargetdamage }} magic damage</magicDamage>, <status>Knocking</status> them <status>Up</status> and <status>Stunning</status> them for {{ stunduration }} seconds. Other enemies hit by the shockwave are also <status>Knocked Up</status> and <status>Stunned</status> and take <magicDamage>{{ secondarytargetdamage }} magic damage</magicDamage>.{{ spellmodifierdescriptionappend }}"
+},
+"Neeko": {
+"name": "Pop Blossom",
+"cooldown": [
+120,
+105,
+90
+],
+"maxammo": "-1",
+"description": "After a short preparation, Neeko leaps into the air, knocking up all nearby enemies. Upon landing, nearby enemies are damaged and stunned. The preparation is hidden if Neeko is disguised.",
+"tooltip": "After a delay Neeko leaps into the air, <status>Knocking Up</status> all nearby enemies for {{ delayuntilexplosion }} seconds. She then crashes down, dealing <magicDamage>{{ totaldamage }} magic damage</magicDamage> to all nearby enemies and <status>Stunning</status> them for {{ stunduration }} seconds.<br /><br /><rules>This Ability can be prepared in secret if Neeko is disguised. {{ delaybeforepassiveremoval }} seconds after casting this ability Neeko breaks her disguise.</rules>{{ spellmodifierdescriptionappend }}"
+},
+"Nidalee": {
+"name": "Aspect Of The Cougar",
+"cooldown": [
+3,
+3,
+3,
+3
+],
+"maxammo": "-1",
+"description": "Nidalee transforms into a cougar, gaining new abilities.",
+"tooltip": "<spellPassive>Passive:</spellPassive> While in <keywordMajor>Human Form</keywordMajor>, applying <keywordMajor>Hunted</keywordMajor> refreshes this Ability's Cooldown.<br /><br /><keywordMajor>Human Form:</keywordMajor> Nidalee transforms into <keywordMajor>Cougar Form</keywordMajor>, gaining melee Attacks and replacing her Active Abilities.<br /><br /><keywordMajor>Cougar Form:</keywordMajor> Nidalee transforms into <keywordMajor>Human Form</keywordMajor>, gaining ranged Attacks and replacing her Active Abilities.{{ spellmodifierdescriptionappend }}"
+},
+"Nilah": {
+"name": "Apotheosis",
+"cooldown": [
+110,
+95,
+80
+],
+"maxammo": "-1",
+"description": "Twirling her whip-blade in joyful exuberance, Nilah deals damage to enemies around her before pulling them closer with her weapon.",
+"tooltip": "Nilah whirls her whip-blade, dealing <physicalDamage>{{ damagepertickcalctooltip }} physical damage</physicalDamage> over 1 second, then finishes with a burst of <physicalDamage>{{ damagecalc }} physical damage</physicalDamage> that also <status>Pulls</status> nearby enemies toward her.<br /><br />Apotheosis heals Nilah and her nearby allies for <healing>{{ champhealingpercent }} (+{{ spell.nilahq:critlifesteal }} Formless Blade) of the damage dealt</healing> to enemy champions, converting any overhealing into a <shield>Shield</shield> for {{ duration }} seconds.{{ spellmodifierdescriptionappend }}"
+},
+"Nocturne": {
+"name": "Paranoia",
+"cooldown": [
+160,
+130,
+100
+],
+"maxammo": "-1",
+"description": "Nocturne reduces the sight radius of all enemy champions and removes their ally vision in the process. He can then launch himself at a nearby enemy champion.",
+"tooltip": "Nocturne darkens the map, reducing the sight radius of all enemy champions and removing their vision of allies for {{ paranoiaduration }} seconds. Nocturne can <recast>Recast</recast> this Ability during the duration to launch himself at an enemy champion dealing <physicalDamage>{{ damage }} physical damage</physicalDamage>.{{ spellmodifierdescriptionappend }}"
+},
+"Nunu": {
+"name": "Absolute Zero",
+"cooldown": [
+110,
+100,
+90
+],
+"maxammo": "-1",
+"description": "Nunu & Willump create a powerful blizzard in an area that slows enemies and deals massive damage at the end.",
+"tooltip": "Nunu and Willump channel a powerful blizzard for up to {{ channelduration }} seconds. Enemies inside are <status>Slowed</status> by {{ slowstartamount*-100 }}%, increasing to {{ maxslowamount*-100 }}% over the duration. Nunu and Willump also gain <shield>{{ totalshieldamount }} Shield</shield> for the duration before decaying over {{ shielddecayduration }} seconds afterwards.<br /><br />When the blizzard ends, it detonates, dealing up to <magicDamage>{{ maximumdamage }} magic damage</magicDamage> based on channel time. Nunu and Willump can <recast>Recast</recast> to end the blizzard early.{{ spellmodifierdescriptionappend }}"
+},
+"Olaf": {
+"name": "Ragnarok",
+"cooldown": [
+100,
+90,
+80
+],
+"maxammo": "-1",
+"description": "Olaf passively gains increased armor and magic resist. He can activate this ability to become immune to disables for as long as he keeps attacking.",
+"tooltip": "<spellPassive>Passive:</spellPassive> Olaf gains <scaleArmor>{{ resists }} Armor</scaleArmor> and <scaleMR>{{ resists }} Magic Resist</scaleMR>.<br /><br /><spellActive>Active: </spellActive>Olaf cleanses all <status>Immobilizing</status> and <status>Disabling</status> effects on himself and becomes immune to them for {{ duration }} seconds. While active, Olaf gains <scaleAD>{{ ad }} Attack Damage</scaleAD>. Hitting a champion with an Attack or <spellName>Reckless Swing</spellName> extends the duration by {{ durationextension }} seconds.<br /><br />Additionally, Olaf gains <speed>{{ haste*100 }}% Move Speed</speed> towards enemy champions for {{ hasteduration }} second.{{ spellmodifierdescriptionappend }}"
+},
+"Orianna": {
+"name": "Command: Shockwave",
+"cooldown": [
+110,
+95,
+80
+],
+"maxammo": "-1",
+"description": "Orianna commands her Ball to unleash a shockwave, dealing magic damage and launching nearby enemies towards the Ball after a short delay.",
+"tooltip": "Orianna commands her <keywordMajor>Ball</keywordMajor> to unleash a shockwave, dealing <magicDamage>{{ totaldamage }} magic damage</magicDamage> to nearby enemies and <status>Knocking</status> them in the direction of the <keywordMajor>Ball</keywordMajor>.{{ spellmodifierdescriptionappend }}"
+},
+"Ornn": {
+"name": "Call of the Forge God",
+"cooldown": [
+140,
+120,
+100
+],
+"maxammo": "-1",
+"description": "Ornn summons a massive elemental at a location which travels toward him with increasing speed. Enemies run over by the elemental take damage, are slowed and are made Brittle. Ornn can recast the ability to charge into the elemental, redirecting it in the direction he hits it, causing the elemental to affect any enemies it runs over to be knocked up, dealing the same damage and re-applying Brittle.",
+"tooltip": "Ornn summons a massive lava elemental, which stampedes towards him, dealing <magicDamage>{{ rdamagecalc }} magic damage</magicDamage>, applying <keywordMajor>Brittle</keywordMajor> to, and <status>Slowing</status> enemies hit by {{ rslowpercentbasepremath }}% for {{ brittledurationtooltiponly }} seconds.<br /><br />Ornn can <recast>Recast</recast> to dash with a headbutt. If he dashes into the elemental, he redirects and empowers it, causing it to <status>Knock Up</status> the first champion for {{ rstunduration }} second and subsequent champions for {{ minstun }} seconds. The elemental also deals <magicDamage>{{ rdamagecalc }} magic damage</magicDamage> and reapplies <keywordMajor>Brittle</keywordMajor>.{{ spellmodifierdescriptionappend }}"
+},
+"Pantheon": {
+"name": "Grand Starfall",
+"cooldown": [
+180,
+165,
+150
+],
+"maxammo": "-1",
+"description": "Pantheon composes himself and then leaps into the air, landing at a chosen location as a comet.",
+"tooltip": "<spellPassive>Passive:</spellPassive> Pantheon gains {{ armorpenetration*100 }}% Armor Penetration.<br /><br /><spellActive>Active:</spellActive> Pantheon gathers his strength to leap high into the air. He throws his spear from above which in a small area deals <physicalDamage>{{ spell.pantheonq:holddamagecalc }} physical damage</physicalDamage> and <status>Slows</status> by {{ spearslow*100 }}% for {{ spearslowduration }} seconds. <br /><br />Pantheon then crashes down as a meteor at the target area. Deals up to <magicDamage>{{ damagecalc }} magic damage</magicDamage> to enemies in a line (decreased by up to {{ edgedamagereduction*100 }}% at the edges of the area).<br /><br />This Ability instantly readies <span class=\"colorEDDA74\">Mortal Will</span>.{{ spellmodifierdescriptionappend }}"
+},
+"Poppy": {
+"name": "Keeper's Verdict",
+"cooldown": [
+140,
+120,
+100
+],
+"maxammo": "-1",
+"description": "Poppy channels a hammer strike that knocks enemies very far away.",
+"tooltip": "<charge>Begin Casting:</charge> Poppy begins charging her hammer for up to {{ channelmaxduration }} seconds, <status>Slowing</status> herself by {{ selfslow }}%.<br /><br /><release>Release:</release> Poppy smashes the ground, creating a shockwave that deals <physicalDamage>{{ damage }} physical damage</physicalDamage> to the first champion hit and surrounding enemies, <status>Knocks</status> them <status>Back</status> towards their Nexus, and makes them Untargetable while they fly. The range and <status>Knock Back</status> distance increase with charge duration.<br /><br />An uncharged swing deals <physicalDamage>{{ halfdamage }} physical damage</physicalDamage> and <status>Knocks Up</status> for {{ knockupdurationsnap }} seconds.{{ spellmodifierdescriptionappend }}"
+},
+"Pyke": {
+"name": "Death From Below",
+"cooldown": [
+100,
+85,
+70
+],
+"maxammo": "-1",
+"description": "Pyke blinks to and executes low health enemies, allowing him to cast this spell again and granting additional gold to an ally who assists.",
+"tooltip": "Pyke strikes all enemy champions in an X, teleporting to and <danger>executing</danger> targets below <scaleAD>{{ rdamage }}</scaleAD> Health. Champions above the threshold and non-champions instead take physical damage equal to {{ reduceddamage*100 }}% of that amount (<physicalDamage>{{ reduceddamagefinal }}</physicalDamage>). <br /><br />When an enemy champion dies inside the X, Pyke can <recast>Recast</recast> this Ability for free within {{ rrecastduration }} seconds. If he executed that champion, the last assisting ally will also get kill gold. If he did not, he will still get kill gold as if he did.<br />{{ spellmodifierdescriptionappend }}"
+},
+"Qiyana": {
+"name": "Supreme Display of Talent",
+"cooldown": [
+120,
+120,
+120
+],
+"maxammo": "0",
+"description": "Qiyana sends out a shockwave that detonates whatever elements she hits with it, stunning and damaging nearby enemies.",
+"tooltip": "Qiyana launches a shockwave that <status>Knocks Back</status> enemies and detonates when it hits terrain. The explosion follows the entire edge of the terrain, <status>Stunning</status> for between 0.5 and {{ stunduration }} seconds and dealing <physicalDamage>{{ damage }}</physicalDamage> plus <physicalDamage>{{ missinghealthdamagerock }} max Health physical damage</physicalDamage>. <status>Stun</status> duration scales down with distance the shockwave has travelled.<br /><br />Any river or brush the shockwave passes through also explode after a delay for the same damage and <status>Stun</status>.{{ spellmodifierdescriptionappend }}"
+},
+"Quinn": {
+"name": "Behind Enemy Lines",
+"cooldown": [
+3,
+3,
+3
+],
+"maxammo": "-1",
+"description": "Quinn and Valor team up to fly around at great speed.  Ending the ability casts Skystrike, which deals damage to nearby enemies and marks champions with Harrier.",
+"tooltip": "Quinn calls to Valor, pairing up after channeling for 2 seconds gaining <speed>{{ movementspeedmod*100 }}% Move Speed</speed> and allowing her to <recast>Recast</recast> this Ability. Attacking or using <spellName>Blinding Assault</spellName> or <spellName>Vault</spellName> automatically <recast>Recasts</recast> this Ability.<br /><br /><recast>Recast</recast>: Quinn and Valor perform an aerial maneuver, dealing <physicalDamage>{{ damage }} physical damage</physicalDamage>, marking champions with <keywordMajor>Harrier</keywordMajor>, and ending this Ability.{{ spellmodifierdescriptionappend }}"
+},
+"Rakan": {
+"name": "The Quickness",
+"cooldown": [
+130,
+110,
+90
+],
+"maxammo": "-1",
+"description": "Gains Move Speed, charming and dealing magic damage to enemies touched.",
+"tooltip": "Rakan gains <speed>{{ initialcastspeed }}% Move Speed</speed> for {{ duration }} seconds. Rakan deals <magicDamage>{{ totaldamagetooltip }} magic damage</magicDamage> and <status>Charms</status> enemies for {{ charmduration }} second(s) the first time he touches them. The first champion touched grants Rakan <speed>{{ touchspeed }}% decaying Move Speed</speed>.{{ spellmodifierdescriptionappend }}"
+},
+"Rammus": {
+"name": "Soaring Slam",
+"cooldown": [
+120,
+105,
+90
+],
+"maxammo": "-1",
+"description": "Rammus hops into the air and slams down at a target area, dealing magic damage and slowing enemies. If cast while Rammus is in Powerball, Rammus knocks up enemies near the center as well.",
+"tooltip": "Rammus hops into the air and slams down in an area, dealing <magicDamage>{{ initialdamagecalc }} magic damage</magicDamage> and <status>Slowing</status> by {{ slowamount*100 }}% for {{ slowduration }} seconds. If used during <spellName>Powerball</spellName>, enemies in the center take an additional <magicDamage>{{ spell.powerball:powerballdamage }} magic damage</magicDamage> and are <status>Knocked Up</status> for {{ knockupduration }} seconds.<br /><br />Rammus then creates {{ numberofpulses }} aftershocks in the area over {{ buffduration }} seconds, repeating the <status>Slow</status>.<br /><br />The range of this Ability is increased by Rammus's <speed>Move Speed</speed>.{{ spellmodifierdescriptionappend }}"
+},
+"RekSai": {
+"name": "Void Rush",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "Rek'Sai passively marks targets by damaging them. She can activate this ability to become briefly untargetable and lunge at a marked target for heavy damage based on their maximum health.",
+"tooltip": "Rek'Sai targets an enemy damaged by her in the last {{ preymarkduration }} seconds and then dives underground, becoming Untargetable. Moments later, she leaps unstoppably at her target, dealing <physicalDamage>{{ rbasedamagecalc }} plus {{ percenthealthdamage }}% max Health physical damage</physicalDamage> and resets the cooldown of <keywordMajor>Burrow / Un-burrow</keywordMajor>.{{ spellmodifierdescriptionappend }}"
+},
+"Rell": {
+"name": "Magnet Storm",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "Rell explodes in a magnetic fury, violently Pulling nearby enemies toward herself. Then Rell constantly Drags nearby enemies toward herself for a short while, dealing magic damage over time.",
+"tooltip": "Rell explodes in a magnetic fury, violently <status>Pulling</status> nearby enemies towards herself. Then Rell constantly <status>Drags</status> nearby enemies towards herself and deals <magicDamage>{{ totaldamage }} magic damage</magicDamage> over the next {{ duration }} seconds.{{ spellmodifierdescriptionappend }}"
+},
+"Renata": {
+"name": "Hostile Takeover",
+"cooldown": [
+150,
+130,
+110
+],
+"maxammo": "-1",
+"description": "Renata sends out a wave of chemicals, causing any enemies hit to go Berserk.",
+"tooltip": "Renata sends out a wave of chemicals, <status>Berserking</status> enemies for {{ berserkduration }} seconds, causing them to Attack the nearest unit, prioritizing their allies.<br /><br />While <status>Berserk</status>, enemies gain <attackSpeed>{{ bonusattackspeed*100 }}% Attack Speed</attackSpeed>.{{ spellmodifierdescriptionappend }}"
+},
+"Renekton": {
+"name": "Dominus",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "Renekton transforms into the Tyrant form, gaining bonus Health and dealing damage to enemies around him. While in this form, Renekton gains Fury periodically.",
+"tooltip": "Renekton surrounds himself with dark energies for {{ buffduration }} seconds, gaining <healing>{{ healthgain }} max Health</healing> and <keywordMajor>{{ furyoncast }} Fury</keywordMajor>. While active, he deals <magicDamage>{{ totaldamagepersecond }} magic damage</magicDamage> and gains <keywordMajor>{{ furypersecond }} Fury</keywordMajor> per second.{{ spellmodifierdescriptionappend }}"
+},
+"Rengar": {
+"name": "Thrill of the Hunt",
+"cooldown": [
+100,
+90,
+80
+],
+"maxammo": "-1",
+"description": "Rengar's predatory instincts take over, <font color='#cd90ee'>Camouflaging</font> him and revealing the nearest enemy champion in a large radius around him. During Thrill of the Hunt, Rengar gains Move Speed and he can leap to the tracked enemy without being in brush, reducing their armor.",
+"tooltip": "<spellPassive>Passive:</spellPassive> Rengar will also leap Attack when <keywordStealth>Camouflaged</keywordStealth>.<br /><br /><spellActive>Active:</spellActive> Rengar gains <speed>{{ stealthms }}% Move Speed</speed> and <keywordStealth>True Sight</keywordStealth> in a small area around the nearest enemy champion for {{ stealthduration }} seconds.<br /><br />After {{ fadetime }} seconds, Rengar becomes <keywordStealth>Camouflaged</keywordStealth> and can leap without being in Brush. Leaping to the nearest champion deals an additional <physicalDamage>{{ bonusdamage }} physical damage</physicalDamage>, shreds <scaleArmor>{{ armorshred }} Armor</scaleArmor> for {{ armorshredduration }} seconds, and ends this Ability.{{ spellmodifierdescriptionappend }}"
+},
+"Riven": {
+"name": "Blade of the Exile",
+"cooldown": [
+120,
+90,
+60
+],
+"maxammo": "-1",
+"description": "Riven empowers her keepsake weapon with energy, and gains Attack Damage and Range. During this time, she also gains the ability to use Wind Slash, a powerful ranged attack, once.",
+"tooltip": "Riven's weapon surges with spiritual energy, granting her <physicalDamage>{{ bonusad }} Attack Damage</physicalDamage> and increased range on damaging Abilities and Attacks for {{ duration }} seconds. While active, she can <recast>Recast.</recast><br /><br /><recast>Recast:</recast> Riven fires a wind slash that deals between <physicalDamage>{{ mindamage }}</physicalDamage> and <physicalDamage>{{ maxdamage }} physical damage</physicalDamage>, based on their missing Health.{{ spellmodifierdescriptionappend }}"
+},
+"Rumble": {
+"name": "The Equalizer",
+"cooldown": [
+130,
+105,
+80
+],
+"maxammo": "-1",
+"description": "Rumble fires off a group of rockets, creating a wall of flames that damages and slows enemies.",
+"tooltip": "Rumble launches a line of rockets, creating a burning trail that lasts {{ trailduration }} seconds, <status>Slowing</status> by {{ slowamount }}% and dealing <magicDamage>{{ damagepersecond }} magic damage</magicDamage> per second.<br /><br />Rumble can control the direction of the trail by clicking and dragging while casting this Ability.{{ spellmodifierdescriptionappend }}"
+},
+"Ryze": {
+"name": "Realm Warp",
+"cooldown": [
+180,
+160,
+140
+],
+"maxammo": "-1",
+"description": "Passively, Overload deals even more damage against targets with Flux.<br><br>On cast, Ryze creates a portal to a nearby location. After a few seconds, allies standing near the portal are teleported to the target location.",
+"tooltip": "<spellPassive>Passive:</spellPassive> <spellName>Overload</spellName> damage bonus against targets with <keywordMajor>Flux</keywordMajor> increased to {{ overloaddamagebonus }}%.<br /><br /><spellActive>Active:</spellActive> Ryze opens a portal to another location. After {{ chargetimetooltip }} seconds, all allies near the portal are teleported to that location.{{ spellmodifierdescriptionappend }}"
+},
+"Samira": {
+"name": "Inferno Trigger",
+"cooldown": [
+5,
+5,
+5
+],
+"maxammo": "-1",
+"description": "Samira unleashes a torrent of shots from her weapons, wildly shooting all enemies surrounding her.",
+"tooltip": "Samira can only use this Ability if her current <keywordMajor>Style</keywordMajor> rating is S. Using this Ability consumes all <keywordMajor>Style</keywordMajor> rating.<br /><br />Samira unleashes a torrent of shots from her weapons, wildly shooting all enemies surrounding her 10 times over 2 seconds, each shot dealing <physicalDamage>{{ damagecalc }} physical damage</physicalDamage> and applying Life Steal at {{ lifestealmod*100 }}% effectiveness. Each shot can also critically strike.{{ spellmodifierdescriptionappend }}"
+},
+"Sejuani": {
+"name": "Glacial Prison",
+"cooldown": [
+120,
+105,
+90
+],
+"maxammo": "-1",
+"description": "Sejuani throws her bola that freezes and stuns the first champion hit and creates an ice storm that slows other enemies.",
+"tooltip": "Sejuani throws her True Ice bola, <status>Stunning</status> and revealing the first enemy champion hit for {{ basestunduration }} second and dealing <magicDamage>{{ minordamagetooltip }} magic damage</magicDamage>.<br /><br />If the bola travels at least 25% of its range, it <status>Stuns</status> and reveals for {{ empoweredstunduration }} seconds instead. It then also creates an ice storm that <status>Slows</status> surrounding enemies by {{ explosionslowamount }}% for {{ zoneduration }} seconds. All affected enemies take <magicDamage>{{ totaldamagetooltip }} magic damage</magicDamage>.{{ spellmodifierdescriptionappend }}"
+},
+"Senna": {
+"name": "Dawning Shadow",
+"cooldown": [
+140,
+120,
+100
+],
+"maxammo": "-1",
+"description": "Senna calls upon the relic stones of fallen Sentinels, splitting her relic cannon into a holy array of shadow and light. She then fires a global beam that shields allies from harm, while damaging enemies caught in the center.",
+"tooltip": "Senna fires a beam of light that deals <physicalDamage>{{ totaldamage }} physical damage</physicalDamage> to all enemy champions hit. Allied champions hit in a wider area receive <shield>{{ totalshield }} Shield</shield> for {{ shieldduration }} seconds.{{ spellmodifierdescriptionappend }}"
+},
+"Seraphine": {
+"name": "Encore",
+"cooldown": [
+160,
+140,
+120
+],
+"maxammo": "-1",
+"description": "Seraphine deals damage and charms enemies hit, refreshing the range with every allied or enemy champion hit.",
+"tooltip": "Seraphine takes the stage, projecting a captivating force that <status>Charms</status> for {{ rchannelduration }} seconds and deals <magicDamage>{{ r1totaldamage }} magic damage</magicDamage>.<br /><br />Any champions struck (including allies) become part of the performance, extending the range of this Ability. Allied champions gain maximum <keywordMajor>Notes</keywordMajor>.{{ spellmodifierdescriptionappend }}"
+},
+"Sett": {
+"name": "The Show Stopper",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "Sett carries an enemy champion through the air and slams them into the ground, dealing damage and slowing all enemies near where they land.",
+"tooltip": "Sett grabs an enemy champion and <status>Suppresses</status> them as he carries them forward, then slams them into the ground, dealing <physicalDamage>{{ damagecalc }} plus {{ maxhealthdamage*100 }}% of the grabbed enemy's bonus Health physical damage</physicalDamage> to surrounding enemies and <status>Slowing</status> them by {{ slowamount*100 }}% for {{ slowduration }} second. Enemies take less damage the further they are from where Sett lands.{{ spellmodifierdescriptionappend }}"
+},
+"Shaco": {
+"name": "Hallucinate",
+"cooldown": [
+100,
+90,
+80
+],
+"maxammo": "-1",
+"description": "Shaco creates an illusion of himself near him, which can attack nearby enemies (Deals reduced damage to turrets).  Upon death, it explodes, spawning three mini Jack in the Boxes and dealing damage to nearby enemies.",
+"tooltip": "Shaco briefly disappears, then reappears with a clone that lasts {{ clonelifetime }} seconds and detonates when it dies, dealing <magicDamage>{{ explosiontotaldamage }} magic damage</magicDamage> and spawning three mini <spellName>Jack in the Boxes</spellName> that trigger immediately. The clone deals {{ cloneaadamagepercent*100 }}% of Shaco's damage and receives {{ cloneincomingdamagepercent*100 }}% increased damage.<br /><br />Mini <spellName>Jack in the Boxes</spellName> deal <magicDamage>{{ aoedamage }} magic damage</magicDamage>, or <magicDamage>{{ stdamage }} magic damage</magicDamage> if firing at only one enemy, and <status>Fear</status> for {{ boxfearduration }} second.<br />{{ spellmodifierdescriptionappend }}"
+},
+"Shen": {
+"name": "Stand United",
+"cooldown": [
+200,
+180,
+160
+],
+"maxammo": "-1",
+"description": "Shen shields target allied champion from incoming damage, and soon after teleports to their location.",
+"tooltip": "Shen grants an allied champion anywhere on the map between <shield>{{ shield }}</shield> and <shield>{{ maxshield }} Shield</shield> based on their missing Health for {{ shieldduration }} seconds (max Shield at 60% missing Health). After channeling for {{ channelduration }} seconds, Shen teleports to his ally's location with his <keywordMajor>Spirit Blade</keywordMajor>.{{ spellmodifierdescriptionappend }}"
+},
+"Shyvana": {
+"name": "Dragon's Descent",
+"cooldown": [
+0,
+0,
+0
+],
+"maxammo": "-1",
+"description": "Shyvana transforms into a Dragon and leaps forward causing enemies along her path to flee. While in Dragon form she becomes larger and her basic abilities are empowered.",
+"tooltip": "<spellPassive>Passive</spellPassive>: Shyvana generates <keywordMajor>{{ fury_generation }} Dragon Fury</keywordMajor> by striking enemies with Attacks and Abilities, increased by {{ tt_fury_mult }} while in <keywordMajor>Dragon Form</keywordMajor>, and reduced {{ tt_fury_aoe_penalty }} by when striking in an area against non-champions.<br /><br /><spellActive>Active</spellActive>: Shyvana transforms into her <keywordMajor>Dragon Form</keywordMajor>, becoming <attention>Unstoppable</attention>, and flying to the target location breathing fire on enemies below dealing <magicDamage>{{ damage }} magic damage</magicDamage> and causing them <status>Flee for {{ fearduration }} seconds</status>.<br /><br />While transformed, Shyvana's basic Abilities are upgraded, she gains <scaleHealth>{{ calc_bonus_health }} bonus Health</scaleHealth>, size, and Attack Range. Shyvana loses <keywordMajor>Dragon Fury</keywordMajor> over time and her transformation ends when she has no <keywordMajor>Dragon Fury</keywordMajor> remaining.{{ spellmodifierdescriptionappend }}"
+},
+"Singed": {
+"name": "Insanity Potion",
+"cooldown": [
+100,
+100,
+100
+],
+"maxammo": "-1",
+"description": "Singed drinks a potent brew of chemicals, granting him increased combat stats, and making his Poison Trail apply Grievous Wounds.",
+"tooltip": "Singed drinks a potent brew of chemicals, granting him {{ statamount }} <scaleAP>Ability Power</scaleAP>, <scaleArmor>Armor</scaleArmor>, <scaleMR>Magic Resist</scaleMR>, <speed>Move Speed</speed>, <healing>Health Regen</healing>, and <scaleMana>Mana Regen</scaleMana> for {{ duration }} seconds. During this effect, Singed's <spellName>Poison Trail</spellName> also applies {{ grievousamount*100 }}% Grievous Wounds for {{ grievousduration }} second.{{ spellmodifierdescriptionappend }}"
+},
+"Sion": {
+"name": "Unstoppable Onslaught",
+"cooldown": [
+140,
+100,
+60
+],
+"maxammo": "-1",
+"description": "Sion charges in a direction, ramping up speed over time. He can steer his charge slightly with the mouse cursor location. When he collides with an enemy he deals damage and knocks them up based on the distance he has charged.",
+"tooltip": "Sion charges Unstoppably in a direction for 8 seconds, turning towards the mouse cursor. Sion stops on colliding with an enemy champion or wall or on <recast>Recasting</recast> this Ability.  <br /><br />At the end of the charge, Sion deals between <physicalDamage>{{ mindamagetotal }} and {{ maxdamagetotal }} physical damage</physicalDamage> based on distance travelled. Enemies close to Sion are <status>Stunned</status> for between {{ minstunduration }} and {{ maxstunduration }} seconds based on distance travelled. Enemies in a larger area are <status>Slowed</status> by {{ slowamount }}% for 3 seconds.{{ spellmodifierdescriptionappend }}"
+},
+"Sivir": {
+"name": "On The Hunt",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "Sivir leads her allies in battle, granting them a surge of Move Speed for a period of time. In addition, Sivir's attacks reduce her spell cooldowns.",
+"tooltip": "Sivir rallies her nearby allies, granting them <speed>{{ maxms*100 }}% Move Speed</speed> for {{ ultduration }} seconds.<br /><br />Sivir's attacks against champions while On The Hunt reduce the cooldown of her basic abilities by {{ attackcooldownrefund }} seconds.<br /><br />Takedowns on recently damaged enemies refreshes the duration of the hunt.{{ spellmodifierdescriptionappend }}"
+},
+"Skarner": {
+"name": "Impale",
+"cooldown": [
+120,
+105,
+90
+],
+"maxammo": "-1",
+"description": "Skarner's tails lash forward to suppress enemy champions. Once suppressed, the victims will be dragged along by Skarner as he moves around.",
+"tooltip": "Skarner's tails lash forward, dealing <magicDamage>{{ damage }} magic damage</magicDamage> and <status>Suppressing</status> the first 3 champions he hits for {{ duration }}s. Those hit are dragged along by Skarner for the duration of this Ability.<br /><br />If Skarner hits at least one champion he gains <speed>{{ speedboostamount*100 }}% Move Speed</speed> for {{ speedboostduration }} seconds.<br /><br />If <spellName>Shattered Earth</spellName> is active, Skarner will cast <spellName>Upheaval</spellName> first.{{ spellmodifierdescriptionappend }}"
+},
+"Smolder": {
+"name": "MMOOOMMMM!",
+"cooldown": [
+120,
+110,
+100
+],
+"maxammo": "-1",
+"description": "Smolder calls his mom to breath fire from above, dealing extra damage and slowing enemies in the center of her fire.",
+"tooltip": "Smolder's mom breathes fire from above, dealing <physicalDamage>{{ totaldamage }} physical damage</physicalDamage>. Enemies in the center take <physicalDamage>{{ tooltiponly_totalsweetspotdamage }} physical damage</physicalDamage> instead and are <status>Slowed</status> by {{ slowamount*100 }}% for {{ slowduration }} seconds.<br /><br />Smolder's mom heals her son for <healing>{{ momhealcalc }} Health</healing> if she hits him.{{ spellmodifierdescriptionappend }}"
+},
+"Sona": {
+"name": "Crescendo",
+"cooldown": [
+140,
+120,
+100
+],
+"maxammo": "-1",
+"description": "Sona plays her ultimate chord, stunning enemy champions and forcing them to dance and dealing magic damage to them.",
+"tooltip": "Sona strikes an irresistible chord, <status>Stunning</status> enemy for {{ stunduration }} seconds and dealing <magicDamage>{{ totaldamage }} magic damage</magicDamage>.{{ spellmodifierdescriptionappend }}"
+},
+"Soraka": {
+"name": "Wish",
+"cooldown": [
+150,
+135,
+120
+],
+"maxammo": "-1",
+"description": "Soraka fills her allies with hope, instantly restoring health to herself and all allied champions.",
+"tooltip": "Soraka calls upon divine powers, restoring <healing>{{ healingcalc }} Health</healing> to all allied champions, regardless of distance. Healing is increased to <healing>{{ ampedhealing }}</healing> on targets below 40% Health.{{ spellmodifierdescriptionappend }}"
+},
+"Swain": {
+"name": "Demonic Ascension",
+"cooldown": [
+120,
+120,
+120
+],
+"maxammo": "-1",
+"description": "Swain transforms into a demon and drains health from nearby enemy champions, minions, and neutral monsters. Swain can cast Demonflare to decimate and slow nearby enemies with a nova of soulfire. This form is indefinite as long as Swain drains enemy champions.",
+"tooltip": "Swain frees the demon, which deals <magicDamage>{{ damagecalc }} magic damage</magicDamage> and drains <healing>{{ healingcalc }} Health</healing> per second from nearby enemies. His Demonic Energy depletes over time but can be recharged indefinitely by draining enemy Champions and is fully restored on Champion takedowns.<br /><br />After {{ demonflarecastdelay }} seconds and every {{ demonflarecooldowntooltip }} seconds thereafter, Swain can cast <spellName>Demonflare</spellName> while transformed, which deals <magicDamage>{{ demonflaredamagetotal }} magic damage</magicDamage> and <status>Slows</status> enemies by {{ demonflareslowamount*100 }}%, decaying over {{ demonflareslowduration }}s.{{ spellmodifierdescriptionappend }}"
+},
+"Sylas": {
+"name": "Hijack",
+"cooldown": [
+80,
+55,
+30
+],
+"maxammo": "-1",
+"description": "Sylas steals the enemy's ultimate ability and can cast it freely.",
+"tooltip": "Sylas hijacks an enemy champion, allowing him to cast a copy of their ultimate Ability, based on his Ultimate level and using his stats.<br /><br />Hijacking an enemy places a Cooldown on them for {{ pertargetcooldown }}% (modified by Sylas' Ability Haste) of the enemy's ultimate's Cooldown, with a minimum of {{ minimumenemycooldown }} seconds, during which time Sylas cannot hijack them again.{{ spellmodifierdescriptionappend }}"
+},
+"Syndra": {
+"name": "Unleashed Power",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "Syndra bombards an enemy Champion with all of her Dark Spheres.",
+"tooltip": "<spellPassive>Passive</spellPassive>: <spellName>Dark Sphere</spellName> gains an additional {{ qhasteperrank }} Ability Haste for each rank of <spellName>Unleashed Power</spellName>.<br /><br />Syndra draws on her full cataclysmic power, launching the 3 <keywordMajor>Dark Spheres</keywordMajor> orbiting her plus up to 4 more nearby at an enemy champion. Each <keywordMajor>Dark Sphere</keywordMajor> deals <magicDamage>{{ damagecalc }} magic damage</magicDamage> (max <magicDamage>{{ maxdamagecalc }} magic damage</magicDamage>).<br /><br /><evolve>{{ spell.syndrapassive:rupgradethreshold }} Splinters of Wrath</evolve>: This Ability <danger>executes</danger> enemies below {{ upgradeexecutethreshold*100 }}% Health.{{ spellmodifierdescriptionappend }}"
+},
+"TahmKench": {
+"name": "Devour",
+"cooldown": [
+0,
+0,
+0
+],
+"maxammo": "-1",
+"description": "Tahm Kench devours a champion for a few seconds, dealing magic damage if they are an enemy, or shielding them if they are an ally.",
+"tooltip": "Tahm Kench devours a champion for a few seconds. He can <recast>Recast</recast> to spit them out.<br /><br /><specialRules>Enemy Champions:</specialRules> Require 3 stacks of <spellName>An Acquired Taste</spellName>. Are devoured for up to {{ enemyduration }} seconds and take <magicDamage>{{ basedamage }} (+{{ percenthpdamage }} of their Max Health) magic damage</magicDamage>. Tahm Kench is <status>Slowed</status> by {{ slowamount*100 }}% and <keywordName>Grounded</keywordName> during this effect.<br /><br /><specialRules>Ally Champions:</specialRules> Are devoured for up to {{ allyduration }} seconds and are granted <shield>{{ totalshield }} Shield</shield> which decays gradually after being spit out. Allies can also choose to exit early. Tahm Kench is <status>Grounded</status> during this effect, but can cast <keywordName>Abyssal Dive</keywordName> and gains <speed>{{ allyspeedamount*100 }}% Move Speed</speed> for {{ allyduration }} seconds.{{ spellmodifierdescriptionappend }}"
+},
+"Taliyah": {
+"name": "Weaver's Wall",
+"cooldown": [
+180,
+150,
+120
+],
+"maxammo": "-1",
+"description": "Taliyah creates a very long wall and then surfs it.",
+"tooltip": "Taliyah creates a massive earthen wall for {{ wallduration }} seconds. If she immediately <recast>Recasts</recast>, she will ride along the wall as it unravels. Moving or being immobilized will end the ride.<br /><br />This ability cannot be cast if Taliyah has taken damage from Champions or structures within the last {{ damagelockouttime }} seconds.{{ spellmodifierdescriptionappend }}"
+},
+"Talon": {
+"name": "Shadow Assault",
+"cooldown": [
+100,
+80,
+60
+],
+"maxammo": "-1",
+"description": "Talon disperses a ring of blades and becomes Invisible while gaining additional Move Speed. When Talon emerges from Invisibility, the blades converge on his location. Each time the blades move, Shadow Assault deals physical damage to enemies hit by at least one blade.",
+"tooltip": "Talon disperses a ring of blades that deal <physicalDamage>{{ damage }} physical damage</physicalDamage>, gains <speed>{{ movespeed*100 }}% Move Speed</speed>, and becomes <keywordStealth>Invisible</keywordStealth> for {{ duration }} seconds. When the <keywordStealth>Invisibility</keywordStealth> ends, the blades return to Talon, dealing <physicalDamage>{{ damage }} physical damage</physicalDamage> again.<br /><br />If Talon cancels the <keywordStealth>Invisibility</keywordStealth> with an Attack or with <spellName>Noxian Diplomacy</spellName>, the blades return to the target instead.{{ spellmodifierdescriptionappend }}"
+},
+"Taric": {
+"name": "Cosmic Radiance",
+"cooldown": [
+180,
+150,
+120
+],
+"maxammo": "-1",
+"description": "Pulses cosmic energy onto nearby allied champions after a delay, making them invulnerable for a short duration.",
+"tooltip": "Taric calls down protection from the heavens. After {{ initialdelay }} seconds, nearby ally champions become invulnerable for {{ invulnduration }} seconds.{{ spellmodifierdescriptionappend }}"
+},
+"Teemo": {
+"name": "Noxious Trap",
+"cooldown": [
+0.25,
+0.25,
+0.25
+],
+"maxammo": "3",
+"description": "Teemo throws an explosive poisonous trap using one of the mushrooms stored in his pack. If an enemy steps on the trap, it will release a poisonous cloud, slowing enemies and damaging them over time. If Teemo throws a mushroom onto another mushroom it will bounce, gaining additional range.",
+"tooltip": "Teemo tosses a mushroom trap that detonates when stepped on. The traps <status>Slow</status> by {{ slowamount }}% and deal <magicDamage>{{ totaldamage }} magic damage</magicDamage> over {{ debuffduration }} seconds. Enemies are revealed for the same duration.<br /><br />Traps last {{ mushroomduration }} minutes and are stealthed. A mushroom tossed onto another mushroom bounces before landing at its position. This Ability has {{ maxammo }} charges ({{ ammorechargetime }} second refresh).<br />{{ spellmodifierdescriptionappend }}"
+},
+"Thresh": {
+"name": "The Box",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "A prison of walls that slow and deal damage if broken.",
+"tooltip": "Thresh creates a prison of spectral walls, <status>Slowing</status> champions by {{ slowamount }}% for {{ slowduration }} seconds and dealing <magicDamage>{{ totaldamage }} magic damage</magicDamage>. Walls break after one collision, and after one is broken, the rest deal no damage and <status>Slow</status> for half duration.{{ spellmodifierdescriptionappend }}"
+},
+"Tristana": {
+"name": "Buster Shot",
+"cooldown": [
+100,
+100,
+100
+],
+"maxammo": "-1",
+"description": "Tristana loads a massive cannonball into her weapon and fires it at an enemy unit. This deals Magic Damage and knocks the target back. If the target is carrying the Explosive Charge bomb, the bomb detonation radius is doubled.",
+"tooltip": "Tristana fires a massive cannonball, dealing <magicDamage>{{ damagecalc }} magic damage</magicDamage> to the target, <status>Knocking Back</status> and <status>Stunning</status> them and surrounding enemies for {{ stunduration }} seconds.{{ spellmodifierdescriptionappend }}"
+},
+"Trundle": {
+"name": "Subjugate",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "Trundle immediately steals a percent of his target's Health, Armor and Magic Resistance. Over the next 4 seconds the amount of Health, Armor, and Magic Resistance stolen is doubled.",
+"tooltip": "Trundle drains the lifeforce of an enemy champion, dealing <magicDamage>{{ totalpercenthpdamage }} max Health magic damage</magicDamage> and stealing <scaleArmor>{{ armormrshred*100 }}% Armor</scaleArmor> and <scaleMR>Magic Resist</scaleMR> over {{ actualdurationofdrainbuff }} seconds.{{ spellmodifierdescriptionappend }}"
+},
+"Tryndamere": {
+"name": "Undying Rage",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "Tryndamere's lust for battle becomes so strong that he is unable to die, no matter how wounded he becomes.",
+"tooltip": "Tryndamere becomes completely immune to death for {{ tryndrduration }} seconds, refusing to be reduced below {{ tryndrminhealth }} Health, and instantly gains <keywordMajor>{{ tryndrfurygain }} Fury</keywordMajor>.{{ spellmodifierdescriptionappend }}"
+},
+"TwistedFate": {
+"name": "Destiny",
+"cooldown": [
+170,
+140,
+110
+],
+"maxammo": "-1",
+"description": "Twisted Fate predicts the fortunes of his foes, revealing all enemy champions and enabling the use of Gate, which teleports Twisted Fate to any target location in 1.5 seconds.",
+"tooltip": "Twisted Fate focuses on his cards, granting <keywordStealth>True Sight</keywordStealth> of all enemy champions on the map for {{ e1 }} seconds and allowing him to <recast>Recast</recast>.<br /><br /><recast>Recast</recast>: Twisted Fate teleports up to {{ e4 }} units away.{{ spellmodifierdescriptionappend }}"
+},
+"Twitch": {
+"name": "Spray and Pray",
+"cooldown": [
+90,
+90,
+90
+],
+"maxammo": "-1",
+"description": "Twitch unleashes the full power of his crossbow, shooting bolts over a great distance that pierce all enemies caught in their path.",
+"tooltip": "Twitch unleashes his crossbow, gaining {{ bonusrange }} Attack Range and <scaleAD>{{ bonusad }} Attack Damage</scaleAD>, and causing his Attacks to become piercing bolts for {{ duration }} seconds. These bolts hit all enemies they pass through, but deal {{ falloffdamage*100 }}% less damage to subsequent targets, down to a minimum of {{ minimumfalloffdamage*100 }}% damage.<br />{{ spellmodifierdescriptionappend }}"
+},
+"Udyr": {
+"name": "Wingborne Storm",
+"cooldown": [
+6,
+6,
+6,
+6,
+6,
+6
+],
+"maxammo": "-1",
+"description": "Udyr surrounds himself in a glacial storm, damaging and slowing nearby enemies. Recast: Empower and unleash the storm, causing it to track enemies and deal additional damage.",
+"tooltip": "<spellActive>Storm Stance:</spellActive> Udyr surrounds himself in a glacial storm for {{ buffduration }} seconds, dealing <magicDamage>{{ stormdamage }} magic damage</magicDamage> per second to nearby enemies and <status>Slowing</status> them by {{ slowpotency*100 }}%. Additionally, Udyr's next two Attacks in this stance deal <magicDamage>{{ pulsedamage }} magic damage</magicDamage> to enemies in the storm.<br /><br /><keywordMajor>Awaken:</keywordMajor> Unleash the storm, causing it to follow Udyr's last Attacked enemy, deal an additional <magicDamage>{{ percenthpblast }} max Health magic damage</magicDamage> over the duration, and <status>Slow</status> by an additional {{ empoweredslow }}.{{ spellmodifierdescriptionappend }}"
+},
+"Urgot": {
+"name": "Fear Beyond Death",
+"cooldown": [
+100,
+85,
+70
+],
+"maxammo": "-1",
+"description": "Urgot fires a chem-drill that impales the first enemy champion hit. If that champion falls below a health threshold, Urgot judges them weak and can execute them.",
+"tooltip": "Urgot fires a chem-drill, impaling the first champion hit, dealing <physicalDamage>{{ rcalculateddamage }} physical damage</physicalDamage> and <status>Slowing</status> for {{ rslowduration }} seconds by 1% per 1% missing Health, up to {{ rmovespeedmod }}%.<br /><br />If the impaled victim falls below {{ rhealththreshold }}% Health, Urgot can <recast>Recast</recast> this Ability, <status>Suppressing</status> the victim and dragging them to himself. On reaching Urgot, they are killed and nearby enemies are <status>Feared</status> for {{ rfearduration }} seconds.{{ spellmodifierdescriptionappend }}"
+},
+"Varus": {
+"name": "Chain of Corruption",
+"cooldown": [
+100,
+80,
+60
+],
+"maxammo": "-1",
+"description": "Varus flings out a damaging tendril of corruption that immobilizes the first enemy champion hit and then spreads towards nearby uninfected champions, immobilizing them too on contact.",
+"tooltip": "Varus flings out a tendril of corruption, <status>Rooting</status> the first champion hit for {{ rootduration }} seconds and dealing <magicDamage>{{ totaldamage }} magic damage</magicDamage>. <status>Rooted</status> enemies gain {{ passivestacks }} <keywordMajor>Blight</keywordMajor> stacks over the duration.<br /><br />The corruption spreads from its target to uninfected enemy champions. If it reaches them, they take the same damage and <status>Root</status>.{{ spellmodifierdescriptionappend }}"
+},
+"Vayne": {
+"name": "Final Hour",
+"cooldown": [
+100,
+85,
+70
+],
+"maxammo": "-1",
+"description": "Readying herself for an epic confrontation, Vayne gains increased Attack Damage, Invisibility during Tumble, reduced Tumble cooldown, and more bonus Move Speed from Night Hunter",
+"tooltip": "Vayne gains <physicalDamage>{{ bonusattackdamage }} Attack Damage</physicalDamage> for {{ baseduration }} seconds, extended by {{ durationtoadd }} seconds whenever a champion damaged by Vayne dies within {{ damagedmarkerduration }} seconds. Additionally, during the duration:<li><spellName>Night Hunter</spellName> instead grants <speed>{{ movementspeed }} Move Speed</speed>.<li>The Cooldown of <spellName>Tumble</spellName> is reduced by {{ tumblecdreduction }}%, and grants <keywordStealth>Invisibility</keywordStealth> for {{ tumblestealthduration }} second.{{ spellmodifierdescriptionappend }}"
+},
+"Veigar": {
+"name": "Primordial Burst",
+"cooldown": [
+120,
+90,
+60
+],
+"maxammo": "-1",
+"description": "Blasts target enemy champion, dealing a large amount of magic damage, increasing based on the target's missing health.",
+"tooltip": "Veigar blasts an enemy champion with primal magic to deal between <magicDamage>{{ mindamage }} and {{ maxdamage }} magic damage</magicDamage>, increasing with the target's missing Health. Damage is maximized against enemies below 33% Health.{{ spellmodifierdescriptionappend }}"
+},
+"Velkoz": {
+"name": "Life Form Disintegration Ray",
+"cooldown": [
+100,
+90,
+80
+],
+"maxammo": "-1",
+"description": "Vel'Koz unleashes a channelled beam that follows the cursor for 2.5 seconds that deals magic damage. Organic Deconstruction Researches enemy champions causing them to take true damage instead.",
+"tooltip": "Vel'Koz channels a ray of energy that follows the cursor, dealing a total of <magicDamage>{{ totaldamage }} magic damage</magicDamage> over 2.5 seconds and <status>Slowing</status> by {{ e3 }}%. Deals <trueDamage>true damage</trueDamage> instead to enemies recently damaged by <spellName>Organic Deconstruction</spellName>.<br /><br />Enemies gain stacks of <keywordMajor>Deconstruction</keywordMajor> periodically while in the beam.{{ spellmodifierdescriptionappend }}"
+},
+"Vex": {
+"name": "Shadow Surge",
+"cooldown": [
+140,
+120,
+100
+],
+"maxammo": "-1",
+"description": "Fire a missile that marks an enemy champion.  Recast to dash to them and deal damage.",
+"tooltip": "Shadow excitedly surges forward, dealing <magicDamage>{{ spell.vexr:rdamagecalc }} magic damage</magicDamage> and marking the first enemy champion hit for 4 seconds.<br /><br /><recast>Recast</recast>: Dash to the marked champion, dealing <magicDamage>{{ spell.vexr:recastdamagecalc }} magic damage</magicDamage> on arrival.<br /><br />If the marked champion dies within {{ spell.vexr:takedownwindow }} seconds of taking damage from this Ability, its Cooldown is temporarily reset.{{ spellmodifierdescriptionappend }}"
+},
+"Vi": {
+"name": "Cease and Desist",
+"cooldown": [
+140,
+115,
+90
+],
+"maxammo": "-1",
+"description": "Vi runs down an enemy, knocking aside anyone in the way. When she reaches her target she knocks it into the air, jumps after it, and slams it back into the ground.",
+"tooltip": "Vi singles out an enemy champion, revealing them and dashing unstoppably towards them. Upon reaching them, Vi <status>Knocks</status> them <status>Up</status> for {{ rstunduration }} seconds and deals <physicalDamage>{{ damage }} physical damage</physicalDamage>.<br /><br />Any other enemies Vi collides with are dealt damage, knocked aside, and <status>Stunned</status> for {{ secondarytargetstunduration }} seconds.{{ spellmodifierdescriptionappend }}"
+},
+"Viego": {
+"name": "Heartbreaker",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "Viego teleports to a nearby location and executes an enemy champion on arrival, piercing their heart and causing a destructive shockwave around them that knocks away their allies.",
+"tooltip": "Viego discards any souls he is currently <keywordMajor>Possessing</keywordMajor> and teleports. On arrival he Attacks the champion with the lowest percent Health, briefly <status>Slowing</status> them by {{ slowpercent*100 }}% and dealing <physicalDamage>{{ totaldamage }} + {{ totalpercenthealth }}% missing Health physical damage</physicalDamage>. Other nearby enemies are <status>Knocked Back</status> and take <physicalDamage>{{ totaldamage }} physical damage</physicalDamage>.{{ spellmodifierdescriptionappend }}"
+},
+"Viktor": {
+"name": "Arcane Storm",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "Viktor conjures an Arcane Storm on the field, dealing magic damage and interrupting enemy channels. The storm periodically does magic damage to all nearby enemies and can be redirected by Viktor.<br><br>Augment: The Arcane Storm moves 25% faster, and whenever champions die after taking damage from it, the storm grows and increases in its duration.<br><br>",
+"tooltip": "Viktor conjures an Arcane Storm in an area for {{ stormduration }} seconds, which instantly deals <magicDamage>{{ initialburstdamage }} magic damage</magicDamage> followed by <magicDamage>{{ subsequentburstdamage }} magic damage</magicDamage> per second to surrounding enemies. The storm automatically follows champions it has recently damaged.<br /><br /><recast>Recast:</recast> Viktor can manually move the storm.<br /><br /><keywordMajor>Upgraded:</keywordMajor> The storm moves {{ augmentboost*100 }}% faster. If a champion that the storm has damaged dies, the storm increases its size and its duration by {{ tooltip_durationextension }} seconds (up to {{ maxgrowths }} times).<br /><br />{{ spellmodifierdescriptionappend }}"
+},
+"Vladimir": {
+"name": "Hemoplague",
+"cooldown": [
+120,
+120,
+120
+],
+"maxammo": "-1",
+"description": "Vladimir infects an area with a virulent plague. Affected enemies take increased damage for the duration. After a few seconds, Hemoplague deals magic damage to infected enemies and heals Vladimir for each enemy Champion hit.",
+"tooltip": "Vladimir creates a virulent plague, causing its victims to take {{ damageamp }}% increased damage from all sources for {{ duration }} seconds. After it expires, Vladimir deals <magicDamage>{{ damage }} magic damage</magicDamage> to all infected targets. Vladimir restores <healing>{{ damage }} Health</healing> if he hits a champion, and restores an additional <healing>{{ secondaryhealingtooltip }} Health</healing> for each champion beyond the first.{{ spellmodifierdescriptionappend }}"
+},
+"Volibear": {
+"name": "Stormbringer",
+"cooldown": [
+160,
+135,
+110
+],
+"maxammo": "-1",
+"description": "Volibear leaps to a target location, Slowing and damaging enemies beneath him while gaining bonus Health.  Enemy towers near his landing location become temporarily disabled.",
+"tooltip": "Volibear transforms and leaps, gaining <healing>{{ healthamount }} Health</healing> and {{ bonusattackrange }} Attack Range for the next {{ transformduration }} seconds.<br /><br />Upon landing, Volibear cracks the earth, <status>Disabling</status> nearby towers for {{ towerdisableduration }} seconds and dealing <physicalDamage>{{ towerdamagetooltip }} physical damage to them</physicalDamage>. Nearby enemies are <status>Slowed</status> by {{ slowamount*100 }}%, decaying over 1 second. Enemies directly underneath Volibear suffer <physicalDamage>{{ sweetspotdamagetooltip }} physical damage</physicalDamage>.{{ spellmodifierdescriptionappend }}"
+},
+"Warwick": {
+"name": "Infinite Duress",
+"cooldown": [
+110,
+90,
+70
+],
+"maxammo": "-1",
+"description": "Warwick leaps in a direction (scaling with his bonus Move Speed), suppressing the first champion he collides with for 1.5 seconds.",
+"tooltip": "Warwick leaps a huge distance that scales with his <speed>Move Speed</speed>, <status>Suppressing</status> the first champion he collides with while he channels for {{ rduration }} seconds. He attacks that champion 3 times over the duration, dealing <magicDamage>{{ damagecumulative }} magic damage</magicDamage>. Warwick <healing>heals for 100% of all damage dealt</healing> during the channel.{{ spellmodifierdescriptionappend }}"
+},
+"Xayah": {
+"name": "Featherstorm",
+"cooldown": [
+140,
+120,
+100
+],
+"maxammo": "-1",
+"description": "Xayah leaps into the air becoming untargetable and throwing out a fan of daggers, dropping Feathers she can recall.",
+"tooltip": "Xayah leaps into the air becoming Untargetable and Ghosted for 1.5 seconds before raining down daggers that deal <physicalDamage>{{ damage }} physical damage</physicalDamage> and leave behind a line of <keywordMajor>Feathers</keywordMajor>.{{ spellmodifierdescriptionappend }}"
+},
+"Xerath": {
+"name": "Rite of the Arcane",
+"cooldown": [
+130,
+115,
+100
+],
+"maxammo": "-1",
+"description": "Xerath immobilizes himself and gains numerous long-range barrages.",
+"tooltip": "Xerath ascends to his true form and channels for {{ duration }} seconds. During this time he may <recast>Recast</recast> up to {{ numberofshots }} times.<br /><br /><recast>Recast:</recast> Xerath launches a magical artillery, dealing <magicDamage>{{ tooltiptotaldamage }} magic damage</magicDamage>. For each champion hit, the artillery deals an additional <magicDamage>{{ rampdamagecalc }} magic damage</magicDamage>.{{ spellmodifierdescriptionappend }}"
+},
+"XinZhao": {
+"name": "Crescent Guard",
+"cooldown": [
+120,
+110,
+100
+],
+"maxammo": "-1",
+"description": "Xin Zhao passively challenges an enemy he damaged recently. When activated, Xin Zhao deals damage to nearby enemies based on their current Health and knocks non-challenged targets back, becoming impervious to damage dealt by champions outside of the circle created.",
+"tooltip": "<spellPassive>Passive:</spellPassive> The last champion Xin Zhao damaged with an Attack or <spellName>Audacious Charge</spellName> is <keywordMajor>Challenged</keywordMajor> for {{ markduration }} seconds.<br /><br /><spellActive>Active:</spellActive> Xin Zhao unleashes a sweep around him that deals <physicalDamage>{{ totaldamage }} plus {{ percentcurrenthealthdamage*100 }}% current Health physical damage</physicalDamage> and <status>Knocks Back</status> all <keywordMajor>non-Challenged</keywordMajor> enemies. <br />  <br />Afterwards, Xin Zhao becomes immune to damage from enemies outside the sweep range for {{ missiledefensebaseduration }} seconds. {{ spellmodifierdescriptionappend }}"
+},
+"Yasuo": {
+"name": "Last Breath",
+"cooldown": [
+70,
+50,
+30
+],
+"maxammo": "-1",
+"description": "Blinks to an <factionIonia1>Airborne</factionIonia1> enemy champion, dealing physical damage and holding all <factionIonia1>Airborne</factionIonia1> enemies in the area in the air. Grants maximum Flow but resets all stacks of Gathering Storm.<br><br>For a moderate time afterwards, Yasuo's critical strikes gain significant Bonus Armor Penetration.",
+"tooltip": "Yasuo teleports to an <status>Airborne</status> enemy champion, dealing <physicalDamage>{{ damage }} physical damage</physicalDamage> and holding all nearby <status>Airborne</status> enemies up for an additional {{ rknockupduration }} second. Yasuo also gains maximum <keywordMajor>Flow</keywordMajor>, but loses all <spellName>Steel Tempest</spellName> stacks.<br /><br />Afterwards, Yasuo's critical strikes ignore <scaleArmor>{{ rpercentarmorpen }}% bonus Armor</scaleArmor> for {{ rbuffduration }} seconds.{{ spellmodifierdescriptionappend }}"
+},
+"Yone": {
+"name": "Fate Sealed",
+"cooldown": [
+120,
+100,
+80
+],
+"maxammo": "-1",
+"description": "Yone blinks behind the last champion in a line with a slash so powerful it pulls all enemies hit towards him.",
+"tooltip": "Yone strikes all enemies along a path for <physicalDamage>{{ tooltipdamage }} physical damage</physicalDamage> and <magicDamage>{{ tooltipdamage }} magic damage</magicDamage>, teleporting behind the last champion hit and <status>Knocking Up</status> victims towards Yone.{{ spellmodifierdescriptionappend }}"
+},
+"Yorick": {
+"name": "Eulogy of the Isles",
+"cooldown": [
+160,
+130,
+100
+],
+"maxammo": "-1",
+"description": "Yorick summons the Maiden of the Mist that causes Yorick's attacks against the Maiden's target to deal bonus damage. The Maiden will also automatically raise Walkers from dead enemies.",
+"tooltip": "Yorick summons the <keywordMajor>Maiden of the Mist</keywordMajor> with <healing>{{ yorickbigghoulhealth }} Health</healing> and <magicDamage>{{ yorickbigghouldamage }} Magic Attack Damage</magicDamage> plus {{ rghoulnumbers }} <keywordMajor>Mist Walkers</keywordMajor>. The <keywordMajor>Maiden</keywordMajor> automatically raises <keywordMajor>Mist Walkers</keywordMajor> from nearby enemy deaths and marks enemy Champions with her attacks. When Yorick damages the <keywordMajor>Maiden's</keywordMajor> target, he deals <magicDamage>{{ rmarkdamagepercent }}% max Health magic damage</magicDamage>.<br /><br />After 10 seconds, Yorick can <recast>Recast</recast> this Ability to free the <keywordMajor>Maiden</keywordMajor>, sending her down the nearest lane.{{ spellmodifierdescriptionappend }}"
+},
+"Yunara": {
+"name": "Transcend One's Self",
+"cooldown": [
+100,
+90,
+80
+],
+"maxammo": "-1",
+"description": "Yunara enters a Transcendent State that upgrades her basic Abilities.",
+"tooltip": "Yunara enters a <keywordMajor>Transcendent State</keywordMajor> for {{ buff_duration }} seconds upgrading her basic Abilities for the duration.{{ spellmodifierdescriptionappend }}"
+},
+"Yuumi": {
+"name": "Final Chapter",
+"cooldown": [
+120,
+110,
+100
+],
+"maxammo": "-1",
+"description": "Yuumi channels five waves that damage enemies and heal allies. Yuumi can move, attach, and cast Zoomies! while channeling. While on her Best Friend, this spell also follows her mouse.",
+"tooltip": "Yuumi channels for {{ ultduration }} seconds, launching {{ numberofwaves }} magical waves affecting both teams. If initially cast while <keywordMajor>Attached</keywordMajor>, Yuumi can steer the waves to follow her mouse.<br /><br />Enemies struck are dealt <magicDamage>{{ totalmissiledamage }} magic damage</magicDamage> and <status>Slowed</status> by {{ baseslow*-100 }}% for {{ ccduration }} seconds, increased by {{ bonusslowperwave*-100 }}% per wave hit.<br /><br />Ally champions are healed for <healing>{{ totalhealperwave }} health</healing> per wave. Excess healing is converted to a <shield>Shield</shield> instead.<br /><br /><keywordMajor>Best Friend Bonus:</keywordMajor> For her <keywordMajor>Best Friend</keywordMajor>, the heal is increased to <healing>{{ enhancedhealperwave }} health</healing>.<br /><br /><rules>Casting <spellName>You and Me!</spellName> will locks the waves in the current direction.<br />Yuumi can move and cast <spellName>Zoomies</spellName> while channeling.</rules><br />{{ spellmodifierdescriptionappend }}"
+},
+"Zaahen": {
+"name": "Grim Deliverance",
+"cooldown": [
+110,
+95,
+80
+],
+"maxammo": "-1",
+"description": "Zaahen rises then stabs downward, damaging enemies and healing for a portion of the damage dealt.",
+"tooltip": "<spellPassive>Passive</spellPassive>: Zaahen gains <armorPen>{{ armorpen*100 }}% %i:scaleAPen% Armor Penetration</armorPen>.<br /><br /><spellActive>Active</spellActive>: Zaahen rises, gaining {{ damagereduction*100 }}% Damage Reduction while casting.<br /><br />Zaahen then stabs downward, dealing <physicalDamage>{{ damageendcalc }} physical damage</physicalDamage> and restoring <healing>{{ healpercent*100 }}% of the damage dealt to enemy champions as Health</healing>.{{ spellmodifierdescriptionappend }}"
+},
+"Zac": {
+"name": "Let's Bounce!",
+"cooldown": [
+120,
+105,
+90
+],
+"maxammo": "-1",
+"description": "Zac bounces four times, knocking up enemies hit and slowing them.",
+"tooltip": "Zac bounces {{ bounces }} times. The first bounce to hit each enemy <status>Knocks</status> them back and deals <magicDamage>{{ damageperbounce }} magic damage</magicDamage>. Subsequent bounces deal <magicDamage>{{ damagepersubsequentbounce }} magic damage</magicDamage> and <status>Slow</status> by {{ slowamount*100 }}% for {{ slowduration }} second.<br /><br />Zac gains up to <speed>{{ endingms*100 }}% Move Speed</speed> over time and can cast <spellName>Unstable Matter</spellName> while bouncing.{{ spellmodifierdescriptionappend }}"
+},
+"Zed": {
+"name": "Death Mark",
+"cooldown": [
+120,
+110,
+100
+],
+"maxammo": "-1",
+"description": "Zed becomes untargetable and dashes to an enemy champion, marking them. After 3 seconds the mark triggers, repeating a portion of all the damage Zed dealt to the target while they were marked.",
+"tooltip": "Zed becomes Untargetable and dashes to an enemy champion, marking them. After {{ rdeathmarkduration }} seconds, the mark triggers, dealing <physicalDamage>{{ rcalculateddamage }} physical damage</physicalDamage> and repeating {{ rdamageamp*100 }}% of all damage dealt to the target by Zed while the mark was active.<br /><br />The dash leaves a <keywordMajor>Shadow</keywordMajor> behind for {{ rshadowdurationdisplayed }} seconds. Zed can <recast>Recast</recast> this Ability to switch positions with this <keywordMajor>Shadow</keywordMajor>.{{ spellmodifierdescriptionappend }}"
+},
+"Zeri": {
+"name": "Lightning Crash",
+"cooldown": [
+80,
+75,
+70
+],
+"maxammo": "-1",
+"description": "Zeri discharges a nova of electricity and overcharges herself, gaining increased damage and stacking Move Speed that refreshes and gets stronger every time she hits an enemy champion. While overcharged, Burst fire becomes a faster triple shot that chains lightning between enemies.",
+"tooltip": "Zeri discharges a nova of electricity, dealing <magicDamage>{{ totalactivedamage }} magic damage</magicDamage> to nearby enemies. If she hits an enemy champion, Zeri gains <attackSpeed>{{ baseaspercent*100 }}% Attack Speed</attackSpeed> and <speed>{{ basebonusms*100 }}% Move Speed</speed> for {{ rduration }} seconds. Hitting an enemy champion with an Attack or Ability extends this ability's duration and adds a stack of Overcharge for {{ maxhyperchargeduration }} seconds. Critical strikes add 2 additional stacks. Each stack grants <speed>{{ mspercent*100 }}% Move Speed</speed>.<br /><br />During this time, <spellName>Burst Fire</spellName> becomes a faster triple shot that chains <physicalDamage>{{ chainphysicaldamage }} physical damage</physicalDamage> to nearby enemies.<br /><br />{{ spellmodifierdescriptionappend }}"
+},
+"Ziggs": {
+"name": "Mega Inferno Bomb",
+"cooldown": [
+120,
+95,
+70
+],
+"maxammo": "-1",
+"description": "Ziggs deploys his ultimate creation, the Mega Inferno Bomb, hurling it an enormous distance. Enemies in the primary blast zone take more damage than those farther away.",
+"tooltip": "Ziggs hurls his ultimate creation, dealing <magicDamage>{{ empowereddamage }} magic damage</magicDamage> in the center of the blast radius, or <magicDamage>{{ blastdamage }} magic damage</magicDamage> at the edge.{{ spellmodifierdescriptionappend }}"
+},
+"Zilean": {
+"name": "Chronoshift",
+"cooldown": [
+120,
+90,
+60
+],
+"maxammo": "-1",
+"description": "Zilean places a protective time rune on an allied champion, teleporting the champion back in time if they take lethal damage.",
+"tooltip": "Zilean grants a protective time rune to an allied champion for {{ rduration }} seconds. If the target would die, the rune rewinds their timeline, putting them into Stasis for {{ revivestateduration }} seconds, then reviving them and restoring <healing>{{ rtotalheal }} Health</healing>.{{ spellmodifierdescriptionappend }}"
+},
+"Zoe": {
+"name": "Portal Jump",
+"cooldown": [
+11,
+8,
+5
+],
+"maxammo": "-1",
+"description": "Blink to a nearby position for 1 second. Then blink back.",
+"tooltip": "Zoe teleports to a nearby position for 1 second. Afterwards, she teleports back. Zoe can use Abilities and Attack, but can't move during this time.{{ spellmodifierdescriptionappend }}"
+},
+"Zyra": {
+"name": "Stranglethorns",
+"cooldown": [
+110,
+100,
+90
+],
+"maxammo": "-1",
+"description": "Zyra summons a twisted thicket at her target location, dealing damage to enemies as it expands and knocking them airborne as it contracts. Plants within the thicket are enraged.",
+"tooltip": "Zyra summons the fury of nature, growing a twisted thicket that deals <magicDamage>{{ totaldamage }} magic damage</magicDamage>. After 2 seconds, the vines snap upwards, <status>Knocking Up</status> for {{ knockupduration }} second.<br /><br />Zyra's plants within the thicket become enraged, resetting their duration, gaining <healing>{{ enragedbonushealthpercent*100 }}% Health</healing> and Attacking for {{ plantdamagebonus }}% bonus damage.{{ spellmodifierdescriptionappend }}"
+}
+}
+}

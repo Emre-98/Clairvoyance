@@ -19,6 +19,12 @@ pub enum EventKind {
     /// Ult key pressed but no cast in the recording (on cooldown, cancelled, dead...). Hidden
     /// by default.
     UltUnconfirmed,
+    /// A later press of the same ult (command a summon, second part, early end): not a new ult.
+    /// Hidden by default.
+    UltRecast,
+    /// A form / stance swap (champions whose R swaps forms with a short cooldown). Hidden by
+    /// default.
+    FormSwap,
     Tower,
     Inhibitor,
     Dragon,
@@ -35,7 +41,7 @@ pub enum EventKind {
 }
 
 impl EventKind {
-    pub const ALL: [EventKind; 20] = [
+    pub const ALL: [EventKind; 22] = [
         EventKind::Kill,
         EventKind::Death,
         EventKind::Assist,
@@ -45,6 +51,8 @@ impl EventKind {
         EventKind::UltPressed,
         EventKind::UltUsed,
         EventKind::UltUnconfirmed,
+        EventKind::UltRecast,
+        EventKind::FormSwap,
         EventKind::Tower,
         EventKind::Inhibitor,
         EventKind::Dragon,
@@ -69,6 +77,8 @@ impl EventKind {
             EventKind::UltPressed => "ult_pressed",
             EventKind::UltUsed => "ult_used",
             EventKind::UltUnconfirmed => "ult_unconfirmed",
+            EventKind::UltRecast => "ult_recast",
+            EventKind::FormSwap => "form_swap",
             EventKind::Tower => "tower",
             EventKind::Inhibitor => "inhibitor",
             EventKind::Dragon => "dragon",
@@ -95,6 +105,8 @@ impl EventKind {
             EventKind::UltPressed => "Ult",
             EventKind::UltUsed => "Ult",
             EventKind::UltUnconfirmed => "Ult pressed",
+            EventKind::UltRecast => "Recast",
+            EventKind::FormSwap => "Form swap",
             EventKind::Tower => "Tower",
             EventKind::Inhibitor => "Inhibitor",
             EventKind::Dragon => "Dragon",

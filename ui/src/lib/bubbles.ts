@@ -23,7 +23,7 @@ export interface PressArrays {
   x: number[];
   y: number[];
   action: number[];
-  /** 0 normal, 1 confirmed (solid), 2 unconfirmed (faded). */
+  /** 0 normal, 1 confirmed (solid), 2 unconfirmed (faded), 3 recast of the same ult (smaller, outlined). */
   state: number[];
   /** Index into `hints` + 1 (0 = none). */
   hint: number[];
@@ -55,6 +55,9 @@ export const FADE_DEFAULT = 1;
 
 /** Animation of a bubble `age` seconds after its frame, with total visible time `fade`:
  * pop in (scale, ~100 ms), hold, fade out. null = not visible. */
+/** Recast bubbles (later presses of the same ult) are this much smaller. */
+export const RECAST_SCALE = 0.72;
+
 export function animation(age: number, fade: number): { scale: number; alpha: number } | null {
   if (age < 0 || age >= fade) return null;
   const pop = Math.min(0.1, fade * 0.3);
@@ -193,13 +196,15 @@ export function draw(g: CanvasRenderingContext2D, p: PressArrays, actions: Actio
       if (!an) continue;
       const a = actions[p.action[i]];
       const faded = p.state[i] === 2;
-      const geo = geometry(base, a.size || 1);
+      // A recast of the same ult (command, second part): smaller and outlined.
+      const recast = p.state[i] === 3;
+      const geo = geometry(base, (a.size || 1) * (recast ? RECAST_SCALE : 1));
       const cx = L.ax[i] + L.dx[i];
       const cy = L.ay[i] - geo.lift * (0.4 + 0.6 * an.scale);
       g.globalAlpha = an.alpha * (faded ? 0.6 : 1);
       if (pass === 0) drawTail(g, a, L.ax[i], L.ay[i], cx, cy, faded);
       else {
-        drawBody(g, a, cx, cy, geo.r * an.scale, faded, p.hint[i] ? p.hints[p.hint[i] - 1] : null);
+        drawBody(g, a, cx, cy, geo.r * an.scale, faded, p.hint[i] ? p.hints[p.hint[i] - 1] : null, recast);
         drawn++;
       }
     }
@@ -232,7 +237,24 @@ function drawTail(g: CanvasRenderingContext2D, a: ActionKey, ax: number, ay: num
 
 /** Body: solid colour with a dark outline (bright frames) and a light inner ring (dark frames);
  * unconfirmed ult presses are outlined only. Then the label (the action) or icon, and the hint. */
-function drawBody(g: CanvasRenderingContext2D, a: ActionKey, cx: number, cy: number, r: number, faded: boolean, hint: string | null) {
+function drawBody(g: CanvasRenderingContext2D, a: ActionKey, cx: number, cy: number, r: number, faded: boolean, hint: string | null, recast = false) {
+  if (recast) {
+    // Outlined: a dark disc with the action's colour as a thick ring.
+    g.beginPath();
+    g.arc(cx, cy, r, 0, Math.PI * 2);
+    g.fillStyle = "rgba(15,17,22,0.72)";
+    g.fill();
+    g.lineWidth = 2;
+    g.strokeStyle = "rgba(0,0,0,0.7)";
+    g.stroke();
+    g.beginPath();
+    g.arc(cx, cy, Math.max(1, r - 1.6), 0, Math.PI * 2);
+    g.lineWidth = 2.2;
+    g.strokeStyle = a.color;
+    g.stroke();
+    label(g, a, cx, cy, r);
+    return;
+  }
   g.beginPath();
   g.arc(cx, cy, r, 0, Math.PI * 2);
   g.fillStyle = faded ? "rgba(15,17,22,0.55)" : a.color;
@@ -247,19 +269,7 @@ function drawBody(g: CanvasRenderingContext2D, a: ActionKey, cx: number, cy: num
   if (faded) g.setLineDash([3, 2.5]);
   g.stroke();
   if (faded) g.setLineDash([]);
-  if (a.icon === "ward") wardIcon(g, cx, cy, r);
-  else {
-    const fs = Math.round(r * (a.label.length > 1 ? 0.9 : 1.15));
-    g.font = `800 ${fs}px system-ui, "Segoe UI", sans-serif`;
-    g.textAlign = "center";
-    g.textBaseline = "middle";
-    g.lineJoin = "round";
-    g.lineWidth = Math.max(2, fs * 0.2);
-    g.strokeStyle = "rgba(0,0,0,0.75)";
-    g.strokeText(a.label, cx, cy + fs * 0.05);
-    g.fillStyle = "#fff";
-    g.fillText(a.label, cx, cy + fs * 0.05);
-  }
+  label(g, a, cx, cy, r);
   if (hint) {
     const fs = Math.max(9, Math.round(r * 0.62));
     g.font = `700 ${fs}px system-ui, "Segoe UI", sans-serif`;
@@ -274,6 +284,23 @@ function drawBody(g: CanvasRenderingContext2D, a: ActionKey, cx: number, cy: num
     g.textAlign = "left";
     g.textBaseline = "middle";
     g.fillText(hint, hx + 2, hy + 0.5);
+  }
+}
+
+/** The action's label (or the ward icon) in the middle of a bubble. */
+function label(g: CanvasRenderingContext2D, a: ActionKey, cx: number, cy: number, r: number) {
+  if (a.icon === "ward") wardIcon(g, cx, cy, r);
+  else {
+    const fs = Math.round(r * (a.label.length > 1 ? 0.9 : 1.15));
+    g.font = `800 ${fs}px system-ui, "Segoe UI", sans-serif`;
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.lineJoin = "round";
+    g.lineWidth = Math.max(2, fs * 0.2);
+    g.strokeStyle = "rgba(0,0,0,0.75)";
+    g.strokeText(a.label, cx, cy + fs * 0.05);
+    g.fillStyle = "#fff";
+    g.fillText(a.label, cx, cy + fs * 0.05);
   }
 }
 

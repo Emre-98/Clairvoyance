@@ -290,9 +290,12 @@ fn ult_check(dir: &Path, write: bool, offset: Option<f64>) -> Result<String, Str
     let events: Vec<serde_json::Value> = s
         .events
         .iter()
-        .filter(|e| e.id.starts_with("ult"))
+        .filter(|e| e.id.starts_with("ult") || e.id.starts_with("form"))
         .map(|e| serde_json::json!({"video_t": (e.game_time + s.video_offset), "kind": e.kind, "title": e.title, "details": e.details}))
         .collect();
+    // v1.6: the R spell's id/name from the Live Client Data API whenever it changed in game.
+    let r_states: Vec<serde_json::Value> = s.key_presses.iter().filter(|m| m.action == "r_state").map(|m| serde_json::json!({"game_t": m.game_time, "r": m.key})).collect();
+    let presses: Vec<serde_json::Value> = s.key_presses.iter().filter(|m| m.action == "ult").map(|m| serde_json::json!({"game_t": m.game_time, "key": m.key, "accepted": m.accepted, "reason": m.reason})).collect();
     let report = serde_json::json!({
         "video": video,
         "hardware_decoding": v.hardware,
@@ -304,6 +307,8 @@ fn ult_check(dir: &Path, write: bool, offset: Option<f64>) -> Result<String, Str
         "before_ult_pressed_video_t": before,
         "verification": s.verification,
         "events": events,
+        "r_states": r_states,
+        "presses": presses,
     });
     if write {
         std::fs::write(&file, serde_json::to_string_pretty(&s).unwrap()).map_err(|e| e.to_string())?;
@@ -402,7 +407,7 @@ fn bubbles(dir: &Path, detail: bool) -> Result<String, String> {
         "avg_fps": (fps * 10.0).round() / 10.0,
         "max_key_down_minus_frame_start_ms": (max_lag * 1e4).round() / 10.0,
         "r_presses": { "normal": count(actions::PressState::Normal), "confirmed": count(actions::PressState::Confirmed), "unconfirmed": count(actions::PressState::Unconfirmed) },
-        "ult_events": { "ult_used": ev(cv_core::EventKind::UltUsed), "ult_pressed_no_cast": ev(cv_core::EventKind::UltUnconfirmed), "ult_pressed_unverified": ev(cv_core::EventKind::UltPressed) },
+        "ult_events": { "ult_used": ev(cv_core::EventKind::UltUsed), "ult_pressed_no_cast": ev(cv_core::EventKind::UltUnconfirmed), "ult_pressed_unverified": ev(cv_core::EventKind::UltPressed), "ult_recast": ev(cv_core::EventKind::UltRecast), "form_swap": ev(cv_core::EventKind::FormSwap) },
         "verification": s.verification.as_ref().map(|v| v.status.clone()),
         "ms": { "read_input": (read_ms * 10.0).round() / 10.0, "frame_times": (frames_ms * 10.0).round() / 10.0, "bubbles": (compute_ms * 10.0).round() / 10.0 },
     }))
