@@ -212,6 +212,7 @@ async function overlayBench(id: string) {
   if (tg.disabled) return r;
   // Default options for the first part.
   localStorage.removeItem("cv.inputOverlay");
+  for (const k of ["__cvBubblesLoadMs", "__cvBubbleCount", "__cvBubbles", "__cvBubbleStats"]) delete (window as any)[k];
   // First switch-on: load + first frame drawn.
   const n0 = drawTimes().length;
   let t0 = performance.now();
@@ -220,6 +221,10 @@ async function overlayBench(id: string) {
   await nextPaint();
   r.firstOnMs = Math.round(performance.now() - t0);
   r.loadMs = Math.round((window as any).__cvOverlayLoadMs ?? -1);
+  // Ability bubbles (v1.5; older builds have none): loaded next to the recording.
+  await waitFor(() => (window as any).__cvBubblesLoadMs != null, 5000);
+  r.bubblesMs = (window as any).__cvBubblesLoadMs != null ? Math.round((window as any).__cvBubblesLoadMs) : null;
+  r.bubbles = (window as any).__cvBubbleCount ?? null;
   // Off and on again (already loaded).
   const again: number[] = [];
   for (let i = 0; i < 5; i++) {
@@ -261,6 +266,40 @@ async function overlayBench(id: string) {
     vv.pause();
     const d = drawTimes().slice(-200);
     r[`draw_${label}`] = { frames: d.length, median: pct(d, 0.5), p95: pct(d, 0.95), max: pct(d, 1) };
+  }
+  // Ability bubbles at their worst: the densest 3 s of presses (Q spam), fade 3 s, played.
+  const B = (window as any).__cvBubbles;
+  if (B?.v?.presses?.t?.length) {
+    const show: number[] = B.v.presses.show;
+    let best = 0, at = 0;
+    for (let i = 0, j = 0; i < show.length; i++) {
+      while (show[i] - show[j] >= 3) j++;
+      if (i - j + 1 > best) {
+        best = i - j + 1;
+        at = show[i];
+      }
+    }
+    localStorage.setItem("cv.inputOverlay", JSON.stringify({ bubbleFade: 3 }));
+    go({ page: "games" });
+    await sleep(600);
+    go({ page: "game", id });
+    await waitFor(() => video()?.readyState! >= 3 && overlayToggle(), 30000);
+    overlayToggle()!.click();
+    await waitFor(() => overlayCanvas() && (window as any).__cvBubbles?.v, 30000);
+    const vv = video()!;
+    vv.currentTime = Math.max(0, at - 2.6);
+    await nextEvent(vv, "seeked", 10000);
+    await vv.play().catch(() => {});
+    let maxDrawn = 0;
+    const w0 = performance.now();
+    while (performance.now() - w0 < 3200) {
+      await nextPaint();
+      maxDrawn = Math.max(maxDrawn, (window as any).__cvBubbleStats?.drawn ?? 0);
+    }
+    vv.pause();
+    const d = drawTimes().slice(-150);
+    r.draw_spam = { densest3s: best, at: Math.round(at * 10) / 10, maxOnScreen: maxDrawn, layoutMs: Math.round(((window as any).__cvBubbleStats?.layoutMs ?? 0) * 100) / 100, frames: d.length, median: pct(d, 0.5), p95: pct(d, 0.95), max: pct(d, 1) };
+    localStorage.removeItem("cv.inputOverlay");
   }
   // Marker jumps with the overlay on.
   const seeks: number[] = [];

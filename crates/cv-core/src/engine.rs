@@ -537,6 +537,10 @@ impl Engine {
             Ok(w) => {
                 let w = Arc::new(w);
                 session.input_file = Some(name);
+                // The binds in effect for this game (read by the module at `start()`), so the
+                // replay's ability bubbles show the right actions even if they change later.
+                let keys = g.action_keys();
+                session.action_keys = (!keys.is_empty()).then_some(keys);
                 let _ = session.save(dir);
                 self.platform.start_input_capture(crate::input::CaptureRequest {
                     writer: w.clone(),

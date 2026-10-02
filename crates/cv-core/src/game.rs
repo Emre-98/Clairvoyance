@@ -292,6 +292,27 @@ pub trait GameIntegration: Send + Sync {
         Vec::new()
     }
 
+    /// The game's "action keys" for the replay's ability bubbles (League: abilities, summoners,
+    /// item slots, ward) with the binds in effect now. Called after `start()` when the input
+    /// recording starts; saved with the session (binds can change between games). Empty = this
+    /// game has no action keys (CS2).
+    fn action_keys(&self) -> Vec<crate::input::actions::ActionKey> {
+        Vec::new()
+    }
+    /// The same with the game's default binds: used for recordings made before the binds were
+    /// saved with the session.
+    fn default_action_keys(&self) -> Vec<crate::input::actions::ActionKey> {
+        Vec::new()
+    }
+    /// Sub-toggles of the overlay's "Ability bubbles" option, one per category of
+    /// [`Self::action_keys`].
+    fn action_categories(&self) -> Vec<crate::input::actions::ActionCategory> {
+        Vec::new()
+    }
+    /// Refines how presses are drawn from what the game knows about this recording (League: the
+    /// ult check against the recording: "Ult used" solid, "no cast" faded). Never during a game.
+    fn action_press_states(&self, _session: &crate::session::GameSession, _actions: &[crate::input::actions::ActionKey], _presses: &mut [crate::input::actions::ActionPress]) {}
+
     /// After the game (maintenance pass, low priority): check the session's live events
     /// against the recording and correct them. `None` = this game has nothing to check.
     /// `cancel` turns true when a game starts: stop and return an error.

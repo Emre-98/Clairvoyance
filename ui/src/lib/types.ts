@@ -289,6 +289,8 @@ export interface GameMeta {
   short_name: string;
   supports_events: boolean;
   input_tracking?: boolean;
+  /** Sub-toggles of the replay overlay's "Ability bubbles" (empty: none for this game). */
+  action_categories?: { id: string; label: string }[];
   config_fields: ConfigField[];
   default_config: Record<string, unknown>;
 }

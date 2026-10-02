@@ -66,8 +66,19 @@
   0.46-0.65 % with input vs 0.55-0.80 % without (no measurable difference), RAM +1-6 MB; capture
   thread 0.26-0.41 % of one core in play (cursor moving most of the time), 0.10 % with the mouse
   at rest. Owner's check: the trail follows the cursor in the replay. Details in "Input tracking".
-- **Waiting for the owner**: play a real League game with v1.4.x and check the timeline,
-  thumbnail and Settings > Advanced > Responsiveness numbers (see "Known issues").
+- **Ability bubbles on the input overlay (2026-10-02, v1.5.0):** every ability / summoner /
+  item / ward key press pops up as a bubble on the replay at the exact cursor position
+  (interpolated) on the exact video frame of the key-down, then fades (0.1-3 s). Binds from
+  League's own settings (same reader as the ult tracking), saved with each game. Tested (details
+  in "Ability bubbles"): Rust 107 tests (89 before), Playwright 18/18 bubble pixel checks (anchor
+  0.32 px from the expected pixel, on the key-down's frame and not the one before, fade 0.1 s
+  and 3 s, Q spam + W readable), v1.4 overlay pixel-identical with bubbles off (16/16), on the
+  owner's PC: his real binds read correctly, all 91 R presses of his 4 real games agree with the
+  ult check, ult results unchanged on his 5 games, replay open time unchanged (first frame 36 ms
+  median before and after), spam with 44 bubbles on screen drawn in p95 0.4 ms.
+- **Waiting for the owner**: the Practice Tool test of the ability bubbles (see "Next steps"),
+  and a real League game with v1.4.x/v1.5.x: timeline, thumbnail and Settings > Advanced >
+  Responsiveness numbers (see "Known issues").
 
 ## What we're building
 A lightweight, Ascent/Outplayed-style game recorder for Windows. It starts with League of Legends,
@@ -609,6 +620,100 @@ while the chat is open, key codes only, local only).
   draw time, marker jumps with the overlay on); `mp4tool fakeinput` makes a realistic recording
   for a benchmark game.
 
+### Ability bubbles (2026-10-02, owner's request, v1.5.0)
+Rules: nothing new during the game (no capture work, hooks, memory reading or injection: only the
+key and mouse records already in `<game>.input`), nothing shown in game, work only when the
+overlay is switched on for a replay.
+- **Action keys, game-agnostic (`cv-core/src/input/actions.rs`):** a game declares
+  `ActionKey`s (id, label shown in the bubble, optional icon, category, size, colour, the game's
+  default key) with their `ActionBind`s (virtual-key code or mouse button + Ctrl/Shift/Alt) via
+  `GameIntegration::action_keys()` / `default_action_keys()` / `action_categories()`, and can
+  refine how presses are drawn with `action_press_states()`. CS2 declares none.
+- **League (`games/league/src/actions.rs`):** Q W E R (`Spell1-4`), D F (`AvatarSpell1-2`),
+  item slots 1-6 (`evtUseItemN` + cast variants) and the trinket (`evtUseVisionItem` + variants;
+  not `Item7`, which League 16.x uses for another slot: the owner's file has it on Right Arrow and
+  "="). Every variant counts: cast, quick cast, quick cast with indicator, self cast, quick +
+  self cast (with indicator), normal cast; several binds per action, modifiers, mouse buttons,
+  arrow keys. Read with the ult tracking's reader (`ult::read_input_settings`: the
+  PersistedSettings.json Input.ini part when it has binds, else `Config\input.ini`), once at the
+  loading screen for both. League's defaults when a setting is missing: plain key = cast, Shift =
+  quick cast, Alt = self cast; items on 1 2 3 5 6 7, trinket 4. The "Ult key" setting's manual
+  key is added to R. Owner's real binds (16.19): plain keys = quick cast, Alt = with indicator,
+  Shift = self cast, items on 1-6, trinket on C.
+- **Saved per game:** `session.json` `action_keys`, written when the input recording starts
+  (binds can change between games). Older recordings use League's defaults.
+- **Matching (`actions::presses`):** a key-down (or mouse-button press) whose key **and**
+  modifiers exactly match a bind; anything else (Ctrl+Q level-up, Ctrl+1, recall) gives nothing.
+  Modifier state comes from the recorded Ctrl/Shift/Alt records and is forgotten when focus
+  changes or the chat closes.
+- **Exact moment:** the bubble appears on the video frame containing the key-down time (same
+  QPC → video clock as the trail): the last frame starting at or before it, from the video's own
+  frame times (`remux::frame_times`, read from the MP4 index, cached per file; 7.5 ms for a
+  33 min game). Visible from that frame's start until start + fade time.
+- **Exact position:** the cursor at the key-down time, interpolated between the two surrounding
+  cursor samples (the capture stores a sample only when the cursor moved, so after a longer gap
+  the movement is placed in the last sample period; never interpolated across a stroke break),
+  mapped with the trail's window/letterbox mapping of that moment. The anchor (a small dot with a
+  tail) sits exactly there and never follows the cursor.
+- **Label:** the action, not the key: Q/W/E/R, D/F, "1"-"6" for item slots, a ward icon. A small
+  hint shows the physical key when it is neither League's default key for that action nor the
+  label itself (Q rebound to A → "Q" + "A"; item slot 4 on 5 or on 4 → no hint; the owner's
+  trinket on C → hint "C"). Mouse binds show "M4"/"M5".
+- **Overlap:** same action (Q Q Q Q) → overlapping at their own positions, no offsets. A bubble of
+  another action that would cover the letter of a bubble still on screen when it appears moves
+  its body sideways just enough (≤ 2.6 radii; the anchor and tail stay); decided at its birth so
+  nothing jumps. Tails and anchor dots are drawn in a layer under all bodies (a slanted tail never
+  crosses a letter), bodies oldest first (newest on top). Layout computed once per player size /
+  fade / filters (3,194 presses: 1.3 ms).
+- **Ult tie-in (`actions::press_states`):** R presses are paired 1:1 with the logged ult presses
+  (`key_presses`; the constant offset between the game-clock estimate and the recording clock is
+  removed first, then nearest within 120 ms). Checked game: "Ult pressed, no cast" → outlined,
+  faded R (hidden while the timeline's "Unconfirmed presses" filter is off), otherwise solid
+  ("Ult used"). Unchecked: live-accepted presses solid, filtered ones faded. R presses never
+  logged as ult presses (loading screen, key bounce) faded. An R typed in chat has no bubble
+  (keys aren't recorded while the chat is open).
+- **Drawing (`ui/src/lib/bubbles.ts`):** pop-in (~100 ms scale with a slight overshoot), hold,
+  fade-out (the last ~45 %); colour per slot (Q blue, W green, E amber, R purple, D rose, F teal,
+  items slate, ward yellow), R and summoners 1.18x, items/ward 0.84x; white bold label with a dark
+  outline, dark outline + light inner ring on the body (readable on bright and dark frames, no
+  canvas shadows: too slow). Size scales with the video height (8-17 px radius).
+- **Loading:** `input_actions` (Rust) is requested together with `input_load` on the first
+  switch-on and doesn't hold up the trail: bubbles appear when they arrive (93 ms for the 33 min
+  benchmark game, 13 ms for a 2 min one; both share one decode of the input file).
+- **Options:** "Ability bubbles" group (on by default) with the game's categories (Abilities,
+  Summoners, Items, Ward) and "Fade time" 0.1-3 s (step 0.1, default 1.0), in the overlay
+  popover, saved with the other overlay options; changes apply on the next frame.
+- **Tests:** Rust (`cv-core` actions: interpolation incl. rest-then-move and stroke breaks,
+  key-down → frame incl. variable frame rate, modifiers / level-up combos, focus resets,
+  rebinds, mouse binds, hints, saved vs default binds; League: defaults, the owner's ini and his
+  PersistedSettings.json binds, every cast variant, rebinds, several binds, mouse and arrow keys,
+  missing/unreadable settings files, PersistedSettings first, manual ult key, session.json round
+  trip, ult tie-in incl. clock offset and 100 ms R spam; engine: binds saved with the session);
+  `ui/tests/bubbles.unit.test.ts` (Node: animation/fade, alive range, same-action overlap,
+  nudge with the anchor unchanged, Q spam + W, filters, a 40 min game's layout);
+  `ui/tests/bubbles.test.mjs` (Chromium pixel test, 18 checks); `ui/tests/overlay-regression.mjs`
+  (bubbles off = the v1.4.0 overlay, pixel for pixel); `ui/tests/make-sample.py` makes the test
+  video (4:3, letterboxed game, 30 fps, WebM ms timestamps); `mp4tool binds` / `mp4tool bubbles
+  <session> [--detail]` on the owner's PC; `--bench-replays` measures `bubblesMs` and a
+  `draw_spam` case (densest 3 s of presses, fade 3 s, playing); `mp4tool fakeinput` adds 3 s of
+  Q spam (+ a W) every 120 s and some Ctrl level-ups.
+- **Measured on the owner's PC (2026-10-02, job 53):**
+  | | before (v1.4.0) | after |
+  |---|---|---|
+  | replay open, page / first frame (median, 33 min / 2 min game) | 36 / 36 ms, 36 / 36 ms | 36 / 36 ms, 36 / 36 ms |
+  | overlay first switch-on (33 min worst case / 2 min) | 120 / 68 ms | 127 / 71 ms |
+  | overlay on again | 31-36 / 26-53 ms | 28-36 / 29-37 ms |
+  | bubbles ready after switch-on | - | 93 ms (3,194 presses) / 13 ms (204) |
+  | draw p95, default options (33 min / 2 min) | 0.2 / 0.3 ms | 0.3 / 0.2 ms |
+  | draw p95 / max, everything on | 0.4 / 0.4 ms | 0.4 / 0.7 ms |
+  | draw in Q spam: bubbles on screen, p95 / max | - | 44, 0.4 / 0.6 ms |
+  | toggling while playing at 1x / 2x / 0.25x | 0 stalls | 0 stalls |
+  The owner's 5 real games with input: 0-717 presses each, bubble list 0.2-0.8 ms + frame times
+  0.1-6.5 ms; all 91 R bubbles match the ult check (28 "Ult used" with a press, 63 "no cast");
+  the only logged ult press without a bubble was typed in chat. Key-downs land at most 26 ms
+  after their frame's start (frames at 56-59 fps with some longer ones). Ult check on the 5
+  games: identical (9/9, 5/5, 10/10 + 1, 34/34 + 107, 2/2 + 1).
+
 ### Replay benchmark and end-to-end tests (developer tools)
 - `Clairvoyance.exe --bench-replays=<config.json>`: opens the given games N times in the real
   window and measures page / first frame / playable / marker jumps / "marker clicked right away"
@@ -663,6 +768,8 @@ while the chat is open, key codes only, local only).
 - [x] Performance test with the ult build (done with the input build, 2026-10-02: -0.07 % FPS)
 - [x] 25. Input tracking (keyboard Raw Input + cursor/button polling, no hooks) + replay overlay + Mechanics stats (v1.4.0)
 - [x] Input tracking tested on the owner's PC (SendInput/DPI/video alignment, benchmark, ult regression, League performance test, owner's replay check)
+- [x] 26. Ability bubbles on the input overlay: League binds (all cast variants, saved per game), exact frame + interpolated position, overlap rules, ult tie-in, options (v1.5.0)
+- [ ] Owner's Practice Tool test of the ability bubbles (see "Next steps")
 
 ## Known issues
 - The Windows-only parts added on 2026-10-01 (Media Foundation thumbnails, updater install,
@@ -697,7 +804,34 @@ while the chat is open, key codes only, local only).
   The mouse wheel isn't recorded (no mouse Raw Input, see "Input tracking"). The first switch-on
   of the overlay for a very long game with the cursor moving non-stop can take ~100 ms.
 
+- Ability bubbles: recordings made before v1.5.0 have no saved binds and use League's
+  *defaults* (items on 1 2 3 5 6 7, trinket 4): on the owner's older games (items on 1-6,
+  trinket on C) a "4" press shows as a ward and "C" gives no bubble. From v1.5.0 on, each game
+  keeps the binds it was played with. Binds changed in the middle of a game count from the next
+  game. The first switch-on of the overlay for the 33 min worst case stays ~120-130 ms (as in
+  v1.4); the bubbles arrive in parallel and don't add to it.
+
 ## Next steps
+- **Owner, Practice Tool test of the ability bubbles (v1.5.0, ~10 min):**
+  1. Clairvoyance on v1.5.0 (Settings > General & updates). Settings > Game modes: Practice Tool
+     on "Record" for this test (it's Off by default).
+  2. In League, before the game: rebind one ability, e.g. E (quick cast) to **T**
+     (Settings > Hotkeys). Start a Practice Tool game with a champion whose Q can be spammed
+     (e.g. Ezreal), turn on No Cooldowns, buy 2-3 actives (e.g. potions, a Control Ward).
+  3. Play this script, slowly enough to remember it: Q spam ~3 s while moving the mouse in a
+     circle, with one **W** in the middle; **T** (the rebound E) twice; **D** and **F**; the
+     item keys of 2 items; the trinket key (C on your settings); **Ctrl+Q** and **Ctrl+W** a few
+     times (level-ups); open chat, type "q w r", close it; R once. End the game.
+  4. Open the game, press **I**, overlay options: Ability bubbles on (all four), fade 1.0 s.
+     Step through the moments with **,** / **.** (one frame).
+  Expected: a bubble on the frame where each key went down (not a frame before), its dot exactly
+  on the cursor, staying there while the cursor moves on; Q spam = Q bubbles piled up along the
+  mouse path, the W in the middle readable (later Qs step aside, its dot stays on the path); T
+  shows **E** with a small "T"; D and F larger; items show their slot number 1-6 (no hint),
+  the trinket a ward icon with a small "C"; **nothing** for Ctrl+Q / Ctrl+W and nothing for the
+  chat; R solid purple (it says "Ult used" on the timeline), presses without a cast faded and only
+  with "Unconfirmed presses" on. Fade slider at 0.1 s and 3 s changes it at once. Then send
+  Settings > Advanced > Save test report (it has the game's session.json with the saved binds).
 - Owner: play a real game on v1.1.x (timeline, thumbnail after the game, storage page), and
   test game modes: turn ARAM off and play an ARAM (nothing recorded, tray says why), play a
   ranked or normal game (recorded, card shows the queue name).

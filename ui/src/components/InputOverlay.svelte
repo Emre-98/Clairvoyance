@@ -9,7 +9,8 @@
     video,
     options,
     heatRange = null,
-  }: { overlay: Overlay; video: HTMLVideoElement | undefined; options: OverlayOptions; heatRange?: [number, number] | null } = $props();
+    showUnconfirmed = false,
+  }: { overlay: Overlay; video: HTMLVideoElement | undefined; options: OverlayOptions; heatRange?: [number, number] | null; showUnconfirmed?: boolean } = $props();
 
   let canvas: HTMLCanvasElement;
   let size = { w: 0, h: 0, dpr: 1 };
@@ -36,6 +37,7 @@
     const v = video;
     const opts = $state.snapshot(options) as OverlayOptions;
     const hr = heatRange ? ([...heatRange] as [number, number]) : null;
+    const unconf = showUnconfirmed;
     last = "";
     if (!v) return;
     const g = canvas.getContext("2d")!;
@@ -43,14 +45,18 @@
     const frame = () => {
       raf = requestAnimationFrame(frame);
       const t = v.currentTime;
-      const key = `${t}|${size.w}|${size.h}|${v.videoWidth}`;
+      const key = `${t}|${size.w}|${size.h}|${v.videoWidth}|${ov.version}`;
       if (key === last) return;
       last = key;
       const t0 = performance.now();
-      ov.draw(g, size.w, size.h, size.dpr, t, v.videoWidth, v.videoHeight, opts, hr);
+      ov.draw(g, size.w, size.h, size.dpr, t, v.videoWidth, v.videoHeight, opts, hr, unconf);
       times.push(performance.now() - t0);
       if (times.length > 240) times.shift();
       (window as any).__cvOverlayDrawMs = times;
+      if (ov.bubbles) {
+        (window as any).__cvBubbleStats = { ...ov.bubbles.stats, t };
+        (window as any).__cvBubbles = ov.bubbles;
+      }
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);

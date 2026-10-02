@@ -628,6 +628,26 @@ pub fn keyframes(path: &Path) -> io::Result<Vec<f64>> {
     Ok(out)
 }
 
+/// Start times (seconds, as the player sees them) of every video frame, in order: the frame on
+/// screen at time `t` is the last one starting at or before `t`. Reads the index only.
+pub fn frame_times(path: &Path) -> io::Result<Vec<f64>> {
+    let p = parse(path)?;
+    let v = p.tracks.iter().find(|t| t.video).ok_or_else(|| bad("no video"))?;
+    let ts = v.timescale as f64;
+    let mut out = Vec::with_capacity(v.samples.len());
+    let mut t = v.first_dts;
+    for (i, s) in v.samples.iter().enumerate() {
+        // A finalized file starts its first frame at 0 (see the module docs).
+        out.push(if i == 0 && p.layout == Layout::Faststart { 0.0 } else { (t as i64 + s.cto as i64) as f64 / ts });
+        t += s.dur as u64;
+    }
+    // Presentation order (no B-frames are written, but stay safe).
+    if !out.windows(2).all(|w| w[0] <= w[1]) {
+        out.sort_by(|a, b| a.total_cmp(b));
+    }
+    Ok(out)
+}
+
 // ---------- writing ----------
 
 fn put32(v: &mut Vec<u8>, x: u32) {
@@ -1190,6 +1210,16 @@ mod tests {
         assert_eq!(ka.len(), kb.len());
         assert!((ka[0] - 0.03).abs() < 1e-6 && kb[0] == 0.0, "{} {}", ka[0], kb[0]);
         for (x, y) in ka.iter().zip(&kb).skip(1) {
+            assert!((x - y).abs() < 1e-6);
+        }
+        // Every frame's start time, same in both layouts (ability bubbles appear on the frame of
+        // their key-down): 60 fps from 0.03 s (the first one moves to 0 when finalized).
+        let (fa, fb) = (frame_times(&src).unwrap(), frame_times(&dst).unwrap());
+        assert_eq!(fa.len(), before.video_frames);
+        assert_eq!(fb.len(), fa.len());
+        assert!((fa[0] - 0.03).abs() < 1e-6 && fb[0] == 0.0);
+        for (i, (x, y)) in fa.iter().zip(&fb).enumerate().skip(1) {
+            assert!((x - (0.03 + i as f64 / 60.0)).abs() < 1e-4, "frame {i}: {x}");
             assert!((x - y).abs() < 1e-6);
         }
         // Same media bytes, in the same order.

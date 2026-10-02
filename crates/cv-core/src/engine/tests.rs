@@ -387,6 +387,18 @@ impl GameIntegration for InputGame {
     }
     fn input_tracking(&self) -> bool { true }
     fn chat_open(&self) -> bool { self.chat }
+    fn action_keys(&self) -> Vec<crate::input::actions::ActionKey> {
+        vec![crate::input::actions::ActionKey {
+            id: "spell1".into(),
+            label: "Q".into(),
+            icon: None,
+            category: "ability".into(),
+            size: 1.0,
+            color: "#3b82f6".into(),
+            default_key: "Q".into(),
+            binds: vec![crate::input::actions::ActionBind::key(b'A')],
+        }]
+    }
     fn mouse_marks(&self, presses: &[(f64, u8)]) -> Vec<crate::game::KeyMark> {
         presses
             .iter()
@@ -465,6 +477,12 @@ async fn input_recording_keys_chat_and_mouse_marks() {
     let chats: Vec<bool> = f.records.iter().filter_map(|r| if let Record::Chat { open, .. } = r { Some(*open) } else { None }).collect();
     assert_eq!(chats, vec![true, false]);
     assert!(matches!(f.records.last(), Some(Record::End { .. })));
+    // The game's action keys (binds of this game) were saved with the session when the input
+    // recording started, and the press of the bound key becomes a bubble.
+    let keys = s.action_keys.clone().expect("action keys saved with the session");
+    assert_eq!(keys[0].binds, vec![crate::input::actions::ActionBind::key(b'A')]);
+    let an = input::stats::Analysis::from_file(&f);
+    assert!(input::actions::presses(&an, &keys, f.rate, &[]).is_empty(), "Q isn't bound to anything here");
     // The side-button press became an ult mark at its game time (video 31 s - offset 25 s).
     let m = s.key_presses.iter().find(|m| m.key == "Mouse 5").expect("mouse mark");
     assert!((m.game_time - 6.0).abs() < 1e-6, "{}", m.game_time);

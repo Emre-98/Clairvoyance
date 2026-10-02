@@ -25,3 +25,5 @@ jobs:
           npm ci --prefix ui
           npm --prefix ui run check
           npm --prefix ui run build
+      - name: UI unit tests (ability bubbles layout)
+        run: node --experimental-strip-types --test ui/tests/bubbles.unit.test.ts

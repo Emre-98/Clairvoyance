@@ -69,7 +69,7 @@ const CAST_ACTIONS: [(&str, &str); 7] = [
 ];
 
 /// Maps League's key names (`r`, `Space`, `Num5`, `-`) to the names of [`KeyPress`].
-fn key_name(k: &str) -> Option<String> {
+pub(crate) fn key_name(k: &str) -> Option<String> {
     let k = k.trim();
     if k.is_empty() || k.eq_ignore_ascii_case("<Unbound>") {
         return None;
@@ -212,16 +212,22 @@ pub fn default_binds() -> UltBinds {
 /// The League install folder's `Config\input.ini`; `PersistedSettings.json` is League's
 /// newer copy of the same settings (preferred when it has the key binds).
 pub fn read_binds(install_dir: &Path) -> Option<UltBinds> {
+    read_input_settings(install_dir).map(|t| parse_input_ini(&t))
+}
+
+/// League's key bind settings as `name=value` lines: `PersistedSettings.json`'s Input.ini part
+/// when it has the binds (it's League's authoritative copy), else `Config\input.ini`. The ult
+/// tracking and the replay's ability bubbles both read them through this.
+pub fn read_input_settings(install_dir: &Path) -> Option<String> {
     let cfg = install_dir.join("Config");
     if let Ok(t) = std::fs::read_to_string(cfg.join("PersistedSettings.json")) {
         if let Some(flat) = persisted_section(&t, "Input.ini") {
-            let b = parse_input_ini(&flat);
-            if !b.cast.is_empty() {
-                return Some(b);
+            if !parse_input_ini(&flat).cast.is_empty() {
+                return Some(flat);
             }
         }
     }
-    std::fs::read_to_string(cfg.join("input.ini")).ok().map(|t| parse_input_ini(&t))
+    std::fs::read_to_string(cfg.join("input.ini")).ok()
 }
 
 /// Flattens one file of `PersistedSettings.json` (e.g. "Input.ini", "Game.cfg") into

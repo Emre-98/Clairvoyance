@@ -1,6 +1,7 @@
 // Replay input overlay: parses the recorded mouse/keyboard data (binary from `input_load`,
 // layout in cv_core::input::stats::ui_payload) and draws it over the video for a time `t`
 // (video seconds). Pure functions + one Overlay class; no Svelte here so it can be tested.
+import { Bubbles, baseRadius, FADE_DEFAULT, FADE_MAX, FADE_MIN, type ActionsView, type BubbleOptions } from "./bubbles";
 
 export interface InputData {
   rate: number;
@@ -44,17 +45,40 @@ export interface OverlayOptions {
   heat: boolean;
   /** "game" = whole game, "range" = the selected range (if any). */
   heatRange: "game" | "range";
+  /** Ability bubbles (action keys: abilities, summoners, items, ward). */
+  bubbles: boolean;
+  /** Total time a bubble is visible (s). */
+  bubbleFade: number;
+  /** Category id -> shown (missing = shown). */
+  bubbleCats: Record<string, boolean>;
 }
 
-export const DEFAULT_OPTIONS: OverlayOptions = { trail: true, trailSecs: 1, clicks: true, dot: true, keys: false, heat: false, heatRange: "game" };
+export const DEFAULT_OPTIONS: OverlayOptions = {
+  trail: true,
+  trailSecs: 1,
+  clicks: true,
+  dot: true,
+  keys: false,
+  heat: false,
+  heatRange: "game",
+  bubbles: true,
+  bubbleFade: FADE_DEFAULT,
+  bubbleCats: {},
+};
 const OPT_KEY = "cv.inputOverlay";
 
 export function loadOptions(): OverlayOptions {
   try {
     const raw = localStorage.getItem(OPT_KEY);
-    if (raw) return { ...DEFAULT_OPTIONS, ...JSON.parse(raw) };
+    if (raw) {
+      const o = { ...DEFAULT_OPTIONS, bubbleCats: {}, ...JSON.parse(raw) } as OverlayOptions;
+      const f = Number(o.bubbleFade);
+      o.bubbleFade = Number.isFinite(f) ? Math.min(FADE_MAX, Math.max(FADE_MIN, Math.round(f * 10) / 10)) : FADE_DEFAULT;
+      if (typeof o.bubbleCats !== "object" || !o.bubbleCats) o.bubbleCats = {};
+      return o;
+    }
   } catch {}
-  return { ...DEFAULT_OPTIONS };
+  return { ...DEFAULT_OPTIONS, bubbleCats: {} };
 }
 
 export function saveOptions(o: OverlayOptions) {
@@ -304,9 +328,18 @@ const STRIP_AFTER = 0.5;
 /** Draws the overlay; keeps the heatmap images it made (computed once per range). */
 export class Overlay {
   private heatCache = new Map<string, HTMLCanvasElement>();
+  /** Ability bubbles (loaded next to the recording; null until they arrive / none). */
+  bubbles: Bubbles | null = null;
+  /** Grows when something drawn changes without the time changing (bubbles arrived). */
+  version = 0;
   constructor(public d: InputData) {}
 
-  draw(g: CanvasRenderingContext2D, cssW: number, cssH: number, dpr: number, t: number, vw: number, vh: number, o: OverlayOptions, heatRange: [number, number] | null) {
+  setBubbles(v: ActionsView | null) {
+    this.bubbles = v && v.presses.t.length ? new Bubbles(v) : null;
+    this.version++;
+  }
+
+  draw(g: CanvasRenderingContext2D, cssW: number, cssH: number, dpr: number, t: number, vw: number, vh: number, o: OverlayOptions, heatRange: [number, number] | null, showUnconfirmed = false) {
     const d = this.d;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, cssW, cssH);
@@ -404,6 +437,20 @@ export class Overlay {
       g.lineWidth = lw * 0.9;
       g.strokeStyle = "rgba(0,0,0,0.7)";
       g.stroke();
+    }
+    if (o.bubbles && this.bubbles) {
+      const bo: BubbleOptions = { on: true, fade: o.bubbleFade, cats: o.bubbleCats ?? {}, unconfirmed: showUnconfirmed };
+      const base = baseRadius(rect.h);
+      const p = this.bubbles.v.presses;
+      // Each anchor with the window/letterbox mapping of its own moment (it never follows the
+      // cursor or a later window move).
+      const anchor = (i: number): [number, number] => {
+        const mm = mapper(d, p.t[i], rect, vw, vh);
+        return [mm.x(p.x[i]), mm.y(p.y[i])];
+      };
+      const cats = Object.keys(bo.cats).filter((k) => bo.cats[k] === false).sort().join(",");
+      const key = `${bo.fade}|${rect.x.toFixed(1)},${rect.y.toFixed(1)},${rect.w.toFixed(1)},${rect.h.toFixed(1)}|${vw}x${vh}|${cats}|${bo.unconfirmed}`;
+      this.bubbles.draw(g, key, bo, base, t, anchor);
     }
     g.restore();
 

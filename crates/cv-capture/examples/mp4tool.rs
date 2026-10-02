@@ -10,9 +10,16 @@
 //!                                                 Annex-B H.264 (with AUDs) + ADTS AAC -> a
 //!                                                 recording written by the recorder's own muxer
 //!   mp4tool fakeinput <session dir> [rate]        a realistic input recording (cursor moving the
-//!                                                 whole game, clicks, keys) for the overlay
-//!                                                 benchmark, compressed + stats, linked in session.json
+//!                                                 whole game, clicks, keys, level-ups, a 3 s Q
+//!                                                 spam with a W every 120 s from 60 s) for the
+//!                                                 overlay benchmark, compressed + stats, linked
+//!                                                 in session.json
 //!   mp4tool inputinfo <file.input>               summary of an input recording (no positions)
+//!   mp4tool binds [League install dir]            League's action keys (abilities, summoners,
+//!                                                 items, ward) as the app reads them
+//!   mp4tool bubbles <session dir> [--detail]      the replay's ability bubbles of a recorded game
+//!                                                 (counts per action, R vs the ult check, times;
+//!                                                 --detail: every R press and ult press)
 //!   mp4tool ultcheck <session dir> [--write] [--offset <s>]
 //!                                                 League ult check of a recorded game (Windows):
 //!                                                 the same code the maintenance pass runs
@@ -42,6 +49,8 @@ fn main() {
         Some("inputinfo") if a.len() == 3 => cv_core::input::read(Path::new(&a[2]))
             .map(|f| serde_json::to_string_pretty(&cv_core::input::stats::summarize(&f, std::fs::metadata(&a[2]).map(|m| m.len()).unwrap_or(0))).unwrap())
             .map_err(|e| e.to_string()),
+        Some("binds") => league_binds(a.get(2).map(|s| s.as_str()).unwrap_or("")),
+        Some("bubbles") if a.len() >= 3 => bubbles(Path::new(&a[2]), a.iter().any(|x| x == "--detail")),
         Some("ultcheck") if a.len() >= 3 => {
             let offset = a.iter().position(|x| x == "--offset").and_then(|i| a.get(i + 1)).and_then(|x| x.parse().ok());
             ult_check(Path::new(&a[2]), a.iter().any(|x| x == "--write"), offset)
@@ -166,6 +175,29 @@ fn fake_input(dir: &Path, rate: u32) -> Result<String, String> {
             r.push(Record::Key { t: t + 300, vk: k, down: true });
             r.push(Record::Key { t: t + 90_000, vk: k, down: false });
         }
+        // A level-up now and then (Ctrl+Q/W/E/R: no ability bubble).
+        if rnd() < 0.02 / rate as f64 {
+            let k = keys[(rnd() * 4.0) as usize % 4];
+            r.push(Record::Key { t: t + 400, vk: 0x11, down: true });
+            r.push(Record::Key { t: t + 30_000, vk: k, down: true });
+            r.push(Record::Key { t: t + 60_000, vk: k, down: false });
+            r.push(Record::Key { t: t + 80_000, vk: 0x11, down: false });
+        }
+    }
+    // Ability spam (the bubbles' worst case): every 120 s from 60 s, Q every 80 ms for 3 s while
+    // the cursor keeps moving, with a W in the middle.
+    let mut burst = 60.0;
+    while burst + 3.0 < dur {
+        for k in 0..38i64 {
+            let at = ((burst + k as f64 * 0.08) * 1e6) as i64;
+            r.push(Record::Key { t: at, vk: b'Q', down: true });
+            r.push(Record::Key { t: at + 40_000, vk: b'Q', down: false });
+            if k == 19 {
+                r.push(Record::Key { t: at + 10_000, vk: b'W', down: true });
+                r.push(Record::Key { t: at + 50_000, vk: b'W', down: false });
+            }
+        }
+        burst += 120.0;
     }
     r.push(Record::End { t: (dur * 1e6) as i64 });
     let name = format!("{}.input", s.id);
@@ -184,17 +216,27 @@ fn fake_input(dir: &Path, rate: u32) -> Result<String, String> {
     let an2 = stats::Analysis::from_file(&f2);
     let payload = stats::ui_payload(&an2, f2.heatmap.as_ref(), f2.rate);
     let load_ms = t.elapsed().as_millis();
+    // Ability bubbles (League's default binds: this session has none saved), snapped to frames.
+    let t = Instant::now();
+    let video = s.video_file.as_ref().map(|v| dir.join(v));
+    let frames = video.as_ref().and_then(|v| remux::frame_times(v).ok()).unwrap_or_default();
+    let frames_ms = t.elapsed().as_millis();
+    let acts = cv_game_league::actions::default_actions();
+    let presses = cv_core::input::actions::presses(&an2, &acts, f2.rate, &frames);
+    let bubbles_ms = t.elapsed().as_millis();
     s.input_file = Some(name);
     s.mechanics = Some(mech.clone());
     s.save(dir).map_err(|e| e.to_string())?;
     Ok(format!(
-        "{:.0} s at {rate} Hz: {} records, raw {:.2} MB, compressed {:.2} MB; stats + heatmap + compress {post_ms} ms; overlay load (read + decode + payload {:.1} MB) {load_ms} ms; APM {:.0}",
+        "{:.0} s at {rate} Hz: {} records, raw {:.2} MB, compressed {:.2} MB; stats + heatmap + compress {post_ms} ms; overlay load (read + decode + payload {:.1} MB) {load_ms} ms; APM {:.0}; ability bubbles: {} presses ({} video frames read in {frames_ms} ms) in {bubbles_ms} ms",
         dur,
         r.len(),
         raw as f64 / 1e6,
         comp as f64 / 1e6,
         payload.len() as f64 / 1e6,
-        mech.apm
+        mech.apm,
+        presses.len(),
+        frames.len()
     ))
 }
 
@@ -272,4 +314,97 @@ fn ult_check(dir: &Path, write: bool, offset: Option<f64>) -> Result<String, Str
 #[cfg(not(windows))]
 fn ult_check(_dir: &Path, _write: bool, _offset: Option<f64>) -> Result<String, String> {
     Err("ultcheck needs Windows (Media Foundation)".into())
+}
+
+/// League's action keys from its settings (the folder found like the app does, or the given one).
+fn league_binds(dir: &str) -> Result<String, String> {
+    use cv_game_league::{actions, queues};
+    let dirs = queues::install_dirs(dir);
+    let found = dirs.iter().find(|d| d.join("Config").is_dir()).cloned();
+    let (keys, source) = match found.as_ref().and_then(|d| actions::read_actions(d).map(|a| (a, d.display().to_string()))) {
+        Some((a, src)) => (a, src),
+        None => (actions::default_actions(), "League's defaults (settings not found)".to_string()),
+    };
+    let fmt = |b: &cv_core::input::actions::ActionBind| {
+        let mut s = String::new();
+        if b.ctrl {
+            s += "Ctrl+";
+        }
+        if b.shift {
+            s += "Shift+";
+        }
+        if b.alt {
+            s += "Alt+";
+        }
+        s + &b.physical()
+    };
+    let list: Vec<serde_json::Value> = keys.iter().map(|k| serde_json::json!({ "action": k.id, "label": k.label, "binds": k.binds.iter().map(fmt).collect::<Vec<_>>() })).collect();
+    let ult: Vec<String> = found.as_ref().and_then(|d| cv_game_league::ult::read_binds(d)).map(|b| b.cast.iter().map(|b| b.label()).collect()).unwrap_or_default();
+    Ok(serde_json::to_string_pretty(&serde_json::json!({ "source": source, "actions": list, "ult_tracking_binds": ult })).unwrap())
+}
+
+/// The ability bubbles of a recorded game, as the overlay gets them (`input_actions`).
+fn bubbles(dir: &Path, detail: bool) -> Result<String, String> {
+    use cv_core::input::{actions, stats};
+    use cv_core::GameIntegration;
+    let s = cv_core::session::GameSession::load(dir).map_err(|e| e.to_string())?;
+    let t = Instant::now();
+    let f = cv_core::input::read(&dir.join(s.input_file.as_deref().ok_or("no input file")?)).map_err(|e| e.to_string())?;
+    let an = stats::Analysis::from_file(&f);
+    let read_ms = t.elapsed().as_secs_f64() * 1e3;
+    let t = Instant::now();
+    let frames = s.video_file.as_ref().and_then(|v| remux::frame_times(&dir.join(v)).ok()).unwrap_or_default();
+    let frames_ms = t.elapsed().as_secs_f64() * 1e3;
+    let t = Instant::now();
+    let league = cv_game_league::LeagueIntegration::new();
+    let (keys, saved) = actions::session_actions(s.action_keys.as_deref(), || league.default_action_keys());
+    let mut p = actions::presses(&an, &keys, f.rate, &frames);
+    league.action_press_states(&s, &keys, &mut p);
+    let compute_ms = t.elapsed().as_secs_f64() * 1e3;
+    let mut per: std::collections::BTreeMap<String, usize> = Default::default();
+    for q in &p {
+        *per.entry(keys[q.action].id.clone()).or_default() += 1;
+    }
+    let r = keys.iter().position(|k| k.id == "spell4");
+    let rs: Vec<&actions::ActionPress> = p.iter().filter(|q| Some(q.action) == r).collect();
+    let count = |st: actions::PressState| rs.iter().filter(|q| q.state == st).count();
+    let ev = |k: cv_core::EventKind| s.events.iter().filter(|e| e.kind == k).count();
+    let key_downs = an.keys.iter().filter(|k| k.down).count();
+    let lag: Vec<f64> = p.iter().map(|q| q.t - q.show).collect();
+    let max_lag = lag.iter().cloned().fold(0.0, f64::max);
+    let fps = if frames.len() > 1 { (frames.len() - 1) as f64 / (frames[frames.len() - 1] - frames[0]) } else { 0.0 };
+    // Every R press next to every logged ult press (video seconds), for checking the pairing.
+    let r_detail: Vec<serde_json::Value> = if detail {
+        let no_cast: Vec<f64> = s.events.iter().filter(|e| e.kind == cv_core::EventKind::UltUnconfirmed).map(|e| e.game_time).collect();
+        let used: Vec<f64> = s.events.iter().filter(|e| e.kind == cv_core::EventKind::UltUsed).map(|e| e.game_time + s.video_offset).collect();
+        let mut rows: Vec<(f64, serde_json::Value)> = rs.iter().map(|q| (q.t, serde_json::json!({ "t": (q.t * 1000.0).round() / 1000.0, "bubble": format!("{:?}", q.state), "hint": q.hint }))).collect();
+        for m in s.key_presses.iter().filter(|m| m.action == "ult") {
+            let t = m.game_time + s.video_offset;
+            let nc = no_cast.iter().any(|&g| (g - m.game_time).abs() < 0.005);
+            rows.push((t, serde_json::json!({ "t": (t * 1000.0).round() / 1000.0, "mark": m.key, "accepted": m.accepted, "reason": m.reason, "no_cast_event": nc })));
+        }
+        for &u in &used {
+            rows.push((u, serde_json::json!({ "t": (u * 1000.0).round() / 1000.0, "ult_used_event": true })));
+        }
+        rows.sort_by(|a, b| a.0.total_cmp(&b.0));
+        rows.into_iter().map(|r| r.1).collect()
+    } else {
+        Vec::new()
+    };
+    Ok(serde_json::to_string_pretty(&serde_json::json!({
+        "r_detail": r_detail,
+        "session": s.id,
+        "binds_saved_with_game": saved,
+        "key_downs": key_downs,
+        "presses": p.len(),
+        "per_action": per,
+        "video_frames": frames.len(),
+        "avg_fps": (fps * 10.0).round() / 10.0,
+        "max_key_down_minus_frame_start_ms": (max_lag * 1e4).round() / 10.0,
+        "r_presses": { "normal": count(actions::PressState::Normal), "confirmed": count(actions::PressState::Confirmed), "unconfirmed": count(actions::PressState::Unconfirmed) },
+        "ult_events": { "ult_used": ev(cv_core::EventKind::UltUsed), "ult_pressed_no_cast": ev(cv_core::EventKind::UltUnconfirmed), "ult_pressed_unverified": ev(cv_core::EventKind::UltPressed) },
+        "verification": s.verification.as_ref().map(|v| v.status.clone()),
+        "ms": { "read_input": (read_ms * 10.0).round() / 10.0, "frame_times": (frames_ms * 10.0).round() / 10.0, "bubbles": (compute_ms * 10.0).round() / 10.0 },
+    }))
+    .unwrap())
 }

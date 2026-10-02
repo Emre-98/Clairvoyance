@@ -135,6 +135,11 @@ pub struct GameSession {
     /// Mechanics stats from the input recording (computed after the game).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mechanics: Option<crate::input::stats::Mechanics>,
+    /// The game's action keys and their binds as they were during this game (League: abilities,
+    /// summoners, items, ward, read from League's settings at the start), for the replay's ability
+    /// bubbles. Binds can change between games; recordings without them use the game's defaults.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action_keys: Option<Vec<crate::input::actions::ActionKey>>,
 }
 
 /// Outcome of the post-game check of key-press events against the recording (League: ult
@@ -183,6 +188,7 @@ impl GameSession {
             verification: None,
             input_file: None,
             mechanics: None,
+            action_keys: None,
             video_file: None,
             video_offset: 0.0,
             video_duration: None,

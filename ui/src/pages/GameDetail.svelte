@@ -51,6 +51,8 @@
   const offset = $derived(s?.video_offset ?? 0);
   // The game has an input recording (from the library summary at once, then the full view).
   const hasInput = $derived((view ? (view.input_bytes ?? 0) : (sum?.input_bytes ?? 0)) > 0);
+  // Sub-toggles of the overlay's ability bubbles for this game (League: abilities, summoners...).
+  const bubbleCats = $derived(app.info?.games.find((g) => g.id === (s?.game_id ?? sum?.game_id))?.action_categories ?? []);
   const heatRange = $derived<[number, number] | null>(mechRange ? [mechRange[0] + offset, mechRange[1] + offset] : range);
   const events = $derived([...(s?.events ?? [])].sort((a, b) => a.game_time - b.game_time));
   const listEvents = $derived(events.filter((e) => !hidden.has((KIND[e.kind] ?? KIND.manual_marker).group)));
@@ -157,6 +159,7 @@
           startAt={t}
           removed={!!(s?.video_removed_at ?? sum?.video_removed)}
           inputId={hasInput ? id : null}
+          {bubbleCats}
           {heatRange}
         />
         {#if range && s}

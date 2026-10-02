@@ -232,8 +232,14 @@ struct InputCached {
 }
 static INPUT_CACHE: std::sync::Mutex<Option<InputCached>> = std::sync::Mutex::new(None);
 
+/// Held while a recording is decoded: the overlay data and the ability bubbles are requested
+/// together on the first switch-on, and the second request waits for the first decode instead
+/// of decoding the same file again.
+static INPUT_DECODING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn input_cached(dir: &Path) -> R<(Arc<cv_core::input::stats::Analysis>, Option<cv_core::input::Heatmap>, u32)> {
     use cv_core::input::{self, stats};
+    let _decoding = INPUT_DECODING.lock().unwrap_or_else(|e| e.into_inner());
     let s = GameSession::load(dir).map_err(err)?;
     let path = dir.join(s.input_file.as_deref().ok_or("No input recorded for this game")?);
     let len = std::fs::metadata(&path).map_err(|_| "The input recording of this game is missing.".to_string())?.len();
@@ -261,6 +267,68 @@ pub async fn input_load(st: St<'_>, id: String) -> R<tauri::ipc::Response> {
         let b = cv_core::input::stats::ui_payload(&an, heat.as_ref(), rate);
         log::debug!("input overlay data for {}: {} samples, {} KB in {} ms", dir.display(), an.moves.len(), b.len() / 1024, t.elapsed().as_millis());
         Ok(tauri::ipc::Response::new(b))
+    })
+    .await
+    .map_err(err)?
+}
+
+/// Start times of every frame of a video (cached per file and size).
+fn frame_times_cached(path: &Path) -> Option<Arc<Vec<f64>>> {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    static CACHE: OnceLock<Mutex<HashMap<(PathBuf, u64), Arc<Vec<f64>>>>> = OnceLock::new();
+    let len = std::fs::metadata(path).ok()?.len();
+    let key = (path.to_path_buf(), len);
+    if let Some(f) = CACHE.get_or_init(Default::default).lock().unwrap().get(&key) {
+        return Some(f.clone());
+    }
+    let f = Arc::new(cv_capture::remux::frame_times(path).map_err(|e| log::debug!("frame times of {}: {e}", path.display())).ok()?);
+    let mut c = CACHE.get_or_init(Default::default).lock().unwrap();
+    if c.len() > 8 {
+        c.clear();
+    }
+    c.insert(key, f.clone());
+    Some(f)
+}
+
+#[derive(Serialize)]
+pub struct ActionsView {
+    /// The game's action keys with the binds of this game (or the game's defaults).
+    actions: Vec<cv_core::input::actions::ActionKey>,
+    categories: Vec<cv_core::input::actions::ActionCategory>,
+    /// The binds were saved with this game (else: the game's defaults).
+    saved_binds: bool,
+    /// Bubble times were snapped to the video's real frame times.
+    frame_exact: bool,
+    presses: cv_core::input::actions::PressArrays,
+}
+
+/// The replay's ability bubbles: every action-key press of the game with its exact time, the
+/// frame it shows on, the interpolated cursor position and how to draw it. Computed once when
+/// the overlay is first switched on (from the input recording that's already cached for it).
+#[tauri::command]
+pub async fn input_actions(st: St<'_>, id: String) -> R<ActionsView> {
+    use cv_core::input::actions;
+    let dir = session_dir(&st, &id)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let t = std::time::Instant::now();
+        let s = GameSession::load(&dir).map_err(err)?;
+        let (an, _, rate) = input_cached(&dir)?;
+        let game = crate::games::by_id(&s.game_id);
+        let (keys, saved) = actions::session_actions(s.action_keys.as_deref(), || game.map(|g| g.default_action_keys()).unwrap_or_default());
+        let frames = s.video_file.as_ref().map(|f| dir.join(f)).and_then(|p| frame_times_cached(&p));
+        let mut presses = actions::presses(&an, &keys, rate, frames.as_deref().map(|f| f.as_slice()).unwrap_or(&[]));
+        if let Some(g) = game {
+            g.action_press_states(&s, &keys, &mut presses);
+        }
+        log::debug!("ability bubbles for {}: {} presses, {} ms", dir.display(), presses.len(), t.elapsed().as_millis());
+        Ok(ActionsView {
+            categories: game.map(|g| g.action_categories()).unwrap_or_default(),
+            actions: keys,
+            saved_binds: saved,
+            frame_exact: frames.is_some(),
+            presses: actions::to_arrays(&presses),
+        })
     })
     .await
     .map_err(err)?
@@ -868,6 +936,7 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static 
         test_report,
         video_keyframes,
         input_load,
+        input_actions,
         input_stats,
         crate::bench::bench_config,
         crate::bench::bench_prepare,

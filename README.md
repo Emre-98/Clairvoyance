@@ -45,7 +45,13 @@ games, clips and downloaded tools over; the Home page then offers to uninstall t
   **← / →** ±5 s, **F** fullscreen. Filter chips hide or show event types.
 - **Input overlay** (button under the video, or **I**): your cursor trail, clicks (left blue,
   right red), cursor dot, the keys you pressed and a cursor heatmap, drawn over the replay. Off
-  every time a replay opens; options next to the button. The game page also shows
+  every time a replay opens; options next to the button. **Ability bubbles**: each ability,
+  summoner spell, item or ward you used pops up as a small bubble (Q W E R, D F, item slot 1-6,
+  a ward) exactly where your cursor was, on the exact video frame, and fades out (fade time
+  0.1-3 s; Abilities / Summoners / Items / Ward toggles). Your League keybinds are read from
+  League's own settings and saved with each game, so a rebound key still shows its ability (with
+  the key as a small hint) and Ctrl+Q level-ups don't count; R follows the ult check (a press
+  without a cast is faded, shown with the "Unconfirmed presses" filter). The game page also shows
   **Mechanics**: APM (and per minute), right-clicks per second, cursor distance, path
   efficiency and idle time; drag across the APM chart for a part of the game. Mouse and
   keyboard are recorded only while the game window is focused, never while the chat is open,

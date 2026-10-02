@@ -7,6 +7,17 @@ pub fn all() -> Vec<Box<dyn GameIntegration>> {
     vec![Box::new(cv_game_league::LeagueIntegration::new()), Box::new(cv_game_cs2::Cs2Integration::new())]
 }
 
+/// One shared, unconfigured instance of every game, for what doesn't need a running game (the
+/// replay's ability bubbles: default binds, categories, press states). Made once.
+pub fn registry() -> &'static [Box<dyn GameIntegration>] {
+    static GAMES: std::sync::OnceLock<Vec<Box<dyn GameIntegration>>> = std::sync::OnceLock::new();
+    GAMES.get_or_init(all)
+}
+
+pub fn by_id(id: &str) -> Option<&'static dyn GameIntegration> {
+    registry().iter().find(|g| g.id() == id).map(|g| g.as_ref())
+}
+
 #[derive(Serialize)]
 pub struct GameMeta {
     pub id: &'static str,
@@ -14,6 +25,8 @@ pub struct GameMeta {
     pub short_name: &'static str,
     pub supports_events: bool,
     pub input_tracking: bool,
+    /// Sub-toggles of the replay overlay's "Ability bubbles" (empty: this game has none).
+    pub action_categories: Vec<cv_core::input::actions::ActionCategory>,
     pub config_fields: Vec<ConfigField>,
     pub default_config: serde_json::Value,
 }
@@ -39,6 +52,7 @@ pub fn meta() -> Vec<GameMeta> {
                 short_name: g.short_name(),
                 supports_events: g.supports_events(),
                 input_tracking: g.input_tracking(),
+                action_categories: g.action_categories(),
                 config_fields: fields,
                 default_config: defaults,
             }

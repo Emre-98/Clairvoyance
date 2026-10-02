@@ -9,6 +9,7 @@
 //! presses (binds from League's own settings) filtered by rank, cooldown and death ([`ult`]);
 //! after the game, a check against the recording's ability bar ([`verify`], [`hud`]).
 
+pub mod actions;
 pub mod events;
 pub mod queues;
 pub mod ddragon;
@@ -155,6 +156,8 @@ pub struct LeagueIntegration {
     ult_cd: std::sync::Arc<std::sync::Mutex<Option<Vec<f64>>>>,
     ult_cd_started: bool,
     patch: Option<String>,
+    /// Action keys (abilities, summoners, items, ward) with League's binds for this match.
+    actions: Vec<cv_core::input::actions::ActionKey>,
 }
 
 impl Default for LeagueIntegration {
@@ -195,6 +198,7 @@ impl LeagueIntegration {
             ult_cd: Default::default(),
             ult_cd_started: false,
             patch: None,
+            actions: actions::default_actions(),
         }
     }
 
@@ -222,6 +226,7 @@ impl LeagueIntegration {
         self.ult_cd = Default::default();
         self.ult_cd_started = false;
         self.patch = None;
+        self.actions = actions::default_actions();
     }
 
     /// League's own key binds and patch, read at the start of each match (cheap file reads).
@@ -231,10 +236,14 @@ impl LeagueIntegration {
             log::info!("ult keys: League's Config folder not found; using League's default binds");
             return;
         };
-        if let Some(b) = ult::read_binds(&dir) {
+        // One read of League's key binds for both the ult tracking and the replay's ability
+        // bubbles (at the loading screen, before the game starts).
+        if let Some(text) = ult::read_input_settings(&dir) {
+            let b = ult::parse_input_ini(&text);
             let keys: Vec<String> = b.cast.iter().map(|b| b.label()).collect();
             log::info!("ult keys from League's settings: {}{}", keys.join(", "), if b.mouse.is_empty() { String::new() } else { format!(" (and mouse: {})", b.mouse.join(", ")) });
             self.ult.binds = b;
+            self.actions = actions::parse_actions(&text);
         }
         self.patch = ult::read_game_cfg(&dir).patch;
     }
@@ -640,6 +649,22 @@ impl GameIntegration for LeagueIntegration {
 
     fn mouse_marks(&self, presses: &[(f64, u8)]) -> Vec<cv_core::game::KeyMark> {
         self.ult.mouse_marks(presses)
+    }
+
+    fn action_keys(&self) -> Vec<cv_core::input::actions::ActionKey> {
+        actions::with_manual_ult(self.actions.clone(), self.ult.manual.as_ref())
+    }
+
+    fn default_action_keys(&self) -> Vec<cv_core::input::actions::ActionKey> {
+        actions::default_actions()
+    }
+
+    fn action_categories(&self) -> Vec<cv_core::input::actions::ActionCategory> {
+        actions::categories()
+    }
+
+    fn action_press_states(&self, session: &cv_core::session::GameSession, keys: &[cv_core::input::actions::ActionKey], presses: &mut [cv_core::input::actions::ActionPress]) {
+        actions::press_states(session, keys, presses)
     }
 
     fn verify_recording(

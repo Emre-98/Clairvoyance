@@ -9,6 +9,7 @@
   import { attachVideo, detachVideo, setVideoUrl } from "../lib/videopool";
   import InputOverlay from "./InputOverlay.svelte";
   import { Overlay, parse as parseInput, loadOptions, saveOptions } from "../lib/inputoverlay";
+  import { FADE_MAX, FADE_MIN } from "../lib/bubbles";
 
   let {
     src,
@@ -24,6 +25,7 @@
     startAt = 0,
     removed = false,
     inputId = null,
+    bubbleCats = [],
     heatRange = null,
   }: {
     src: string | null;
@@ -43,6 +45,8 @@
     removed?: boolean;
     /** Game id when this game has an input recording (replay overlay); null = none. */
     inputId?: string | null;
+    /** Categories of the game's ability bubbles (sub-toggles; empty = the game has none). */
+    bubbleCats?: { id: string; label: string }[];
     /** Range (video seconds) for the "selected range" heatmap. */
     heatRange?: [number, number] | null;
   } = $props();
@@ -69,12 +73,27 @@
     overlayLoading = true;
     overlayError = null;
     try {
-      const buf = await api.inputLoad(inputId);
-      overlay = new Overlay(parseInput(buf));
+      // The ability bubbles load next to the recording (the trail doesn't wait for them; they
+      // appear as soon as they're there).
+      const id = inputId;
+      const load = api.inputLoad(id);
+      const actions = api.inputActions(id).catch((e) => {
+        console.warn("ability bubbles:", e);
+        return null;
+      });
+      const buf = await load;
+      const ov = new Overlay(parseInput(buf));
+      overlay = ov;
       requestAnimationFrame(() => {
         const ms = performance.now() - t0;
         record("overlay_on", ms);
         (window as any).__cvOverlayLoadMs = ms;
+      });
+      actions.then((v) => {
+        if (overlay !== ov) return;
+        ov.setBubbles(v);
+        (window as any).__cvBubblesLoadMs = performance.now() - t0;
+        (window as any).__cvBubbleCount = v?.presses.t.length ?? 0;
       });
     } catch (e) {
       overlayError = String(e);
@@ -341,7 +360,7 @@
         <button class="bigplay" onclick={toggle} aria-label="Play"><Icon name="play" size={30} fill /></button>
       {/if}
       {#if overlayOn && overlay}
-        <InputOverlay {overlay} {video} options={overlayOpts} {heatRange} />
+        <InputOverlay {overlay} {video} options={overlayOpts} {heatRange} showUnconfirmed={!hidden.has("unconfirmed")} />
       {/if}
       {#if flash}<div class="flash">{flash}</div>{/if}
       {#if error}<div class="err"><Icon name="warn" size={18} />{error}</div>{/if}
@@ -402,6 +421,27 @@
           </div>
           {#if overlayOpts.heat && overlayOpts.heatRange === "range" && !heatRange}
             <small class="muted">Drag across the APM chart under Mechanics to pick a range (whole game until then).</small>
+          {/if}
+          {#if bubbleCats.length}
+            <div class="ovgroup" data-testid="bubble-options">
+              <label class="check"><input type="checkbox" bind:checked={overlayOpts.bubbles} />Ability bubbles</label>
+              <div class="subs" class:dim={!overlayOpts.bubbles}>
+                {#each bubbleCats as c (c.id)}
+                  <label class="check sub">
+                    <input
+                      type="checkbox"
+                      checked={overlayOpts.bubbleCats[c.id] !== false}
+                      disabled={!overlayOpts.bubbles}
+                      onchange={(e) => (overlayOpts.bubbleCats = { ...overlayOpts.bubbleCats, [c.id]: (e.currentTarget as HTMLInputElement).checked })}
+                    />{c.label}
+                  </label>
+                {/each}
+              </div>
+              <label class="slider" class:dim={!overlayOpts.bubbles}>
+                <span>Fade time <b>{overlayOpts.bubbleFade.toFixed(1)} s</b></span>
+                <input type="range" min={FADE_MIN} max={FADE_MAX} step="0.1" bind:value={overlayOpts.bubbleFade} disabled={!overlayOpts.bubbles} aria-label="Bubble fade time in seconds" />
+              </label>
+            </div>
           {/if}
           <small class="muted">Shortcut: I</small>
         </div>
@@ -662,6 +702,8 @@
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
     font-size: 13px;
     animation: fade 0.15s;
+    max-height: min(70vh, 480px);
+    overflow-y: auto;
   }
   .ovhead {
     display: flex;
@@ -693,6 +735,21 @@
   }
   .ovpop .dim {
     opacity: 0.45;
+  }
+  .ovgroup {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .ovgroup .subs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 8px;
+    padding-left: 24px;
+    font-size: 12px;
+    color: var(--text-2);
   }
   .legend {
     display: inline-flex;

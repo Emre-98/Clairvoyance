@@ -25,6 +25,7 @@
 //! area in units of 1/65536 of its width/height (0..65536 = inside). Every block starts with an
 //! absolute time and position, so each block decodes on its own.
 
+pub mod actions;
 pub mod stats;
 
 use serde::{Deserialize, Serialize};

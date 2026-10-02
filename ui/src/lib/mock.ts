@@ -1,6 +1,7 @@
 // Fake backend for `npm run dev` in a normal browser (UI work and screenshots only).
 // Never included in the production build.
 import { synthetic } from "./inputoverlay";
+import { syntheticActions } from "./bubbles";
 import type { ClipEntry, GameEvent, GameSession, LiveStatus, SessionSummary, Settings } from "./types";
 
 const listeners: Record<string, ((p: any) => void)[]> = {};
@@ -38,6 +39,7 @@ const detailEvents: GameEvent[] = [
   ev("1", "kill", 14, "Killed Zed", "Assists: Lee Sin"),
   ev("2", "first_blood", 14, "First blood"),
   ev("u1", "ult_pressed", 12.5, "Ult pressed", "Key press. The game can't confirm the ult was cast."),
+  ev("u3", "ult_unconfirmed", 18.3, "Ult pressed, no cast", "R pressed. The ult was on cooldown."),
   ev("3", "objective", 22, "Took Voidgrub"),
   ev("4", "death", 31, "Killed by Vi", "Assists: Zed"),
   ev("5", "dragon", 44, "Helped take Infernal Drake", "Assists: Ahri"),
@@ -256,6 +258,12 @@ export async function invoke(cmd: string, args: any = {}): Promise<any> {
             ],
             default_config: { riot_id: "", ult_key: "R", record_input: true, input_rate: "250" },
             input_tracking: true,
+            action_categories: [
+              { id: "ability", label: "Abilities" },
+              { id: "summoner", label: "Summoners" },
+              { id: "item", label: "Items" },
+              { id: "ward", label: "Ward" },
+            ],
           },
         ],
       };
@@ -328,6 +336,8 @@ export async function invoke(cmd: string, args: any = {}): Promise<any> {
     case "input_load":
       await new Promise((r) => setTimeout(r, 30));
       return synthetic(150);
+    case "input_actions":
+      return syntheticActions(150);
     case "input_stats":
       return { version: 1, from: args.from, to: args.to, focused_secs: args.to - args.from, clicks: 99, right_clicks: 80, key_presses: 40, apm: 205, apm_per_min: [], right_click_hz: 1.9, cursor_distance: 70, path_efficiency: 0.79, idle_secs: 2, cursor_samples: 9000 };
     case "perf_now":

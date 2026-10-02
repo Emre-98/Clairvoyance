@@ -5,7 +5,7 @@
 // game's aspect differs), and the 16:9 player pillarboxes the 4:3 video: both mappings count.
 //
 //   node tests/overlay.test.mjs [http://localhost:5173] [outdir]
-// Make the video first (see tests/README in PLAN.md): public/dev-assets/sample.webm.
+// Make the video first: python3 tests/make-sample.py (public/dev-assets/sample.webm).
 import { chromium } from "playwright-core";
 
 const BASE = process.argv[2] ?? "http://localhost:5173";
@@ -21,6 +21,10 @@ const browser = await chromium.launch({ executablePath: exe, args: ["--autoplay-
 const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
 page.on("pageerror", (e) => console.log("pageerror", e.message));
 await page.goto(BASE);
+// The v1.4 overlay as it was: ability bubbles (v1.5, tests/bubbles.test.mjs) off, so the
+// cursor-dot checks only see the dot.
+await page.evaluate(() => localStorage.setItem("cv.inputOverlay", JSON.stringify({ bubbles: false })));
+await page.reload();
 await page.waitForSelector("button.card.game");
 
 async function openGame(i) {

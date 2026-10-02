@@ -1,3 +1,4 @@
+import type { ActionsView } from "./bubbles";
 import type {
   AppInfo,
   ClipEntry,
@@ -100,6 +101,8 @@ export const api = {
   /** The replay overlay's data (binary, see lib/inputoverlay.ts). */
   inputLoad: (id: string) => call<ArrayBuffer>("input_load", { id }),
   inputStats: (id: string, from: number, to: number) => call<Mechanics>("input_stats", { id, from, to }),
+  /** Ability bubbles of a replay (see lib/bubbles.ts). */
+  inputActions: (id: string) => call<ActionsView>("input_actions", { id }),
   testReport: (ui: unknown) => call<string>("test_report", { ui }),
   quit: () => call<void>("quit_app"),
   removeLegacyApp: () => call<void>("remove_legacy_app"),
