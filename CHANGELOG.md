@@ -3,6 +3,13 @@
 Newest first. `scripts/release.ps1` adds a section for each release; the section becomes the
 release notes on GitHub and in the in-app "Update available" card.
 
+## [1.5.0] - 2026-10-02
+
+- Ability bubbles on the input overlay: every ability, summoner spell, item or ward you use pops up as a small bubble on the replay exactly where your cursor was, on the exact frame, and fades out
+- Your League keybinds are read from League's own settings and saved with each game: rebound keys still show the ability (with the key as a small hint), Ctrl+Q level-ups and typing in chat never show a bubble
+- Your ult follows the ult check: casts are solid, presses without a cast are faded and only shown with 'Unconfirmed presses' on
+- Overlay options: Abilities / Summoners / Items / Ward toggles and a fade time slider (0.1 to 3 s)
+
 ## [1.4.0] - 2026-10-02
 
 - Input overlay: press I (or the button under the video) to see your cursor trail, clicks (left blue, right red), the keys you pressed and a cursor heatmap on top of the replay. Options next to the button
