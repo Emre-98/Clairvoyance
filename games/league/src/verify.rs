@@ -23,8 +23,9 @@ use cv_core::{EventKind, GameEvent};
 use std::time::Instant;
 
 /// Bump when the checking logic improves: older results are redone by the maintenance pass.
-/// 3 (v1.6): ult kinds — recasts / commands of one ult, form swaps, charges.
-pub const VERSION: u32 = 3;
+/// 3-4 (v1.6): ult kinds — recasts / commands of one ult, form swaps, charges; one recast per
+/// burst of mashed presses (4; the v1.6 test builds wrote 3).
+pub const VERSION: u32 = 4;
 /// Below this the ability bar isn't trusted.
 pub const MIN_CONFIDENCE: f64 = 0.35;
 const CALIBRATION_FRAMES: usize = 24;

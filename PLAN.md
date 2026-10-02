@@ -86,7 +86,8 @@
 - **v1.6 part B: ult kinds.** One ult = one "Ult used": recasts / summon commands are "Ult
   recast", Jayce/Nidalee/Elise/Udyr swaps "Form swap" (both hidden chips), charges count per
   cast. 49 champions classified against Data Dragon 16.19.1 + the wiki (`ultscan` dev tool).
-  `verify::VERSION` 3. The owner's 19 real clips give identical results. Details in "Ult kinds".
+  `verify::VERSION` 4. The owner's 19 real clips and all his normal-champion games give
+  identical results. Details in "Ult kinds".
 - **Waiting for the owner**: the Practice Tool test of the ult kinds (v1.6, see "Next steps"),
   the PC benchmark of the v1.6 player (`--bench-replays` with `"player": true`), and the older
   Practice Tool test of the ability bubbles.
@@ -848,7 +849,7 @@ response that's already fetched every poll; the analysis stays in the maintenanc
   the game's first value the episode stays open, when it's back the episode ends. Whether League
   changes it during a recast is to be seen in the owner's test (`mp4tool ultcheck` prints
   `r_states`).
-- **Check after the game (`verify.rs`, VERSION 3 → older recordings re-checked):** normal
+- **Check after the game (`verify.rs`, VERSION 4 → older recordings re-checked):** normal
   champions take exactly the v1.3 path. Others: per keyframe also a 4×4-cell colour picture of
   the R icon (`hud::signature`); the game's own ready look is the densest cluster of ready-state
   pictures (`ready_reference`); a ready-state sample more than `ALT_DIST` (0.085) away = the
@@ -859,8 +860,11 @@ response that's already fetched every poll; the analysis stays in the maintenanc
   at the first long cooldown after it (+ grace), when the icon is back to its ready look (after
   an alt state, if `ends` has icon), at death (multi_cast), or at the cap. `ultkind::label`: per
   episode the first possible press = "Ult used" (at the bar's change, or at the press when the
-  bar showed it > cast delay later), later possible presses = "Ult recast", presses typed in
-  chat / while dead = "no cast"; presses outside episodes = "no cast". Transform: every cast is a
+  bar showed it > cast delay later), later possible presses = "Ult recast" — but R mashed in
+  bursts (presses < 0.35 s apart, ~7/s in the owner's Kha'Zix game) gives one recast per burst
+  (the press just before a change on the bar, else its first) and nothing for the activation's
+  own burst; presses typed in chat / while dead = "no cast"; presses outside episodes = "no
+  cast". Live the same: one "Ult recast" marker per burst. Transform: every cast is a
   "Form swap"; charges: v1.3 matching plus the ammo rule. The verification details get
   `ult_kind` {kind, recasts, form_swaps, episodes, alt_states, long_casts}.
 - **UI:** new event kinds `ult_recast` ("Ult recast", own colour `--ev-recast`, chip "Ult
@@ -873,7 +877,8 @@ response that's already fetched every poll; the analysis stays in the maintenanc
   backed; episodes per kind: Annie 2 ults + 10 commands + a press on cooldown, icon end, Ahri
   three dashes with presses right before / after the end, a new ult right after the old one,
   the bar showing the ult late, death during a multi_cast vs a summon, Sylas stealing a recast
-  ult, transform, Kog'Maw and Corki charges, normal = v1.3; live episodes); `ult.rs` (live
+  ult, transform, Kog'Maw and Corki charges, normal = v1.3, the owner's real Kha'Zix R mashing
+  = one recast per burst; live episodes incl. bursts); `ult.rs` (live
   recasts / form swaps, R state from the API ends or extends an episode, death);
   `hud.rs` recast icon detector on real ready crops + `tests/hud/*-alt-synthetic.ppm` (the ready
   crop with another icon's inside: real recast crops come from the owner's test), noise; verify

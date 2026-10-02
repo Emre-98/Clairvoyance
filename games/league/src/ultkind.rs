@@ -102,6 +102,9 @@ fn default_ends() -> Vec<End> {
 
 /// Duration cap for champions without one (and unknown champions that look like recasts).
 pub const DEFAULT_EPISODE: f64 = 15.0;
+/// R presses closer than this to the previous one are one burst (mashing the key): at most one
+/// recast per burst.
+pub const BURST_GAP: f64 = 0.35;
 /// A cooldown at least this long after it appears is the ult's real cooldown (not a recast lockout).
 pub const LONG_COOLDOWN: f64 = 3.0;
 
@@ -341,15 +344,45 @@ pub fn label(rule: &KindRule, delay: f64, sig: &Signals, presses: &[PressIn], am
                     _ => ep.start,
                 };
                 out.push(Label::Used { at, press: first });
-                for i in inside {
+                // Later presses come in bursts when R is mashed (~7 per second): one burst = one
+                // recast at most — the press just before a change on the bar inside it, else its
+                // first press; the rest of a burst (and of the activation's own burst) did nothing.
+                let mut bursts: Vec<Vec<usize>> = Vec::new();
+                let mut last_t = first.map(|f| times[f]);
+                let mut in_first = first.is_some();
+                for &i in &inside {
                     taken[i] = true;
                     if Some(i) == first {
                         continue;
                     }
-                    if presses[i].ok && first.is_none_or(|f| times[i] > times[f]) {
-                        out.push(Label::Recast { press: i, episode: k });
-                    } else {
+                    if !presses[i].ok || first.is_some_and(|f| times[i] <= times[f]) {
                         out.push(Label::NoCast { press: i });
+                        continue;
+                    }
+                    let joined = last_t.is_some_and(|l| times[i] - l < BURST_GAP);
+                    last_t = Some(times[i]);
+                    if joined && in_first {
+                        out.push(Label::NoCast { press: i });
+                        continue;
+                    }
+                    in_first = false;
+                    if joined {
+                        bursts.last_mut().unwrap().push(i);
+                    } else {
+                        bursts.push(vec![i]);
+                    }
+                }
+                for b in bursts {
+                    let (b0, b1) = (times[b[0]], times[*b.last().unwrap()]);
+                    let change = casts.iter().copied().find(|&c| c >= b0 - 0.05 && c <= b1 + rule.cast_delay());
+                    let pick = match change {
+                        // The last press before the change (else the first one a hair after it:
+                        // clock jitter).
+                        Some(c) => b.iter().copied().rev().find(|&i| times[i] <= c).or_else(|| b.iter().copied().find(|&i| times[i] <= c + 0.25)).unwrap_or(b[0]),
+                        None => b[0],
+                    };
+                    for i in b {
+                        out.push(if i == pick { Label::Recast { press: i, episode: k } } else { Label::NoCast { press: i } });
                     }
                 }
             }
@@ -372,6 +405,8 @@ pub struct LiveEpisodes {
     /// End of the current episode (game seconds).
     pub until: Option<f64>,
     pub started: Option<f64>,
+    /// The previous accepted press (bursts of mashed presses give one marker).
+    pub last: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -386,12 +421,18 @@ pub enum LivePress {
 impl LiveEpisodes {
     /// An accepted R press at `t` for `kind`: a new ult, a recast, or a form swap.
     pub fn press(&mut self, kind: UltKind, cap: f64, t: f64) -> LivePress {
+        let prev = self.last.replace(t);
         match kind {
             UltKind::Transform => LivePress::FormSwap,
             UltKind::Normal | UltKind::ChargesOrReset => LivePress::Used,
             UltKind::Command | UltKind::MultiCast => {
                 if self.until.is_some_and(|u| t <= u) {
-                    LivePress::Recast
+                    // Mashing R: one marker per burst (the check after the game picks the press).
+                    if prev.is_some_and(|p| t - p < BURST_GAP) {
+                        LivePress::None
+                    } else {
+                        LivePress::Recast
+                    }
                 } else {
                     self.started = Some(t);
                     self.until = Some(t + cap + 1.0);

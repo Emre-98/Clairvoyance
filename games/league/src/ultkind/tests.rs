@@ -285,8 +285,42 @@ fn live_episodes() {
     // ...but not in the first half second (the name may not have changed yet).
     e.ended(161.2);
     assert_eq!(e.press(UltKind::Command, 45.0, 162.0), LivePress::Recast);
+    // Mashing R inside an episode: one marker per burst.
+    let mut e = LiveEpisodes::default();
+    assert_eq!(e.press(UltKind::MultiCast, 10.0, 70.0), LivePress::Used);
+    assert_eq!(e.press(UltKind::MultiCast, 10.0, 70.14), LivePress::None);
+    assert_eq!(e.press(UltKind::MultiCast, 10.0, 70.28), LivePress::None);
+    assert_eq!(e.press(UltKind::MultiCast, 10.0, 74.8), LivePress::Recast);
     let mut e = LiveEpisodes::default();
     assert_eq!(e.press(UltKind::Transform, 0.0, 1.0), LivePress::FormSwap);
     assert_eq!(e.press(UltKind::ChargesOrReset, 0.0, 1.0), LivePress::Used);
     assert_eq!(e.press(UltKind::Normal, 0.0, 1.0), LivePress::Used);
+}
+
+#[test]
+fn mashing_r_is_one_recast_per_burst() {
+    // The owner's real Kha'Zix game: R mashed ~7 times a second. Activation at 69.98 (icon
+    // change), a burst right after it (nothing), the real recast at 74.86 (its cooldown shows at
+    // 74.94), then a burst 202.27..202.97 around another recast whose cooldown shows at 202.93.
+    let r = UltRules::builtin().kind_for("Khazix", None);
+    let sig = Signals {
+        casts: vec![CastSig { t: 74.94, long: true }, CastSig { t: 202.93, long: true }],
+        alt: vec![(69.98, 74.94), (198.21, 202.93)],
+        ready: vec![60.0, 190.0],
+        deaths: vec![],
+    };
+    let mut presses: Vec<PressIn> = [69.9, 70.24, 70.38, 70.52, 70.66, 70.81, 74.86].iter().map(|&t| p(t)).collect();
+    presses.push(p(198.1));
+    presses.extend([202.27, 202.41, 202.55, 202.69, 202.83, 202.97].iter().map(|&t| p(t)));
+    let l = label(&r, 1.2, &sig, &presses, &never);
+    let (used, rec, _, no, at) = count(&l);
+    assert_eq!((used, rec, no), (2, 2, 10), "{l:?}");
+    assert_eq!(at, vec![69.98, 198.21]);
+    assert!(l.contains(&Label::Recast { press: 6, episode: 0 }), "74.86");
+    assert!(l.contains(&Label::Recast { press: 12, episode: 1 }), "202.83: the press just before the bar changed");
+    // Deliberate presses (Annie's commands, 1 s apart) all count.
+    let annie = UltRules::builtin().kind_for("Annie", None);
+    let sig = Signals { casts: vec![], alt: vec![(100.1, 140.0)], ready: vec![90.0], deaths: vec![] };
+    let presses: Vec<PressIn> = (0..6).map(|i| p(99.9 + i as f64)).collect();
+    assert_eq!(count(&label(&annie, 1.5, &sig, &presses, &never)).1, 5);
 }

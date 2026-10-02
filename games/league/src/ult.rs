@@ -498,8 +498,10 @@ impl UltTracker {
         }
         let rule = self.kind();
         let what = self.episodes.press(rule.kind, rule.cap(self.r_level), game_time);
+        let in_episode = rule.kind.has_episodes() && self.episodes.started.is_some_and(|s| s < game_time);
         let m = self.marks.last_mut().unwrap();
-        if what == LivePress::Recast {
+        if what == LivePress::Recast || (what == LivePress::None && in_episode) {
+            // A later press of the same ult (a mashed one gets no marker of its own).
             m.reason = Some("recast".into());
         }
         what
