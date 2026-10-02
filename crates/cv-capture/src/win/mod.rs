@@ -301,7 +301,14 @@ impl NativeRecorder {
         Ok(())
     }
 
+    /// Lets the GPU idle between games (on hybrid laptops it keeps the dGPU awake otherwise).
+    /// The capture and encoder threads hold their own references until they stop.
+    fn release_gpu(&self) {
+        *self.inner.gpu.lock().unwrap() = None;
+    }
+
     fn stop_blocking(&self) -> Result<PathBuf> {
+        self.release_gpu();
         let mut a = self.inner.active.lock().unwrap().take().context("not recording")?;
         a.watchdog_stop.store(true, std::sync::atomic::Ordering::SeqCst);
         if let Some(c) = a.capture.lock().unwrap().take() {
@@ -370,6 +377,7 @@ impl Recorder for NativeRecorder {
         if let Err(e) = &r {
             let msg = format!("{e:#}");
             self.set_status(|s| s.error = Some(msg));
+            self.release_gpu();
         }
         r
     }
