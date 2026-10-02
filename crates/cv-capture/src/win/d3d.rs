@@ -15,6 +15,18 @@ pub struct GpuInfo {
     pub luid: i64,
 }
 
+/// Hybrid laptops: asks the NVIDIA (Optimus) and AMD (PowerXpress) drivers to run us on the
+/// gaming GPU. Without it NVIDIA's H.264 encoder refuses to activate (E_UNEXPECTED). The
+/// drivers only look at the exe's export table: binaries export these with `/EXPORT` (build.rs).
+#[no_mangle]
+#[used]
+#[allow(non_upper_case_globals)]
+pub static NvOptimusEnablement: u32 = 1;
+#[no_mangle]
+#[used]
+#[allow(non_upper_case_globals)]
+pub static AmdPowerXpressRequestHighPerformance: u32 = 1;
+
 pub fn vendor_name(id: u32) -> &'static str {
     match id {
         0x10DE => "NVIDIA",
