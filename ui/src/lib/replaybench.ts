@@ -11,7 +11,7 @@ import { api, fileSrc } from "./api";
 import { go, app } from "./store.svelte";
 import { nextPaint } from "./perfmarks";
 
-type Cfg = { sessions: string[]; runs?: number; early_runs?: number; label?: string; finalize?: boolean; overlay?: boolean };
+type Cfg = { sessions: string[]; runs?: number; early_runs?: number; label?: string; finalize?: boolean; overlay?: boolean; player?: boolean };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -323,6 +323,96 @@ async function overlayBench(id: string) {
   return r;
 }
 
+const key = (k: string, code: string, shift = false) => window.dispatchEvent(new KeyboardEvent("keydown", { key: k, code, shiftKey: shift }));
+const stepTimes = (): number[] => [...((window as any).__cvStepMs ?? [])];
+
+/** v1.6 player: frame steps (forward / back), timeline zoom speed, fullscreen switch and the
+ * panel. Builds without these controls report `{ supported: false }`. */
+async function playerBench(id: string) {
+  const r: Record<string, unknown> = {};
+  go({ page: "games" });
+  await sleep(900);
+  go({ page: "game", id });
+  const v = await waitFor(() => video(), 30000);
+  if (!v) return { error: "no player" };
+  await waitFor(() => v.readyState >= 3, 30000);
+  if (!document.querySelector('[data-testid="zoom-slider"]')) return { supported: false };
+  await sleep(800); // frame times
+  // Frame steps in the middle of the game: 30 forward, 30 back (each waits for its frame).
+  v.currentTime = v.duration * 0.5;
+  await nextEvent(v, "seeked", 10000);
+  await sleep(300);
+  const step = async (k: string, code: string) => {
+    const n0 = stepTimes().length;
+    key(k, code);
+    await waitFor(() => stepTimes().length > n0, 5000);
+    return stepTimes()[stepTimes().length - 1];
+  };
+  const fwd: number[] = [], back: number[] = [];
+  for (let i = 0; i < 30; i++) fwd.push(await step(".", "Period"));
+  for (let i = 0; i < 30; i++) back.push(await step(",", "Comma"));
+  r.stepForward = { median: pct(fwd, 0.5), p95: pct(fwd, 0.95), max: pct(fwd, 1), byPlaying: (window as any).__cvStepPlayed ?? 0, playOff: !!(window as any).__cvStepPlayOff };
+  r.stepBack = { median: pct(back, 0.5), p95: pct(back, 0.95), max: pct(back, 1) };
+  // Zoom: the slider moved every frame for 4 s (in and out), redraw time and frame intervals.
+  const s = document.querySelector<HTMLInputElement>('[data-testid="zoom-slider"]')!;
+  (window as any).__cvTimelineDrawMs && ((window as any).__cvTimelineDrawMs.length = 0);
+  const gaps: number[] = [];
+  let last = performance.now();
+  for (let i = 0; i < 240; i++) {
+    s.value = String(0.5 - 0.5 * Math.cos((i / 120) * Math.PI));
+    s.dispatchEvent(new Event("input", { bubbles: true }));
+    await new Promise((res) => requestAnimationFrame(res));
+    const now = performance.now();
+    gaps.push(now - last);
+    last = now;
+  }
+  const d: number[] = [...((window as any).__cvTimelineDrawMs ?? [])];
+  r.zoom = { markers: markers().length, draw: { median: pct(d, 0.5), p95: pct(d, 0.95), max: pct(d, 1) }, frameInterval: { median: pct(gaps.slice(5), 0.5), p95: pct(gaps.slice(5), 0.95), max: pct(gaps.slice(5), 1) } };
+  document.querySelector<HTMLButtonElement>('[data-testid="zoom-fit"]')?.click();
+  // Fullscreen (needs a user gesture in some WebView2 versions: then only the error is noted).
+  const p = document.querySelector<HTMLElement>('[data-testid="player"]');
+  const fs: number[] = [], exit: number[] = [];
+  try {
+    for (let i = 0; i < 3 && p; i++) {
+      let t0 = performance.now();
+      let ch = new Promise((res) => document.addEventListener("fullscreenchange", res, { once: true }));
+      await p.requestFullscreen();
+      await ch;
+      await nextPaint();
+      fs.push(Math.round(performance.now() - t0));
+      await sleep(400);
+      if (i === 0) {
+        const pr = document.querySelector('[data-testid="player-panel"]')!.getBoundingClientRect();
+        const vr = v.getBoundingClientRect();
+        r.fullscreenLayout = { screen: [innerWidth, innerHeight, devicePixelRatio], video: [vr.x, vr.y, vr.width, vr.height], panelHeight: Math.round(pr.height), panelPct: Math.round((pr.height / innerHeight) * 1000) / 10 };
+        const panel: number[] = [];
+        for (let k = 0; k < 4; k++) {
+          const t1 = performance.now();
+          const end = new Promise((res) => document.querySelector('[data-testid="player-panel"]')!.addEventListener("transitionend", res, { once: true }));
+          key("h", "KeyH");
+          await Promise.race([end, sleep(1000)]);
+          panel.push(Math.round(performance.now() - t1));
+          await sleep(200);
+        }
+        r.panelSlideMs = panel;
+      }
+      t0 = performance.now();
+      ch = new Promise((res) => document.addEventListener("fullscreenchange", res, { once: true }));
+      await document.exitFullscreen();
+      await ch;
+      await nextPaint();
+      exit.push(Math.round(performance.now() - t0));
+      await sleep(400);
+    }
+    r.fullscreenEnterMs = fs;
+    r.fullscreenExitMs = exit;
+  } catch (e) {
+    r.fullscreen = String(e);
+  }
+  v.pause();
+  return r;
+}
+
 export async function runBench(cfg: Cfg) {
   const log = (s: string) => api.benchLog(s).catch(() => {});
   const runs = cfg.runs ?? 5;
@@ -369,7 +459,16 @@ export async function runBench(cfg: Cfg) {
       }
       await log(`${id} overlay: ${JSON.stringify(overlay)}`);
     }
-    (out.results as any)[id] = { opens, early, overlay };
+    let player: unknown = undefined;
+    if (cfg.player) {
+      try {
+        player = await playerBench(id);
+      } catch (e) {
+        player = { error: String(e) };
+      }
+      await log(`${id} player: ${JSON.stringify(player)}`);
+    }
+    (out.results as any)[id] = { opens, early, overlay, player };
   }
   go({ page: "home" });
   void app;

@@ -10,7 +10,19 @@
     options,
     heatRange = null,
     showUnconfirmed = false,
-  }: { overlay: Overlay; video: HTMLVideoElement | undefined; options: OverlayOptions; heatRange?: [number, number] | null; showUnconfirmed?: boolean } = $props();
+    fit = "contain",
+    insetBottom = 0,
+  }: {
+    overlay: Overlay;
+    video: HTMLVideoElement | undefined;
+    options: OverlayOptions;
+    heatRange?: [number, number] | null;
+    showUnconfirmed?: boolean;
+    /** How the player places the video (CSS object-fit). */
+    fit?: "contain" | "cover";
+    /** CSS px covered by the fullscreen controls panel at the bottom (keys strip stays above). */
+    insetBottom?: number;
+  } = $props();
 
   let canvas: HTMLCanvasElement;
   let size = { w: 0, h: 0, dpr: 1 };
@@ -38,6 +50,8 @@
     const opts = $state.snapshot(options) as OverlayOptions;
     const hr = heatRange ? ([...heatRange] as [number, number]) : null;
     const unconf = showUnconfirmed;
+    const ft = fit;
+    const inset = Math.round(insetBottom);
     last = "";
     if (!v) return;
     const g = canvas.getContext("2d")!;
@@ -49,7 +63,7 @@
       if (key === last) return;
       last = key;
       const t0 = performance.now();
-      ov.draw(g, size.w, size.h, size.dpr, t, v.videoWidth, v.videoHeight, opts, hr, unconf);
+      ov.draw(g, size.w, size.h, size.dpr, t, v.videoWidth, v.videoHeight, opts, hr, unconf, ft, inset);
       times.push(performance.now() - t0);
       if (times.length > 240) times.shift();
       (window as any).__cvOverlayDrawMs = times;

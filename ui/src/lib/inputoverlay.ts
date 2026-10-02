@@ -204,10 +204,13 @@ export function inGap(d: InputData, t: number): boolean {
   return false;
 }
 
-/** Where the video content is drawn inside the element (object-fit: contain). */
-export function videoRect(boxW: number, boxH: number, vw: number, vh: number) {
+/**
+ * Where the video content is drawn inside the element: object-fit "contain" (whole video, bars)
+ * or "cover" (fills the element, the overflow is cropped; the rect then extends past it).
+ */
+export function videoRect(boxW: number, boxH: number, vw: number, vh: number, fit: "contain" | "cover" = "contain") {
   if (!vw || !vh) return { x: 0, y: 0, w: boxW, h: boxH };
-  const s = Math.min(boxW / vw, boxH / vh);
+  const s = fit === "cover" ? Math.max(boxW / vw, boxH / vh) : Math.min(boxW / vw, boxH / vh);
   const w = vw * s;
   const h = vh * s;
   return { x: (boxW - w) / 2, y: (boxH - h) / 2, w, h };
@@ -339,15 +342,26 @@ export class Overlay {
     this.version++;
   }
 
-  draw(g: CanvasRenderingContext2D, cssW: number, cssH: number, dpr: number, t: number, vw: number, vh: number, o: OverlayOptions, heatRange: [number, number] | null, showUnconfirmed = false) {
+  /**
+   * `fit`: how the player places the video (CSS object-fit). `insetBottom`: CSS px at the bottom
+   * covered by the player's own controls (fullscreen panel): the keys strip stays above them.
+   */
+  draw(g: CanvasRenderingContext2D, cssW: number, cssH: number, dpr: number, t: number, vw: number, vh: number, o: OverlayOptions, heatRange: [number, number] | null, showUnconfirmed = false, fit: "contain" | "cover" = "contain", insetBottom = 0) {
     const d = this.d;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, cssW, cssH);
-    const rect = videoRect(cssW, cssH, vw, vh);
+    const rect = videoRect(cssW, cssH, vw, vh, fit);
     const m = mapper(d, t, rect, vw, vh);
+    // The visible part of the video (with "cover" the rect is larger than the element).
+    const vis = {
+      x: Math.max(0, rect.x),
+      y: Math.max(0, rect.y),
+      w: Math.min(cssW, rect.x + rect.w) - Math.max(0, rect.x),
+      h: Math.min(cssH, rect.y + rect.h) - Math.max(0, rect.y),
+    };
     g.save();
     g.beginPath();
-    g.rect(rect.x, rect.y, rect.w, rect.h);
+    g.rect(vis.x, vis.y, vis.w, vis.h);
     g.clip();
 
     if (o.heat) {
@@ -454,14 +468,17 @@ export class Overlay {
     }
     g.restore();
 
-    if (o.keys) this.drawKeys(g, rect, t);
+    if (o.keys) {
+      const bottom = Math.min(vis.y + vis.h, cssH - insetBottom);
+      this.drawKeys(g, { x: vis.x, y: vis.y, w: vis.w, h: Math.max(0, bottom - vis.y) }, t, fit === "contain" ? rect.h : vis.h);
+    }
   }
 
   /** A strip of the keys pressed from 2.5 s before to 0.5 s after `t`, one lane per key group. */
-  private drawKeys(g: CanvasRenderingContext2D, rect: { x: number; y: number; w: number; h: number }, t: number) {
+  private drawKeys(g: CanvasRenderingContext2D, rect: { x: number; y: number; w: number; h: number }, t: number, sizeH = rect.h) {
     const keys = this.d.keys;
     const W = Math.max(220, Math.min(rect.w * 0.36, 520));
-    const laneH = Math.max(15, Math.min(22, rect.h / 30));
+    const laneH = Math.max(15, Math.min(22, sizeH / 30));
     const H = laneH * 3 + 10;
     const x0 = rect.x + 12;
     const y0 = rect.y + rect.h - H - 12;

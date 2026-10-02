@@ -10,6 +10,8 @@
   import InputOverlay from "./InputOverlay.svelte";
   import { Overlay, parse as parseInput, loadOptions, saveOptions } from "../lib/inputoverlay";
   import { FADE_MAX, FADE_MIN } from "../lib/bubbles";
+  import { frameIndexAt, frameNearest, frameSeekTime, preciseClock } from "../lib/timelineview";
+  import { loadPrefs, savePrefs } from "../lib/playerprefs";
 
   let {
     src,
@@ -105,6 +107,261 @@
 
   let video = $state<HTMLVideoElement>();
   let box: HTMLDivElement;
+  let timeline = $state<Timeline>();
+  let zoomLevel = $state(0);
+  let zoomed = $state(false);
+
+  // ---------- fullscreen ----------
+  // The video always fills the screen; the controls, timeline and filter chips are a see-through
+  // panel drawn over its bottom, which can be slid down (true fullscreen) with the small arrow
+  // bubble or H, and brought back from the arrow that appears when hovering the bottom centre.
+  let prefs = $state(loadPrefs());
+  $effect(() => savePrefs($state.snapshot(prefs)));
+  let isFs = $state(false);
+  /** Just switched in/out of fullscreen: the panel takes its place without sliding. */
+  let fsJust = $state(false);
+  let chromeH = $state(0);
+  let settingsOpen = $state(false);
+  /** The up-arrow circle (panel down, mouse in the bottom-centre zone). */
+  let upShown = $state(false);
+  let upTimer: ReturnType<typeof setTimeout> | undefined;
+  let cursorHidden = $state(false);
+  let cursorTimer: ReturnType<typeof setTimeout> | undefined;
+  const panelDown = $derived(isFs && prefs.panelDown);
+  const fit = $derived<"contain" | "cover">(isFs && prefs.fit === "fill" ? "cover" : "contain");
+  $effect(() => {
+    const onFs = () => {
+      const t0 = performance.now();
+      fsJust = true;
+      isFs = !!box && document.fullscreenElement === box;
+      requestAnimationFrame(() => requestAnimationFrame(() => (fsJust = false)));
+      if (!isFs) {
+        upShown = false;
+        cursorHidden = false;
+      }
+      requestAnimationFrame(() => ((window as any).__cvFsSwitchMs = performance.now() - t0));
+    };
+    document.addEventListener("fullscreenchange", onFs);
+    return () => document.removeEventListener("fullscreenchange", onFs);
+  });
+  export function setPanel(down: boolean) {
+    prefs.panelDown = down;
+    upShown = false;
+    clearTimeout(upTimer);
+    if (!down) {
+      cursorHidden = false;
+      clearTimeout(cursorTimer);
+    } else wake();
+  }
+  function hotEnter() {
+    clearTimeout(upTimer);
+    upShown = true;
+  }
+  function hotLeave() {
+    clearTimeout(upTimer);
+    upTimer = setTimeout(() => (upShown = false), 1000);
+  }
+  /** Mouse moved: show the cursor; hide it again after 2 s without movement (panel down only). */
+  function wake() {
+    if (cursorHidden) cursorHidden = false;
+    clearTimeout(cursorTimer);
+    if (panelDown) cursorTimer = setTimeout(() => (cursorHidden = true), 2000);
+  }
+  $effect(() => () => {
+    clearTimeout(upTimer);
+    clearTimeout(cursorTimer);
+  });
+
+  // ---------- frame-exact stepping ----------
+  // Real frame times from the recording's index (not 1/fps guesses). A step seeks to the middle
+  // of the target frame and requestVideoFrameCallback confirms which frame is on screen.
+  let frames = $state.raw<Float64Array | null>(null);
+  /** Frame index the steps are heading to (null = none in flight). */
+  let stepTarget: number | null = null;
+  let stepBusy = false;
+  let stepT0 = 0;
+  let stepSeq = 0;
+  /** Frame on screen as reported by the video (requestVideoFrameCallback). */
+  let shownFrame = $state<number | null>(null);
+  const stepTimes: number[] = [];
+  const curFrame = $derived(frames && frames.length ? frameIndexAt(frames, current) : null);
+  export function step(n: number) {
+    const v = video;
+    if (!v || v.readyState < 1) return;
+    if (!v.paused) v.pause();
+    const f = frames;
+    if (!f || !f.length) {
+      // No index (e.g. an unreadable file): fall back to a 60 fps guess.
+      seek(v.currentTime + n / 60);
+      return;
+    }
+    const from = stepTarget ?? frameIndexAt(f, v.currentTime);
+    const to = Math.max(0, Math.min(f.length - 1, from + n));
+    if (stepTarget == null) stepT0 = performance.now();
+    stepTarget = to;
+    if (!stepBusy) stepNow();
+  }
+  /** A one-frame forward step in progress by playing (not seeking). */
+  let playStep = false;
+  /** Playing to the next frame overshot (no vsync-locked frames here): use seeks from now on. */
+  let playStepOff = false;
+  /**
+   * One frame forward without a seek: a seek always decodes from the keyframe before the target,
+   * while playing on to the next frame only decodes that frame. Plays (muted, at 1x) until
+   * requestVideoFrameCallback reports the target frame, then pauses there. Falls back to a seek if
+   * it overshoots or takes too long.
+   */
+  function stepByPlaying(i: number): boolean {
+    const v = video;
+    const f = frames;
+    const rvfc = (v as any)?.requestVideoFrameCallback?.bind(v);
+    if (!v || !f || !rvfc || playStepOff || v.seeking || v.ended || v.readyState < 3) return false;
+    stepBusy = true;
+    playStep = true;
+    const seq = ++stepSeq;
+    const muted0 = v.muted;
+    const rate0 = v.playbackRate;
+    v.muted = true;
+    v.playbackRate = 1;
+    let over = false;
+    const restore = () => {
+      playStep = false;
+      v.muted = muted0;
+      v.playbackRate = rate0;
+    };
+    const timer = setTimeout(() => {
+      if (over || seq !== stepSeq) return;
+      over = true;
+      v.pause();
+      restore();
+      stepNow(true);
+    }, 400);
+    const cb = (_now: number, meta: { mediaTime: number }) => {
+      if (over || seq !== stepSeq) return;
+      const k = frameNearest(f, meta.mediaTime);
+      if (k < i) {
+        rvfc(cb);
+        return;
+      }
+      over = true;
+      clearTimeout(timer);
+      v.pause();
+      restore();
+      // Paused a hair late (the clock already in the next frame's interval) or overshot: seek,
+      // and step by seeking from now on (this display / decoder doesn't hand over every frame).
+      if (k !== i || frameIndexAt(f, v.currentTime) !== i) {
+        playStepOff = true;
+        (window as any).__cvStepPlayOff = true;
+        stepNow(true);
+        return;
+      }
+      current = v.currentTime;
+      shownFrame = i;
+      if (stepTarget != null && stepTarget !== i) {
+        stepNow();
+        return;
+      }
+      const ms = performance.now() - stepT0;
+      stepTimes.push(ms);
+      if (stepTimes.length > 200) stepTimes.shift();
+      (window as any).__cvStepMs = stepTimes;
+      (window as any).__cvShownFrame = i;
+      (window as any).__cvStepPlayed = ((window as any).__cvStepPlayed ?? 0) + 1;
+      stepTarget = null;
+      stepBusy = false;
+    };
+    rvfc(cb);
+    v.play().catch(() => {
+      if (over) return;
+      over = true;
+      clearTimeout(timer);
+      restore();
+      stepNow(true);
+    });
+    return true;
+  }
+
+  function stepNow(noPlay = false) {
+    const v = video;
+    const f = frames;
+    if (!v || !f || stepTarget == null) {
+      stepBusy = false;
+      return;
+    }
+    const i = stepTarget;
+    // The next frame: play to it (cheap) instead of seeking (decodes from the keyframe).
+    if (!noPlay && v.paused && i === frameIndexAt(f, v.currentTime) + 1 && stepByPlaying(i)) return;
+    const t = frameSeekTime(f, i);
+    current = t;
+    if (Math.abs(v.currentTime - t) < 1e-6 && !v.seeking) {
+      // Already there (first/last frame).
+      stepTarget = null;
+      stepBusy = false;
+      shownFrame = i;
+      return;
+    }
+    stepBusy = true;
+    const seq = ++stepSeq;
+    let done = false;
+    const finish = (mediaTime: number | null) => {
+      if (done || seq !== stepSeq) return;
+      done = true;
+      shownFrame = mediaTime != null ? frameNearest(f, mediaTime) : frameIndexAt(f, v.currentTime);
+      if (stepTarget != null && stepTarget !== i) {
+        stepNow();
+        return;
+      }
+      const ms = performance.now() - stepT0;
+      stepTimes.push(ms);
+      if (stepTimes.length > 200) stepTimes.shift();
+      (window as any).__cvStepMs = stepTimes;
+      (window as any).__cvShownFrame = shownFrame;
+      stepTarget = null;
+      stepBusy = false;
+      busy = false;
+    };
+    const rvfc = (v as any).requestVideoFrameCallback?.bind(v);
+    // The frame presented for this seek: ignore frames still from before it (a step that
+    // interrupted playback can present one more frame while the seek starts).
+    const onFrame = (_now: number, meta: { mediaTime: number }) => {
+      if (done || seq !== stepSeq) return;
+      if (frameNearest(f, meta.mediaTime) !== i && (v.seeking || !seekedAt)) {
+        rvfc(onFrame);
+        return;
+      }
+      finish(meta.mediaTime);
+    };
+    let seekedAt = 0;
+    if (rvfc) rvfc(onFrame);
+    // Fallback when no new frame gets presented (same frame shown again) or no rVFC support.
+    v.addEventListener(
+      "seeked",
+      () => {
+        seekedAt = performance.now();
+        if (!rvfc) finish(null);
+        else setTimeout(() => finish(null), 250);
+      },
+      { once: true },
+    );
+    v.currentTime = t;
+  }
+  // Hold the on-screen step buttons to repeat.
+  let holdTimer: ReturnType<typeof setTimeout> | undefined;
+  function holdStart(e: PointerEvent, n: number) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    step(e.shiftKey ? n * 10 : n);
+    clearTimeout(holdTimer);
+    const again = () => {
+      step(n);
+      holdTimer = setTimeout(again, 55);
+    };
+    holdTimer = setTimeout(again, 380);
+  }
+  function holdEnd() {
+    clearTimeout(holdTimer);
+  }
+  $effect(() => () => clearTimeout(holdTimer));
   let paused = $state(true);
   let duration = $state(0);
   let muted = $state(false);
@@ -273,8 +530,8 @@
     on("timeupdate", () => {
       if (!pending) current = v.currentTime;
     });
-    on("play", () => (paused = false));
-    on("pause", () => (paused = true));
+    on("play", () => !playStep && (paused = false));
+    on("pause", () => !playStep && (paused = true));
     on("error", () => {
       error = "This video can't be played here. Try “Open in player”.";
       busy = false;
@@ -288,10 +545,15 @@
     video = v;
     api.playerOpen(path).catch(() => {});
     keyframes = [];
+    frames = null;
+    shownFrame = null;
     if (path) {
       const p = path;
       api.videoKeyframes(p).then((k) => {
         if (p === path) keyframes = k;
+      }).catch(() => {});
+      api.videoFrameTimes(p).then((f) => {
+        if (p === path && f.length) frames = f;
       }).catch(() => {});
     }
     return {
@@ -301,7 +563,10 @@
         const wasPlaying = !v.paused;
         setVideoUrl(next);
         reset();
-        if (path) api.videoKeyframes(path).then((k) => (keyframes = k)).catch(() => {});
+        if (path) {
+          api.videoKeyframes(path).then((k) => (keyframes = k)).catch(() => {});
+          api.videoFrameTimes(path).then((f) => (frames = f.length ? f : null)).catch(() => {});
+        }
         frameReady = false;
         pending = { t: at, play: wasPlaying };
       },
@@ -330,6 +595,21 @@
     const tag = (e.target as HTMLElement)?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
     const k = e.key.toLowerCase();
+    // Frame steps by physical key (Shift turns "," into "<" on most layouts).
+    if (e.code === "Comma" || e.code === "Period" || k === "," || k === "." || k === "<" || k === ">") {
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
+      e.preventDefault();
+      const back = e.code === "Comma" || k === "," || k === "<";
+      step((back ? -1 : 1) * (e.shiftKey ? 10 : 1));
+      return;
+    }
+    if (k === "h" && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      if (isFs) {
+        e.preventDefault();
+        setPanel(!prefs.panelDown);
+      }
+      return;
+    }
     if (k === " " || k === "k") {
       e.preventDefault();
       toggle();
@@ -339,14 +619,23 @@
     else if (k === "p") prev();
     else if (k === "f") fullscreen();
     else if (k === "m") muted = !muted;
-    else if (k === ",") seek(current - 1 / 60);
-    else if (k === ".") seek(current + 1 / 60);
   }
 </script>
 
 <svelte:window onkeydown={key} />
 
-<div class="player" bind:this={box}>
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div
+  class="player"
+  class:fs={isFs}
+  class:down={panelDown}
+  class:fsjust={fsJust}
+  class:nocursor={panelDown && cursorHidden}
+  bind:this={box}
+  style="--panel-a:{prefs.panelOpacity};--chrome-h:{isFs && !panelDown ? chromeH : 0}px;--fit:{fit}"
+  onpointermove={isFs ? wake : undefined}
+  data-testid="player"
+>
   <div class="screen">
     {#if src}
       <div class="vhost" use:host={src}></div>
@@ -356,11 +645,11 @@
       {#if busy && !error}
         <div class="loading" role="status" aria-label="Loading video"><span class="spinner"></span></div>
       {/if}
-      {#if paused && !error && frameReady && !busy}
+      {#if paused && !error && frameReady && !busy && !panelDown}
         <button class="bigplay" onclick={toggle} aria-label="Play"><Icon name="play" size={30} fill /></button>
       {/if}
       {#if overlayOn && overlay}
-        <InputOverlay {overlay} {video} options={overlayOpts} {heatRange} showUnconfirmed={!hidden.has("unconfirmed")} />
+        <InputOverlay {overlay} {video} options={overlayOpts} {heatRange} showUnconfirmed={!hidden.has("unconfirmed")} {fit} insetBottom={isFs && !panelDown ? chromeH : 0} />
       {/if}
       {#if flash}<div class="flash">{flash}</div>{/if}
       {#if error}<div class="err"><Icon name="warn" size={18} />{error}</div>{/if}
@@ -378,96 +667,144 @@
     {/if}
   </div>
 
-  <div class="controls">
-    <button class="cbtn" onclick={prev} title="Previous event (P)"><Icon name="prev" size={17} /></button>
-    <button class="cbtn play" onclick={toggle} title="Play/pause (Space)"><Icon name={paused ? "play" : "pause"} size={18} fill /></button>
-    <button class="cbtn" onclick={next} title="Next event (N)"><Icon name="next" size={17} /></button>
-    <div class="time">
-      <span class="game">{current - offset < 0 ? "Loading screen" : clock(current - offset)}</span>
-      <span class="muted"> game · {clock(current)} / {clock(dur)}</span>
+  <div class="chrome" bind:clientHeight={chromeH} inert={panelDown} data-testid="player-panel">
+    {#if isFs}
+      <button class="dropbtn" onclick={() => setPanel(true)} title="Hide the controls (H)" aria-label="Hide the controls" data-testid="panel-down"><Icon name="chevdown" size={16} stroke={2.6} /></button>
+    {/if}
+    <div class="cleft">
+      <button class="cbtn" onclick={prev} title="Previous event (P)"><Icon name="prev" size={17} /></button>
+      <button class="cbtn" onpointerdown={(e) => holdStart(e, -1)} onpointerup={holdEnd} onpointerleave={holdEnd} onpointercancel={holdEnd} title="Previous frame (,) · Shift: 10 frames" aria-label="Previous frame" data-testid="step-back"><Icon name="stepback" size={16} /></button>
+      <button class="cbtn play" onclick={toggle} title="Play/pause (Space)"><Icon name={paused ? "play" : "pause"} size={18} fill /></button>
+      <button class="cbtn" onpointerdown={(e) => holdStart(e, 1)} onpointerup={holdEnd} onpointerleave={holdEnd} onpointercancel={holdEnd} title="Next frame (.) · Shift: 10 frames" aria-label="Next frame" data-testid="step-fwd"><Icon name="stepfwd" size={16} /></button>
+      <button class="cbtn" onclick={next} title="Next event (N)"><Icon name="next" size={17} /></button>
+      <div class="time" data-testid="time">
+        {#if (paused || zoomed) && frameReady}
+          <span class="game">{current - offset < 0 ? "Loading " + preciseClock(current - offset) : preciseClock((frames && curFrame != null ? frames[curFrame] : current) - offset)}</span>
+          <span class="muted"> · {curFrame != null ? `frame ${curFrame}` : clock(current)}{isFs ? "" : ` · ${clock(current)} / ${clock(dur)}`}</span>
+        {:else}
+          <span class="game">{current - offset < 0 ? "Loading screen" : clock(current - offset)}</span>
+          <span class="muted"> game · {clock(current)} / {clock(dur)}</span>
+        {/if}
+      </div>
     </div>
-    <div class="spacer"></div>
-    <div class="ovwrap">
-      <button
-        class="chip ovchip"
-        class:off={!overlayOn}
-        style="--c:var(--accent)"
-        onclick={toggleOverlay}
-        disabled={!inputId}
-        aria-pressed={overlayOn}
-        title={inputId ? (overlayError ? `Input overlay: ${overlayError}` : "Input overlay: your cursor, clicks and keys from this game (I)") : "No input recorded for this game"}
-        data-testid="overlay-toggle"
-      >
-        <span class="chip-ic">{#if overlayLoading}<span class="mini-spin"></span>{:else}<Icon name="mouse" size={11} stroke={2.6} />{/if}</span>
-        Input overlay
-      </button>
-      <button class="cbtn optbtn" onclick={() => (optsOpen = !optsOpen)} disabled={!inputId} title="Input overlay options" aria-expanded={optsOpen} data-testid="overlay-options"><Icon name="sliders" size={15} /></button>
-      {#if optsOpen && inputId}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div class="ovpop card" onkeydown={(e) => e.key === "Escape" && (optsOpen = false)}>
-          <div class="ovhead"><strong>Input overlay</strong><button class="x" onclick={() => (optsOpen = false)} aria-label="Close"><Icon name="x" size={14} /></button></div>
-          <label class="check"><input type="checkbox" bind:checked={overlayOpts.trail} />Cursor trail</label>
-          <label class="slider" class:dim={!overlayOpts.trail}>
-            <span>Trail length <b>{overlayOpts.trailSecs.toFixed(2).replace(/0$/, "")} s</b></span>
-            <input type="range" min="0.25" max="3" step="0.25" bind:value={overlayOpts.trailSecs} disabled={!overlayOpts.trail} aria-label="Trail length in seconds" />
-          </label>
-          <label class="check"><input type="checkbox" bind:checked={overlayOpts.clicks} />Clicks <span class="legend"><i style="background:#4dabf7"></i>left <i style="background:#ff6b6b"></i>right</span></label>
-          <label class="check"><input type="checkbox" bind:checked={overlayOpts.dot} />Cursor dot</label>
-          <label class="check"><input type="checkbox" bind:checked={overlayOpts.keys} />Keys pressed</label>
-          <label class="check"><input type="checkbox" bind:checked={overlayOpts.heat} />Heatmap</label>
-          <div class="seg" class:dim={!overlayOpts.heat} role="radiogroup" aria-label="Heatmap range">
-            <button role="radio" aria-checked={overlayOpts.heatRange === "game"} class:on={overlayOpts.heatRange === "game"} onclick={() => (overlayOpts.heatRange = "game")} disabled={!overlayOpts.heat}>Whole game</button>
-            <button role="radio" aria-checked={overlayOpts.heatRange === "range"} class:on={overlayOpts.heatRange === "range"} onclick={() => (overlayOpts.heatRange = "range")} disabled={!overlayOpts.heat}>Selected range</button>
-          </div>
-          {#if overlayOpts.heat && overlayOpts.heatRange === "range" && !heatRange}
-            <small class="muted">Drag across the APM chart under Mechanics to pick a range (whole game until then).</small>
-          {/if}
-          {#if bubbleCats.length}
-            <div class="ovgroup" data-testid="bubble-options">
-              <label class="check"><input type="checkbox" bind:checked={overlayOpts.bubbles} />Ability bubbles</label>
-              <div class="subs" class:dim={!overlayOpts.bubbles}>
-                {#each bubbleCats as c (c.id)}
-                  <label class="check sub">
-                    <input
-                      type="checkbox"
-                      checked={overlayOpts.bubbleCats[c.id] !== false}
-                      disabled={!overlayOpts.bubbles}
-                      onchange={(e) => (overlayOpts.bubbleCats = { ...overlayOpts.bubbleCats, [c.id]: (e.currentTarget as HTMLInputElement).checked })}
-                    />{c.label}
-                  </label>
-                {/each}
-              </div>
-              <label class="slider" class:dim={!overlayOpts.bubbles}>
-                <span>Fade time <b>{overlayOpts.bubbleFade.toFixed(1)} s</b></span>
-                <input type="range" min={FADE_MIN} max={FADE_MAX} step="0.1" bind:value={overlayOpts.bubbleFade} disabled={!overlayOpts.bubbles} aria-label="Bubble fade time in seconds" />
-              </label>
-            </div>
-          {/if}
-          <small class="muted">Shortcut: I</small>
-        </div>
-      {/if}
-    </div>
-    <select class="rate" bind:value={rate} title="Speed">
-      {#each [0.25, 0.5, 1, 1.5, 2] as r}<option value={r}>{r}×</option>{/each}
-    </select>
-    <button class="cbtn" onclick={() => (muted = !muted)} title="Mute (M)"><Icon name={muted ? "mute" : "volume"} size={17} /></button>
-    <input class="vol" type="range" min="0" max="1" step="0.05" bind:value={volume} aria-label="Volume" />
-    <button class="cbtn" onclick={fullscreen} title="Fullscreen (F)"><Icon name="fullscreen" size={17} /></button>
-  </div>
-
-  <Timeline events={visible} {offset} duration={dur} {current} {clips} bind:range onseek={(t) => seek(t)} onmarker={(e) => jumpTo(e)} />
-
-  <div class="filters">
-    {#each GROUPS as g}
-      {#if counts[g.id] > 0}
-        <button class="chip" class:off={hidden.has(g.id)} style="--c:{g.color}" onclick={() => toggleGroup(g.id)} aria-pressed={!hidden.has(g.id)}>
-          <span class="chip-ic"><Icon name={g.icon} size={11} stroke={2.6} /></span>
-          {g.label}
-          <span class="count">{counts[g.id]}</span>
+    <div class="cright">
+      <div class="zoomctl" title="Zoom the timeline (Ctrl + mouse wheel over it)">
+        <button class="cbtn sm" onclick={() => timeline?.zoomBy(0.5)} disabled={!zoomed} aria-label="Zoom out" data-testid="zoom-out"><Icon name="zoomout" size={15} /></button>
+        <input class="zslider" type="range" min="0" max="1" step="0.001" value={zoomLevel} oninput={(e) => timeline?.setLevel(Number((e.currentTarget as HTMLInputElement).value))} aria-label="Timeline zoom" data-testid="zoom-slider" />
+        <button class="cbtn sm" onclick={() => timeline?.zoomBy(2)} aria-label="Zoom in" data-testid="zoom-in"><Icon name="zoomin" size={15} /></button>
+        <button class="cbtn sm" onclick={() => timeline?.fit()} disabled={!zoomed} title="Whole game" aria-label="Show the whole game" data-testid="zoom-fit"><Icon name="fitwidth" size={15} /></button>
+      </div>
+      <div class="ovwrap">
+        <button
+          class="chip ovchip"
+          class:off={!overlayOn}
+          style="--c:var(--accent)"
+          onclick={toggleOverlay}
+          disabled={!inputId}
+          aria-pressed={overlayOn}
+          title={inputId ? (overlayError ? `Input overlay: ${overlayError}` : "Input overlay: your cursor, clicks and keys from this game (I)") : "No input recorded for this game"}
+          data-testid="overlay-toggle"
+        >
+          <span class="chip-ic">{#if overlayLoading}<span class="mini-spin"></span>{:else}<Icon name="mouse" size={11} stroke={2.6} />{/if}</span>
+          Input overlay
         </button>
-      {/if}
-    {/each}
+        <button class="cbtn optbtn" onclick={() => (optsOpen = !optsOpen)} disabled={!inputId} title="Input overlay options" aria-expanded={optsOpen} data-testid="overlay-options"><Icon name="sliders" size={15} /></button>
+        {#if optsOpen && inputId}
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div class="ovpop card" onkeydown={(e) => e.key === "Escape" && (optsOpen = false)}>
+            <div class="ovhead"><strong>Input overlay</strong><button class="x" onclick={() => (optsOpen = false)} aria-label="Close"><Icon name="x" size={14} /></button></div>
+            <label class="check"><input type="checkbox" bind:checked={overlayOpts.trail} />Cursor trail</label>
+            <label class="slider" class:dim={!overlayOpts.trail}>
+              <span>Trail length <b>{overlayOpts.trailSecs.toFixed(2).replace(/0$/, "")} s</b></span>
+              <input type="range" min="0.25" max="3" step="0.25" bind:value={overlayOpts.trailSecs} disabled={!overlayOpts.trail} aria-label="Trail length in seconds" />
+            </label>
+            <label class="check"><input type="checkbox" bind:checked={overlayOpts.clicks} />Clicks <span class="legend"><i style="background:#4dabf7"></i>left <i style="background:#ff6b6b"></i>right</span></label>
+            <label class="check"><input type="checkbox" bind:checked={overlayOpts.dot} />Cursor dot</label>
+            <label class="check"><input type="checkbox" bind:checked={overlayOpts.keys} />Keys pressed</label>
+            <label class="check"><input type="checkbox" bind:checked={overlayOpts.heat} />Heatmap</label>
+            <div class="seg" class:dim={!overlayOpts.heat} role="radiogroup" aria-label="Heatmap range">
+              <button role="radio" aria-checked={overlayOpts.heatRange === "game"} class:on={overlayOpts.heatRange === "game"} onclick={() => (overlayOpts.heatRange = "game")} disabled={!overlayOpts.heat}>Whole game</button>
+              <button role="radio" aria-checked={overlayOpts.heatRange === "range"} class:on={overlayOpts.heatRange === "range"} onclick={() => (overlayOpts.heatRange = "range")} disabled={!overlayOpts.heat}>Selected range</button>
+            </div>
+            {#if overlayOpts.heat && overlayOpts.heatRange === "range" && !heatRange}
+              <small class="muted">Drag across the APM chart under Mechanics to pick a range (whole game until then).</small>
+            {/if}
+            {#if bubbleCats.length}
+              <div class="ovgroup" data-testid="bubble-options">
+                <label class="check"><input type="checkbox" bind:checked={overlayOpts.bubbles} />Ability bubbles</label>
+                <div class="subs" class:dim={!overlayOpts.bubbles}>
+                  {#each bubbleCats as c (c.id)}
+                    <label class="check sub">
+                      <input
+                        type="checkbox"
+                        checked={overlayOpts.bubbleCats[c.id] !== false}
+                        disabled={!overlayOpts.bubbles}
+                        onchange={(e) => (overlayOpts.bubbleCats = { ...overlayOpts.bubbleCats, [c.id]: (e.currentTarget as HTMLInputElement).checked })}
+                      />{c.label}
+                    </label>
+                  {/each}
+                </div>
+                <label class="slider" class:dim={!overlayOpts.bubbles}>
+                  <span>Fade time <b>{overlayOpts.bubbleFade.toFixed(1)} s</b></span>
+                  <input type="range" min={FADE_MIN} max={FADE_MAX} step="0.1" bind:value={overlayOpts.bubbleFade} disabled={!overlayOpts.bubbles} aria-label="Bubble fade time in seconds" />
+                </label>
+              </div>
+            {/if}
+            <small class="muted">Shortcut: I</small>
+          </div>
+        {/if}
+      </div>
+      <select class="rate" bind:value={rate} title="Speed">
+        {#each [0.25, 0.5, 1, 1.5, 2] as r}<option value={r}>{r}×</option>{/each}
+      </select>
+      <button class="cbtn" onclick={() => (muted = !muted)} title="Mute (M)"><Icon name={muted ? "mute" : "volume"} size={17} /></button>
+      <input class="vol" type="range" min="0" max="1" step="0.05" bind:value={volume} aria-label="Volume" />
+      <div class="setwrap">
+        <button class="cbtn" onclick={() => (settingsOpen = !settingsOpen)} title="Player settings" aria-expanded={settingsOpen} data-testid="player-settings"><Icon name="gear" size={16} /></button>
+        {#if settingsOpen}
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div class="ovpop card setpop" onkeydown={(e) => e.key === "Escape" && (settingsOpen = false)}>
+            <div class="ovhead"><strong>Fullscreen</strong><button class="x" onclick={() => (settingsOpen = false)} aria-label="Close"><Icon name="x" size={14} /></button></div>
+            <span class="lbl">Video on a screen with another shape</span>
+            <div class="seg nomargin" role="radiogroup" aria-label="Video fit in fullscreen">
+              <button role="radio" aria-checked={prefs.fit === "fit"} class:on={prefs.fit === "fit"} onclick={() => (prefs.fit = "fit")} data-testid="fit-fit">Fit (whole video)</button>
+              <button role="radio" aria-checked={prefs.fit === "fill"} class:on={prefs.fit === "fill"} onclick={() => (prefs.fit = "fill")} data-testid="fit-fill">Fill (crop)</button>
+            </div>
+            <label class="slider nopad">
+              <span>Controls panel opacity <b>{Math.round(prefs.panelOpacity * 100)}%</b></span>
+              <input type="range" min="0.4" max="1" step="0.05" bind:value={prefs.panelOpacity} aria-label="Controls panel opacity" data-testid="panel-opacity" />
+            </label>
+            <small class="muted">In fullscreen: H or the arrow hides the controls; hover the bottom centre to bring them back.</small>
+          </div>
+        {/if}
+      </div>
+      <button class="cbtn" onclick={fullscreen} title="Fullscreen (F)"><Icon name="fullscreen" size={17} /></button>
+    </div>
+
+    <div class="tlwrap">
+      <Timeline bind:this={timeline} events={visible} {offset} duration={dur} {current} {clips} {frames} compact={isFs} playing={!paused} bind:range bind:level={zoomLevel} bind:zoomed onseek={(t) => seek(t)} onmarker={(e) => jumpTo(e)} />
+    </div>
+
+    <div class="filters">
+      {#each GROUPS as g}
+        {#if counts[g.id] > 0}
+          <button class="chip" class:off={hidden.has(g.id)} style="--c:{g.color}" onclick={() => toggleGroup(g.id)} aria-pressed={!hidden.has(g.id)}>
+            <span class="chip-ic"><Icon name={g.icon} size={11} stroke={2.6} /></span>
+            {g.label}
+            <span class="count">{counts[g.id]}</span>
+          </button>
+        {/if}
+      {/each}
+    </div>
   </div>
+
+  {#if panelDown}
+    <!-- Bottom-centre zone: hovering it shows the arrow that brings the controls back. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <div class="hotzone" onpointerenter={hotEnter} onpointerleave={hotLeave} onclick={(e) => e.target === e.currentTarget && toggle()} ondblclick={(e) => e.target === e.currentTarget && fullscreen()} data-testid="hotzone">
+      <button class="upbtn" class:show={upShown} onclick={() => setPanel(false)} title="Show the controls (H)" aria-label="Show the controls" tabindex={upShown ? 0 : -1} data-testid="panel-up"><Icon name="chevup" size={18} stroke={2.6} /></button>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -477,15 +814,6 @@
     border-radius: var(--radius);
     overflow: hidden;
     padding-bottom: 12px;
-  }
-  .player:fullscreen {
-    display: flex;
-    flex-direction: column;
-    border-radius: 0;
-  }
-  .player:fullscreen .screen {
-    flex: 1;
-    aspect-ratio: auto;
   }
   .screen {
     position: relative;
@@ -580,11 +908,225 @@
     flex-direction: row;
     color: var(--media-warn);
   }
-  .controls {
+  /* Controls panel: under the video in the window, over its bottom in fullscreen. */
+  .chrome {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: "cl cr" "tl tl" "fl fl";
+  }
+  .cleft {
+    grid-area: cl;
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 8px 10px 6px;
+    padding: 8px 0 6px 10px;
+  }
+  .cright {
+    grid-area: cr;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    padding: 8px 10px 6px 8px;
+    min-width: 0;
+  }
+  .tlwrap {
+    grid-area: tl;
+    min-width: 0;
+  }
+  .zoomctl {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-right: 6px;
+  }
+  .zslider {
+    width: 76px;
+    accent-color: var(--accent);
+  }
+  .cbtn.sm {
+    width: 28px;
+    height: 28px;
+  }
+  .cbtn:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+  .cbtn:disabled:hover {
+    background: transparent;
+    color: var(--text-2);
+  }
+  .setwrap {
+    position: relative;
+  }
+  .setpop {
+    width: 270px;
+  }
+  .setpop .lbl {
+    font-size: 12px;
+    color: var(--text-2);
+  }
+  .seg.nomargin {
+    margin-left: 0;
+  }
+  .ovpop .slider.nopad {
+    padding-left: 0;
+  }
+  .dropbtn,
+  .upbtn {
+    position: absolute;
+    left: 50%;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    color: #fff;
+    background: rgba(12, 14, 20, 0.82);
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  }
+  .dropbtn {
+    top: -12px;
+    width: 30px;
+    height: 24px;
+    margin-left: -15px;
+    z-index: 2;
+  }
+  .dropbtn:hover,
+  .upbtn:hover {
+    background: rgba(30, 34, 46, 0.95);
+  }
+
+  /* ---------- fullscreen: the video fills the screen, the panel floats over its bottom ---------- */
+  .player:fullscreen {
+    position: relative;
+    display: block;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    background: var(--media-bg);
+    overflow: hidden;
+  }
+  .player:fullscreen .screen {
+    position: absolute;
+    inset: 0;
+    aspect-ratio: auto;
+  }
+  .player:fullscreen .vhost :global(video) {
+    object-fit: var(--fit, contain);
+  }
+  .player:fullscreen .poster {
+    object-fit: var(--fit, contain);
+  }
+  .player:fullscreen .loading {
+    bottom: calc(var(--chrome-h) + 12px);
+  }
+  .player:fullscreen .chrome {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+    color-scheme: dark;
+    color: var(--text);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "tl tl tl" "cl fl cr";
+    padding-top: 9px;
+    background: linear-gradient(
+      to bottom,
+      rgba(6, 8, 12, calc(var(--panel-a) * 0.35)) 0,
+      rgba(6, 8, 12, calc(var(--panel-a) * 0.9)) 12px,
+      rgba(6, 8, 12, var(--panel-a)) 100%
+    );
+    transform: translateY(0);
+    transition:
+      transform 0.15s ease-out,
+      visibility 0s;
+  }
+  .player:fullscreen.down .chrome {
+    transform: translateY(calc(100% + 32px));
+    visibility: hidden;
+    transition:
+      transform 0.15s ease-in,
+      visibility 0s linear 0.15s;
+  }
+  .player:fullscreen .cleft {
+    padding: 0 0 1px 8px;
+    gap: 2px;
+  }
+  .player:fullscreen .cright {
+    padding: 0 8px 1px 6px;
+    gap: 2px;
+  }
+  .player:fullscreen .cbtn {
+    width: 28px;
+    height: 28px;
+  }
+  .player:fullscreen .cbtn.sm {
+    width: 24px;
+    height: 24px;
+  }
+  .player:fullscreen .rate {
+    padding: 2px;
+  }
+  .player:fullscreen .time {
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .player:fullscreen .filters {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: 0 6px 1px;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+  }
+  .player:fullscreen .chip {
+    padding: 2px 8px 2px 3px;
+    font-size: 11px;
+    gap: 5px;
+    white-space: nowrap;
+    flex: none;
+  }
+  .player:fullscreen .chip-ic {
+    width: 16px;
+    height: 16px;
+  }
+  .player:fullscreen .zslider {
+    width: 64px;
+  }
+  .player:fullscreen .vol {
+    width: 64px;
+  }
+  .player.fsjust .chrome {
+    transition: none !important;
+  }
+  .hotzone {
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    width: 300px;
+    height: 100px;
+    margin-left: -150px;
+    z-index: 6;
+  }
+  .upbtn {
+    bottom: 18px;
+    width: 42px;
+    height: 42px;
+    margin-left: -21px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.1s;
+  }
+  .upbtn.show {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .player.nocursor,
+  .player.nocursor :global(*) {
+    cursor: none !important;
   }
   .cbtn {
     width: 34px;
@@ -625,6 +1167,7 @@
     accent-color: var(--accent);
   }
   .filters {
+    grid-area: fl;
     display: flex;
     flex-wrap: wrap;
     gap: 6px;

@@ -716,6 +716,76 @@ overlay is switched on for a replay.
   after their frame's start (frames at 56-59 fps with some longer ones). Ult check on the 5
   games: identical (9/9, 5/5, 10/10 + 1, 34/34 + 107, 2/2 + 1).
 
+### Fullscreen player, timeline zoom, frame stepping (2026-10-02, owner's request, v1.6 part A)
+Rules: player-only (nothing during the game); v1.3-v1.5 behaviour unchanged.
+- **Problem:** in fullscreen the controls, timeline and chips were *below* the video (flex
+  column), so a 16:9 video was scaled into a shorter box: black bars left/right (reproduced at
+  4K/150 %: 279 device px per side; owner saw ~110 px in a 2000 px wide screenshot).
+- **Layout (`Player.svelte`):** one DOM for windowed and fullscreen (no re-mount, no re-buffer):
+  `.chrome` is a CSS grid holding the left controls, right controls, `Timeline` and chips. In the
+  window: controls / timeline / chips under the 16:9 video, as before. In fullscreen
+  (`.player:fullscreen`, pure CSS so the first fullscreen frame is already right) `.screen` is
+  `inset: 0` (the video always fills the screen and never moves) and `.chrome` is absolute at the
+  bottom over the video: `color-scheme: dark` (every `light-dark()` token resolves dark inside it,
+  readable on any frame), background rgba(6,8,12, opacity) with a soft 12 px gradient at the top,
+  opacity 75 % by default (40-100 % in the player settings). Compact: timeline on top (markers
+  15 px, ≤ 2 lanes), one row below with controls + chips (scrolling) + right controls: 88 px at
+  1080 lines (8.1 %), 6 % at 1440.
+- **Drop-down (YouTube-like):** a round down-arrow bubble at the panel's top centre slides it
+  down (`transform` + delayed `visibility`, 150 ms); fully down, the bubble is gone too and
+  nothing is drawn over the video (Playwright: pixel-identical to the bare video). A 300 × 100
+  CSS px zone at the bottom centre fades in an up-arrow circle (100 ms) on hover, hides it 1 s
+  after leaving; clicking it slides the panel back. Cursor hidden after 2 s without movement while
+  the panel is down. **H** toggles. Entering fullscreen with the panel remembered down: no slide
+  (`fsjust` class for two frames). Big play button hidden while the panel is down.
+- **Prefs (`lib/playerprefs.ts`, localStorage `cv.player`):** panelDown, fit ("fit" | "fill"),
+  panelOpacity. Fit = `object-fit: contain`, Fill = `cover`, fullscreen only (the window keeps
+  its 16:9 box).
+- **Overlay alignment:** `videoRect(…, fit)` handles contain/cover; drawing is clipped to the
+  visible part; the keys strip stays above the panel (`insetBottom`). Bubbles/trail/dot use the
+  same mapping, so they stay pixel-aligned in Fit, Fill, panel up or down.
+- **Timeline (`Timeline.svelte`, `lib/timelineview.ts`):** a view (start, span) over the video;
+  Ctrl+wheel zooms around the cursor (the page's own zoom is prevented), slider (logarithmic) /
+  − / + / "whole game" in the controls, shortest view = 20 frames; Shift+wheel or a horizontal
+  wheel pans, dragging the empty marker row pans, and an overview bar under a zoomed timeline
+  (drag the window / click to jump). Zoomed: a ruler with labels on round game-clock times (min
+  64 px apart), minor ticks, one tick per frame once frames are ≥ 3 px apart and frame numbers
+  once ≥ 9 px. While playing or stepping the view pages so the playhead stays in view (a pan never
+  fights it). Marker lanes are recomputed per view, so markers that overlap at the whole game
+  spread out when zoomed; the height is fixed by the whole-game lanes (no jumping).
+  **Speed:** markers are drawn on a canvas from pre-drawn sprites (one per kind / steal / size /
+  theme); the buttons on top are invisible hit targets (click, hover, focus, screen readers, the
+  benchmark) moved only once the view settles (120 ms), so zooming never restyles hundreds of
+  elements per frame. The first version moved 600 DOM buttons per frame: 15-20 ms style recalc
+  per frame in Chromium (p95), now median 1 ms, p95 4-7 ms in headless software rendering.
+- **Frame-exact stepping:** `video_frame_times` (new command; the MP4 index's frame times as f64
+  bytes, cached per file) → `frameIndexAt` / `frameSeekTime` (the middle of the frame's interval,
+  so rounding never lands on a neighbour) and requestVideoFrameCallback confirms the frame shown
+  (`frameNearest(mediaTime)`, frames still from before the seek ignored). Steps queue to an
+  absolute target (holding a key or the button never loses or doubles a step). Forward by one:
+  first tries playing (muted, 1x) to the next frame and pausing on its rVFC (no keyframe decode);
+  if that ever overshoots (no vsync-locked frames, e.g. headless Chromium) it switches to seeks
+  for the session. Time shows m:ss.mmm + frame number while paused or zoomed.
+- **Tests (Chromium, mock backend, `ui/tests/`):** `make-sample.py` now also makes
+  `sample169.webm` / `sample169old.webm` (960×540, 60 fps, frame index written as 14 squares,
+  keyframes 1 s / 5.5 s, + ffprobe frame/keyframe lists). `fullscreen.test.mjs` 94/94: 5 screens
+  (3840×2160, 4K@150 %, 2560×1440, 2560×1080, 1920×1200) × Fit/Fill × panel up/down × 16:9 and
+  4:3 videos: bars exactly as expected (0 for 16:9 on 16:9), video placement (≤ 0.34 source px),
+  overlay dot vs the exact cursor ≤ 0.11-0.3 px; panel bubble / hover arrow / 1 s hide / cursor
+  hide / H / remembered / double-click / no re-buffering / same `<video>`; enter fullscreen
+  median 84 ms (headless software 4K, max 287 ms), leave 45 ms, panel slide 143-175 ms
+  (transition 150). `framestep.test.mjs`: 60 steps forward + 60 back across a keyframe all
+  consecutive (read from the picture), rVFC and the label agree, Shift = 10, held key = exact
+  count, buttons, pause on step, overlay dot ≤ 0.31 px on every stepped frame; zoom anchor 0 px,
+  click/playhead mapping exact, 20-frame view, pans, follow while playing (0 of 39 samples out of
+  view), 620 markers spread (617 → 0 overlapping), marker click and chips while zoomed.
+  `timeline.unit.test.ts` (Node, in CI). v1.5 overlay: pixel-identical to v1.5.0 (16/16),
+  overlay 20/20, bubbles 18/18.
+- **Measured in headless Chromium (software decode/raster, no GPU):** step forward median
+  53-60 ms, back 51-55 ms (1 s keyframes); old 5.5 s keyframes ~290 ms both ways (worst case
+  5.4 s after a keyframe). Real numbers on the owner's PC: `--bench-replays` with `"player": true`
+  (steps, zoom draw + frame intervals, fullscreen switch, panel), see "Current status".
+
 ### Replay benchmark and end-to-end tests (developer tools)
 - `Clairvoyance.exe --bench-replays=<config.json>`: opens the given games N times in the real
   window and measures page / first frame / playable / marker jumps / "marker clicked right away"

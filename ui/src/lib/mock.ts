@@ -17,6 +17,9 @@ export function fileSrc(p: string) {
 }
 
 const q = new URLSearchParams(location.search);
+// ?video=sample169 plays /dev-assets/sample169.webm in every game (UI tests); its frame times
+// come from /dev-assets/<name>.frames.json (made by tests/make-sample.py).
+const VIDEO = `/dev-assets/${q.get("video") ?? "sample"}.webm`;
 const champs: [string, string][] = [
   ["Ahri", "Ahri"],
   ["Lee Sin", "LeeSin"],
@@ -60,6 +63,19 @@ const detailEvents: GameEvent[] = [
   ev("17", "game_end", 130, "Victory"),
 ];
 
+// ?markers=600 adds that many extra events spread over the video (timeline speed tests).
+const manyEvents: GameEvent[] | null = q.get("markers")
+  ? [
+      ...detailEvents,
+      ...Array.from({ length: Number(q.get("markers")) }, (_, i) => {
+        const kinds: GameEvent["kind"][] = ["kill", "death", "assist", "ult_used", "tower", "dragon", "manual_marker"];
+        // Deterministic, clustered: groups of 3-5 events close together.
+        const t = -19 + ((i * 7919) % 1490) / 10 + (i % 4) * 0.4;
+        return ev(`x${i}`, kinds[i % kinds.length], Math.max(-19, Math.min(129, t)), `Event ${i}`);
+      }),
+    ]
+  : null;
+
 function makeSummary(i: number): SessionSummary {
   const [name, id] = champs[i % champs.length];
   const d = new Date(Date.now() - i * 0.55 * 86400000 - 3600000 * (i % 3));
@@ -73,7 +89,7 @@ function makeSummary(i: number): SessionSummary {
     player: { name: "Tester#EUW", character: name, character_id: id, team: "ORDER", mode: modes[i % modes.length] },
     stats: { kills: (i * 7) % 13, deaths: (i * 3) % 8, assists: (i * 5) % 17, cs: 150 + i * 13, gold: 11000 + i * 700, level: 16, vision_score: 20 + i, extra: [] },
     result: win ? "win" : "loss",
-    video_path: "/dev-assets/sample.webm",
+    video_path: VIDEO,
     thumb_path: q.get("nothumbs") === "1" ? null : `/dev-assets/thumb${i % 12}.jpg`,
     duration: 1500 + i * 97,
     favorite: i === 2,
@@ -158,7 +174,7 @@ function session(id: string): GameSession {
     player: s.player,
     stats: { kills: 5, deaths: 2, assists: 3, cs: 108, gold: 11240, level: 13, vision_score: 14, extra: [] },
     result: "win",
-    events: detailEvents,
+    events: manyEvents ?? detailEvents,
     clips: [
       { file: "clip_1-46.mp4", title: "Clip at 1:46", video_start: 96, video_end: 126, created_at: s.started_at, source: "replay", keep: true },
       { file: "Triple-kill_1-20.mp4", title: "Killed Lux + Triple kill", video_start: 88, video_end: 104, created_at: s.started_at, source: "event", keep: false },
@@ -180,7 +196,7 @@ const clips: ClipEntry[] = sessions.slice(0, Math.max(5, Math.floor(sessions.len
     game_name: s.game_name,
     character: s.player?.character,
     character_id: s.player?.character_id,
-    path: "/dev-assets/sample.webm",
+    path: VIDEO,
     file: `clip${i}.mp4`,
     title: i % 2 ? "Triple kill" : `Clip at ${10 + (i % 20)}:2${i % 10}`,
     created_at: s.started_at,
@@ -326,13 +342,29 @@ export async function invoke(cmd: string, args: any = {}): Promise<any> {
       return {
         session: session(args.id),
         dir: "C:\\Users\\you\\Videos\\Clairvoyance\\" + args.id,
-        video_path: "/dev-assets/sample.webm",
+        video_path: VIDEO,
         thumb_path: null,
-        clips: session(args.id).clips.map((c) => ({ ...c, path: "/dev-assets/sample.webm", exists: true })),
+        clips: session(args.id).clips.map((c) => ({ ...c, path: VIDEO, exists: true })),
         input_bytes: sessions.find((x) => x.id === args.id)?.input_bytes || null,
       };
     case "list_clips":
       return clips;
+    case "video_frame_times": {
+      const name = String(args.path ?? "").replace(/\.webm$/, ".frames.json");
+      try {
+        const r = await fetch(name);
+        if (r.ok) return Float64Array.from(await r.json()).buffer;
+      } catch {}
+      return Float64Array.from({ length: 160 * 30 }, (_, k) => Math.round((k * 1000) / 30) / 1000).buffer;
+    }
+    case "video_keyframes": {
+      const name = String(args.path ?? "").replace(/\.webm$/, ".keyframes.json");
+      try {
+        const r = await fetch(name);
+        if (r.ok) return await r.json();
+      } catch {}
+      return Array.from({ length: 160 }, (_, k) => k);
+    }
     case "input_load":
       await new Promise((r) => setTimeout(r, 30));
       return synthetic(150);
@@ -402,7 +434,7 @@ export async function invoke(cmd: string, args: any = {}): Promise<any> {
     case "bench_config":
       return q.get("bench") ? { sessions: [sessions[0].id], runs: 2, early_runs: 1, label: "mock" } : null;
     case "bench_prepare":
-      return { [sessions[0].id]: { video: "/dev-assets/sample.webm", before: { codec: "vp09.00.10.08", width: 1280, height: 720 } } };
+      return { [sessions[0].id]: { video: VIDEO, before: { codec: "vp09.00.10.08", width: 1280, height: 720 } } };
     case "bench_log":
       console.log("[bench]", args.line);
       return;

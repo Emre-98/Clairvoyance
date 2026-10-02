@@ -15,5 +15,7 @@ D=$LIB/x86_64-pc-windows-gnu/lib/self-contained
 mkdir -p "$D"
 for f in rsbegin rsend; do
   RUSTC_BOOTSTRAP=1 rustc-1.91 --target x86_64-pc-windows-gnu --emit=obj -C panic=abort -O -o "$D/$f.o" "$LIB/src/rust/library/rtstartup/$f.rs"
+  # The linker is given a bare "rsbegin.o": with the system MinGW it looks in the target's lib dir.
+  cp "$D/$f.o" "$LIB/x86_64-pc-windows-gnu/lib/"
 done
 echo "Cross toolchain ready."

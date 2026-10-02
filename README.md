@@ -42,7 +42,14 @@ games, clips and downloaded tools over; the Home page then offers to uninstall t
   Settings > Hotkeys. Your ult key (default R) is logged as "Ult pressed".
 - Afterwards open the game from **Games**: click any marker (or event in the list) to jump
   to 5 seconds before it; **N / P** = next / previous event, **Space** play/pause,
-  **← / →** ±5 s, **F** fullscreen. Filter chips hide or show event types.
+  **← / →** ±5 s, **, / .** one frame back / forward (Shift: 10 frames; hold to repeat; the
+  buttons next to play do the same), **F** or double-click fullscreen. Filter chips hide or
+  show event types. **Zoom the timeline** with Ctrl + mouse wheel over it (or the zoom slider /
+  + / − / "whole game" buttons) down to single frames, with a time ruler and frame numbers;
+  Shift + wheel or dragging pans. **Fullscreen**: the video fills the screen and the controls sit
+  over its bottom as a see-through panel; the small arrow (or **H**) slides it away for true
+  fullscreen, hover the bottom centre to bring it back. Player settings (gear): Fit / Fill for
+  screens of another shape, panel opacity.
 - **Input overlay** (button under the video, or **I**): your cursor trail, clicks (left blue,
   right red), cursor dot, the keys you pressed and a cursor heatmap, drawn over the replay. Off
   every time a replay opens; options next to the button. **Ability bubbles**: each ability,

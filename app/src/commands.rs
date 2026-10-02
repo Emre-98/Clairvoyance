@@ -347,6 +347,22 @@ pub async fn input_stats(st: St<'_>, id: String, from: f64, to: f64) -> R<cv_cor
     .map_err(err)?
 }
 
+/// Start time of every frame of a video, from its index (no decoding; cached per file and size),
+/// as little-endian f64 bytes: frame-exact stepping and the frame ruler of the zoomed timeline.
+#[tauri::command]
+pub async fn video_frame_times(path: String) -> R<tauri::ipc::Response> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let f = frame_times_cached(Path::new(&path)).ok_or_else(|| "no frame index".to_string())?;
+        let mut b = Vec::with_capacity(f.len() * 8);
+        for t in f.iter() {
+            b.extend_from_slice(&t.to_le_bytes());
+        }
+        Ok(tauri::ipc::Response::new(b))
+    })
+    .await
+    .map_err(err)?
+}
+
 /// Layout, codec and keyframe spacing of a video (Settings > Advanced, test report).
 #[tauri::command]
 pub async fn video_info(path: String) -> R<cv_capture::remux::VideoInfo> {
@@ -935,6 +951,7 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static 
         video_info,
         test_report,
         video_keyframes,
+        video_frame_times,
         input_load,
         input_actions,
         input_stats,
