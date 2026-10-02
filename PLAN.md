@@ -708,6 +708,8 @@ overlay is switched on for a replay.
   | draw p95 / max, everything on | 0.4 / 0.4 ms | 0.4 / 0.7 ms |
   | draw in Q spam: bubbles on screen, p95 / max | - | 44, 0.4 / 0.6 ms |
   | toggling while playing at 1x / 2x / 0.25x | 0 stalls | 0 stalls |
+  Final build (job 55, alone): first switch-on 109 / 48 ms, on again 11-19 ms, bubbles ready
+  86 / 12 ms, spam p95 0.4 ms (max 1.3 ms), first frame 20 ms median.
   The owner's 5 real games with input: 0-717 presses each, bubble list 0.2-0.8 ms + frame times
   0.1-6.5 ms; all 91 R bubbles match the ult check (28 "Ult used" with a press, 63 "no cast");
   the only logged ult press without a bubble was typed in chat. Key-downs land at most 26 ms
