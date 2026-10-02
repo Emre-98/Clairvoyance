@@ -3,6 +3,10 @@
 Newest first. `scripts/release.ps1` adds a section for each release; the section becomes the
 release notes on GitHub and in the in-app "Update available" card.
 
+## [1.6.1] - 2026-10-02
+
+- Gaming laptops with two GPUs: recording now uses the NVIDIA/AMD encoder, and that GPU can go back to sleep after a game
+
 ## [1.6.0] - 2026-10-02
 
 - Fullscreen without black bars: the video fills the screen and the controls, timeline and filters sit over its bottom as a see-through panel (opacity 40-100 % in the new player settings)
