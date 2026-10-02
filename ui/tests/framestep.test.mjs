@@ -172,7 +172,6 @@ async function stepKey(page, key, opts = {}) {
   check("input overlay redrawn for every stepped frame", maxErr < 1, `max ${maxErr.toFixed(2)} px from the cursor over 12 steps`);
   numbers.step_fwd_1s = { median: pct(fwd, 0.5), p95: pct(fwd, 0.95), max: Math.max(...fwd) };
   numbers.step_back_1s = { median: pct(bwd, 0.5), p95: pct(bwd, 0.95), max: Math.max(...bwd) };
-  numbers.step_fwd_by_playing = await page.evaluate(() => ({ played: window.__cvStepPlayed ?? 0, off: !!window.__cvStepPlayOff }));
   // Headless Chromium decodes VP9 in software and never hands frames over one by one, so a
   // forward step is a seek here (decode from the keyframe); the < 50 ms target is checked on the
   // owner's PC (--bench-replays "player"). Here: no worse than a backward step.

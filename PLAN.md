@@ -81,8 +81,10 @@
   slid away with the arrow bubble or H, back from the bottom-centre arrow; Fit / Fill; timeline
   zoom down to single frames (Ctrl+wheel, slider, ruler, frame ticks); frame-exact , / . steps.
   Chromium: 94/94 fullscreen checks (5 screens × Fit/Fill × panel up/down, overlay ≤ 0.3 px),
-  frame steps exact across keyframes both ways, v1.5 overlay pixel-identical. Details in
-  "Fullscreen player, timeline zoom, frame stepping".
+  frame steps exact across keyframes both ways, v1.5 overlay pixel-identical. Owner's PC:
+  replay open / marker jumps / overlay unchanged vs v1.5.0, step forward 32.5 ms median (1 s
+  keyframes), zoom redraw p95 0.6 ms at 60 fps. Details in "Fullscreen player, timeline zoom,
+  frame stepping".
 - **v1.6 part B: ult kinds.** One ult = one "Ult used": recasts / summon commands are "Ult
   recast", Jayce/Nidalee/Elise/Udyr swaps "Form swap" (both hidden chips), charges count per
   cast. 49 champions classified against Data Dragon 16.19.1 + the wiki (`ultscan` dev tool).
@@ -774,10 +776,10 @@ Rules: player-only (nothing during the game); v1.3-v1.5 behaviour unchanged.
   bytes, cached per file) → `frameIndexAt` / `frameSeekTime` (the middle of the frame's interval,
   so rounding never lands on a neighbour) and requestVideoFrameCallback confirms the frame shown
   (`frameNearest(mediaTime)`, frames still from before the seek ignored). Steps queue to an
-  absolute target (holding a key or the button never loses or doubles a step). Forward by one:
-  first tries playing (muted, 1x) to the next frame and pausing on its rVFC (no keyframe decode);
-  if that ever overshoots (no vsync-locked frames, e.g. headless Chromium) it switches to seeks
-  for the session. Time shows m:ss.mmm + frame number while paused or zoomed.
+  absolute target (holding a key or the button never loses or doubles a step). Every step is a
+  seek (a first version tried playing one frame forward instead, which overshot both in headless
+  Chromium and in WebView2 on the owner's PC: removed). Time shows m:ss.mmm + frame number while
+  paused or zoomed.
 - **Tests (Chromium, mock backend, `ui/tests/`):** `make-sample.py` now also makes
   `sample169.webm` / `sample169old.webm` (960×540, 60 fps, frame index written as 14 squares,
   keyframes 1 s / 5.5 s, + ffprobe frame/keyframe lists). `fullscreen.test.mjs` 94/94: 5 screens
@@ -794,9 +796,17 @@ Rules: player-only (nothing during the game); v1.3-v1.5 behaviour unchanged.
   `timeline.unit.test.ts` (Node, in CI). v1.5 overlay: pixel-identical to v1.5.0 (16/16),
   overlay 20/20, bubbles 18/18.
 - **Measured in headless Chromium (software decode/raster, no GPU):** step forward median
-  53-60 ms, back 51-55 ms (1 s keyframes); old 5.5 s keyframes ~290 ms both ways (worst case
-  5.4 s after a keyframe). Real numbers on the owner's PC: `--bench-replays` with `"player": true`
-  (steps, zoom draw + frame intervals, fullscreen switch, panel), see "Current status".
+  53-60 ms, back 51-58 ms (1 s keyframes); old 5.5 s keyframes ~290 ms both ways (worst case
+  5.4 s after a keyframe).
+- **Measured on the owner's PC (WebView2, RTX 5080, 2560×1440 @150 %, `--bench-replays` with
+  `"player": true`, job 60), v1.5.0 → v1.6:** page 30/33 → 31/34 ms, first frame 109/105 →
+  108/101 ms, marker jump median 124/116 → 119/117 ms, early jump unchanged, overlay first on
+  133/65 → 132/66 ms, overlay draw p95 0.4/0.2 → 0.4/0.2 ms (bench-long / bench-short): no
+  regression. New: frame step forward median 32.5 ms (p95 50) on a 1 s-keyframe recording and
+  49.8 ms (p95 117) on a 2-2.5 s-keyframe one (Sept. 30); back 16.6 / 49.7 ms; timeline zoom
+  redraw median 0.3 ms, p95 0.6 ms, frame interval 16.7 ms median / 16.9 ms p95 (60 fps; 31-35
+  markers). Fullscreen switch can't be scripted in WebView2 ("Permissions check failed": it
+  needs a real click); its timing is from Chromium.
 
 ### Ult kinds: recasts and summon commands aren't new ults (2026-10-02, owner's request, v1.6 part B)
 Problem: Annie's R summons Tibbers, later R presses only command him, yet every press showed as
@@ -889,6 +899,13 @@ response that's already fetched every poll; the analysis stays in the maintenanc
   cast, Riven is multi_cast now): 0 ults — the first version found one at the victory screen,
   so an icon-picture change now needs a possible R press just before it and must end before the
   game / video ends (`alt_states_dropped` in the details). Rust 128 tests (107 before).
+- **The owner's recordings, v1.5 logic → v1.6 (`mp4tool ultcheck`, job 62):** every
+  normal-champion game identical (Yunara 9, Caitlyn 5, Twitch 10 + 1, Ashe test 34 + 107). The
+  multi_cast ones: real Kha'Zix game 17 used + 52 no cast → 14 used + 11 recasts + 46 no cast
+  (R mashed ~7/s; Void Assault's activation shows as the icon change and its recast as the
+  cooldown, which v1.5 counted as two ults); short Kha'Zix game 4 + 5 → 2 + 3 recasts + 4; Riven
+  Practice Tool 14 + 11 → 12 + 9 recasts + 6, and 2 + 1 → 1 + 1 recast + 1. Check time
+  unchanged (e.g. 4.97 → 5.29 s for the 33 min Kha'Zix game).
 - **Before (v1.5) on the owner's scripted test:** to be filled in from his Practice Tool session
   (see "Next steps"): `mp4tool-v16a ultcheck` (v1.5 logic) vs the new one on the same recording.
 
@@ -953,12 +970,10 @@ response that's already fetched every poll; the analysis stays in the maintenanc
 - [ ] Owner's Practice Tool test of the ult kinds (Annie, Ivern, Shaco, Ahri, Jhin, Jayce/Nidalee, Kog'Maw)
 
 ## Known issues
-- v1.6 player: the 4 ms timeline redraw / 60 fps zoom and the < 50 ms forward step were measured
-  in headless Chromium (software decoding and raster: redraw median 1 ms, p95 4-7 ms; steps
-  50-60 ms both ways); the GPU numbers come from `--bench-replays` with `"player": true` on the
-  owner's PC. Forward steps first try playing one frame (no keyframe decode); where frames
-  aren't handed over one by one (headless) it falls back to seeks for the session. Old
-  recordings (5.5 s keyframes): ~290 ms per step back in headless Chromium. The optional hover
+- v1.6 player: frame steps are seeks, so on recordings with long keyframe gaps (before v1.2:
+  2-5.5 s) a step costs more: 49.8 ms median / 117 ms p95 on the owner's PC for a 2-2.5 s one;
+  ~290 ms in headless Chromium for 5.5 s (worst case). The 600-marker zoom test ran in headless
+  Chromium (redraw median 1 ms, p95 4-7 ms in software); on the PC with real games: p95 0.6 ms. The optional hover
   thumbnail above the zoomed timeline isn't built (it needs a second decoder; skipped to keep
   the targets).
 - v1.6 ult kinds: the recast-icon detector is calibrated on the owner's real ready / cooldown

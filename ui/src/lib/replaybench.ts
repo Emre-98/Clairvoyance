@@ -351,7 +351,7 @@ async function playerBench(id: string) {
   const fwd: number[] = [], back: number[] = [];
   for (let i = 0; i < 30; i++) fwd.push(await step(".", "Period"));
   for (let i = 0; i < 30; i++) back.push(await step(",", "Comma"));
-  r.stepForward = { median: pct(fwd, 0.5), p95: pct(fwd, 0.95), max: pct(fwd, 1), byPlaying: (window as any).__cvStepPlayed ?? 0, playOff: !!(window as any).__cvStepPlayOff };
+  r.stepForward = { median: pct(fwd, 0.5), p95: pct(fwd, 0.95), max: pct(fwd, 1) };
   r.stepBack = { median: pct(back, 0.5), p95: pct(back, 0.95), max: pct(back, 1) };
   // Zoom: the slider moved every frame for 4 s (in and out), redraw time and frame intervals.
   const s = document.querySelector<HTMLInputElement>('[data-testid="zoom-slider"]')!;

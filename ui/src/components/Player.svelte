@@ -201,87 +201,7 @@
     stepTarget = to;
     if (!stepBusy) stepNow();
   }
-  /** A one-frame forward step in progress by playing (not seeking). */
-  let playStep = false;
-  /** Playing to the next frame overshot (no vsync-locked frames here): use seeks from now on. */
-  let playStepOff = false;
-  /**
-   * One frame forward without a seek: a seek always decodes from the keyframe before the target,
-   * while playing on to the next frame only decodes that frame. Plays (muted, at 1x) until
-   * requestVideoFrameCallback reports the target frame, then pauses there. Falls back to a seek if
-   * it overshoots or takes too long.
-   */
-  function stepByPlaying(i: number): boolean {
-    const v = video;
-    const f = frames;
-    const rvfc = (v as any)?.requestVideoFrameCallback?.bind(v);
-    if (!v || !f || !rvfc || playStepOff || v.seeking || v.ended || v.readyState < 3) return false;
-    stepBusy = true;
-    playStep = true;
-    const seq = ++stepSeq;
-    const muted0 = v.muted;
-    const rate0 = v.playbackRate;
-    v.muted = true;
-    v.playbackRate = 1;
-    let over = false;
-    const restore = () => {
-      playStep = false;
-      v.muted = muted0;
-      v.playbackRate = rate0;
-    };
-    const timer = setTimeout(() => {
-      if (over || seq !== stepSeq) return;
-      over = true;
-      v.pause();
-      restore();
-      stepNow(true);
-    }, 400);
-    const cb = (_now: number, meta: { mediaTime: number }) => {
-      if (over || seq !== stepSeq) return;
-      const k = frameNearest(f, meta.mediaTime);
-      if (k < i) {
-        rvfc(cb);
-        return;
-      }
-      over = true;
-      clearTimeout(timer);
-      v.pause();
-      restore();
-      // Paused a hair late (the clock already in the next frame's interval) or overshot: seek,
-      // and step by seeking from now on (this display / decoder doesn't hand over every frame).
-      if (k !== i || frameIndexAt(f, v.currentTime) !== i) {
-        playStepOff = true;
-        (window as any).__cvStepPlayOff = true;
-        stepNow(true);
-        return;
-      }
-      current = v.currentTime;
-      shownFrame = i;
-      if (stepTarget != null && stepTarget !== i) {
-        stepNow();
-        return;
-      }
-      const ms = performance.now() - stepT0;
-      stepTimes.push(ms);
-      if (stepTimes.length > 200) stepTimes.shift();
-      (window as any).__cvStepMs = stepTimes;
-      (window as any).__cvShownFrame = i;
-      (window as any).__cvStepPlayed = ((window as any).__cvStepPlayed ?? 0) + 1;
-      stepTarget = null;
-      stepBusy = false;
-    };
-    rvfc(cb);
-    v.play().catch(() => {
-      if (over) return;
-      over = true;
-      clearTimeout(timer);
-      restore();
-      stepNow(true);
-    });
-    return true;
-  }
-
-  function stepNow(noPlay = false) {
+  function stepNow() {
     const v = video;
     const f = frames;
     if (!v || !f || stepTarget == null) {
@@ -289,8 +209,6 @@
       return;
     }
     const i = stepTarget;
-    // The next frame: play to it (cheap) instead of seeking (decodes from the keyframe).
-    if (!noPlay && v.paused && i === frameIndexAt(f, v.currentTime) + 1 && stepByPlaying(i)) return;
     const t = frameSeekTime(f, i);
     current = t;
     if (Math.abs(v.currentTime - t) < 1e-6 && !v.seeking) {
@@ -530,8 +448,8 @@
     on("timeupdate", () => {
       if (!pending) current = v.currentTime;
     });
-    on("play", () => !playStep && (paused = false));
-    on("pause", () => !playStep && (paused = true));
+    on("play", () => (paused = false));
+    on("pause", () => (paused = true));
     on("error", () => {
       error = "This video can't be played here. Try “Open in player”.";
       busy = false;
