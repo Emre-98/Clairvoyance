@@ -3,6 +3,15 @@
 Newest first. `scripts/release.ps1` adds a section for each release; the section becomes the
 release notes on GitHub and in the in-app "Update available" card.
 
+## [1.6.0] - 2026-10-02
+
+- Fullscreen without black bars: the video fills the screen and the controls, timeline and filters sit over its bottom as a see-through panel (opacity 40-100 % in the new player settings)
+- True fullscreen: the small arrow (or H) slides the controls away; hover the bottom centre to bring them back. Fit / Fill for screens of another shape
+- Zoom the timeline down to single frames: Ctrl + mouse wheel over it, the zoom slider or + / -; time ruler with frame ticks; Shift + wheel or drag to pan
+- Frame-by-frame: , and . (Shift: 10 frames, hold to repeat) or the buttons next to play, on the recording's real frames; time with milliseconds and the frame number
+- One ult = one 'Ult used' marker: commanding Tibbers / Daisy / Shaco's clone and recasts (Ahri, Zed, Jhin's shots...) are 'Ult recast'; Jayce, Nidalee, Elise and Udyr swaps are 'Form swap' (both under their own filter chips, hidden by default); recast bubbles on the input overlay are smaller and outlined
+- Older games are re-checked in the background, after games, never while you play
+
 ## [1.5.0] - 2026-10-02
 
 - Ability bubbles on the input overlay: every ability, summoner spell, item or ward you use pops up as a small bubble on the replay exactly where your cursor was, on the exact frame, and fades out

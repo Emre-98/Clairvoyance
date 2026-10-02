@@ -506,7 +506,7 @@ dependencies = [
 
 [[package]]
 name = "clairvoyance"
-version = "1.5.0"
+version = "1.6.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -695,7 +695,7 @@ checksum = "914a755b7c2d4af2bdcff7ce1739e2db9a1b81a9b07123d8015786ae03c0980d"
 
 [[package]]
 name = "cv-capture"
-version = "1.5.0"
+version = "1.6.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -713,7 +713,7 @@ dependencies = [
 
 [[package]]
 name = "cv-core"
-version = "1.5.0"
+version = "1.6.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -728,7 +728,7 @@ dependencies = [
 
 [[package]]
 name = "cv-game-cs2"
-version = "1.5.0"
+version = "1.6.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -741,7 +741,7 @@ dependencies = [
 
 [[package]]
 name = "cv-game-league"
-version = "1.5.0"
+version = "1.6.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -758,7 +758,7 @@ dependencies = [
 
 [[package]]
 name = "cv-mock-league"
-version = "1.5.0"
+version = "1.6.0"
 dependencies = [
  "serde_json",
 ]
