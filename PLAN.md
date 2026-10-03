@@ -107,8 +107,10 @@
   recorded (League client + in-game API, from a replay captured on the owner's PC) and never
   recorded ("Replay: not recorded"; setting "Record games you spectate"). Details in "Ready
   right after the game" and "Replays and spectating aren't recorded".
-- **Waiting for the owner**: the v1.7.1 checks (watch a replay, a short Practice Tool game; see
-  "Next steps"), the Practice Tool test of the ult kinds (v1.6, see "Next steps"),
+- **Owner's check of v1.7.1 passed (2026-10-03):** replays not recorded, a spectated game
+  caught by the in-game API and its 8 s partial recording deleted, a Practice Tool game ready at
+  once.
+- **Waiting for the owner**: the Practice Tool test of the ult kinds (v1.6, see "Next steps"),
   the PC benchmark of the v1.6 player (`--bench-replays` with `"player": true`), and the older
   Practice Tool test of the ability bubbles.
 
@@ -1077,11 +1079,18 @@ like a match, so it was recorded as a game.
   `/lol-gameflow/v1/session` 404 "No gameflow session exists." for the whole replay; the
   in-game API answers ~6 s after the process starts: `activeplayername` "Unknown",
   `activeplayer` 400 "Spectator mode doesn't currently support this feature", `gamestats` /
-  `playerlist` / `eventdata` normal. v1.7.0 recorded it ("unknown mode" rule). Not captured
-  (the League client didn't open again unattended): `/lol-replays/v1/configuration`
-  `isPlayingReplay` during a replay (idle: false) and the client's spectate state
-  (`/lol-gameflow/v1/watch`, assumed `watchPhase: "WatchInProgress"`); spectating uses the same
-  in-game spectator mode as replays.
+  `playerlist` / `eventdata` normal. v1.7.0 recorded it ("unknown mode" rule).
+- **Owner's check of v1.7.1 (2026-10-03, real client, read from the app's log):**
+  - replays from match history (twice): client phase "None", `isPlayingReplay: true`,
+    `/lol-gameflow/v1/watch` not there → "Replay: not recorded" at the process start, nothing
+    recorded or left behind;
+  - spectating a friend's Ranked Solo/Duo game: the client reports it like a match of yours
+    (phase "InProgress", a session with queue 420, `isPlayingReplay: false`, no watch
+    endpoint), so recording started; the in-game API said spectator mode 10.6 s later and the
+    8 s partial recording was deleted ("Replay or spectating: not recorded"), nothing left;
+  - a 77 s Practice Tool game (left with the game closing): in place in 18 ms, in the library
+    128 ms after the game closed was noticed, thumbnail 208 ms later, ult check 1.6 s later;
+    owner: everything worked (card fast, plays at once, marker jumps instant).
 - **Detection** (`games/league/src/watch.rs`, `GameIntegration::session_check` +
   `PollUpdate::watching / playing`), before anything is recorded:
   - League client: a game session in progress (GameStart / InProgress / Reconnect) → a match:
@@ -1176,7 +1185,7 @@ like a match, so it was recorded as a game.
 - [x] 29. Every window size from 940 × 560 to 4K at 100/125/150 %: no overlap or cut-off (More controls menu, popover placement, page fixes, layout audit test); one "Trail & bubbles" time, bubbles end with their trail piece (v1.7 part 1)
 - [x] 30. Ready right after the game: in-place index when the recording stops (no copy, crash-safe), 2 s victory-screen tail, thumbnail right away, faster exit detection (v1.7.1)
 - [x] 31. Replays and spectating aren't recorded: League client + in-game API detection before recording, late detection deletes the partial recording, "Record games you spectate" setting, simulator replay / spectate modes (v1.7.1)
-- [ ] Owner's check of v1.7.1: watch a replay (not recorded), a short Practice Tool game (ready in seconds)
+- [x] Owner's check of v1.7.1: replays not recorded, spectating deleted after 8 s, Practice Tool game ready at once
 
 ## Known issues
 - v1.6 player: frame steps are seeks, so on recordings with long keyframe gaps (before v1.2:
@@ -1212,8 +1221,11 @@ like a match, so it was recorded as a game.
 - Replays: detected from the League client's state + the in-game API's spectator mode (captured
   on patch 16.19). If Riot changes those answers, a replay could be recorded again (the in-game
   check is the safety net; the log says "session check: ..." and "in-game API: spectator mode").
-  The client's spectate state (`/lol-gameflow/v1/watch`) wasn't captured: spectating is still
-  caught by the in-game API (not recorded), only the label may say "Replay or spectating".
+  Spectating: the client reports a spectated game like your own match (owner's check), so it's
+  caught only by the in-game API ~10 s after the game process starts: those seconds are
+  recorded and then deleted, and the label says "Replay or spectating". Possible improvement:
+  compare the client's session players with the signed-in player (`/lol-summoner/v1/current-summoner`,
+  read-only) to decide before recording; needs one read-only capture while the owner spectates.
 - Hovering a game card starts loading its video: a few MB read from disk per hovered game.
 - Ult check: tuned on the owner's HUD (4K, HUD scale 0, numeric cooldowns, HUD animations off);
   other HUD scales are found by the scale search (tested synthetically at 1.5×), but colour
@@ -1241,20 +1253,6 @@ like a match, so it was recorded as a game.
   so other fonts / scalings adapt by themselves.
 
 ## Next steps
-- **Owner, v1.7.1 checks (~10 min; job 83 waits on the PC and collects the results):**
-  1. Watch a replay: League client > Profile > Match History > a recent game > Download (if
-     shown) > Watch. Expected: tray tooltip / Home "Replay: not recorded" (or "Replay or
-     spectating: not recorded"), nothing new in Games after closing it.
-  2. A short Practice Tool game (Settings > Game modes: Practice Tool on Record), 2-3 min, then
-     end it. Expected: the game is in Games ~3 s after the victory screen / closing, plays at
-     once (first frame and marker jumps instant), thumbnail within a few seconds.
-  The app logs what the League client said at each game start ("session check: League client
-  phase …, playing replay …, watch …") and the in-game API's verdict; job 83 collects those
-  lines, which fills in the two answers not captured yet: `isPlayingReplay` during a replay
-  (step 1) and the client's spectate state.
-  3. Optional, only if a friend is in a game: spectate them (Friends list > right-click >
-     Spectate), ~1 min, close it. Expected: "Spectating: not recorded" (or "Replay or
-     spectating: not recorded"), nothing in Games. Gives the client's real spectate state.
 - **Owner, Practice Tool test of the ult kinds (v1.6, ~15 min):** see the steps in the v1.6
   test report (also below). Practice Tool with cooldowns ON (not "No Cooldowns"; use the "Reset
   cooldowns" button between ults), Settings > Game modes > Practice Tool on "Record". Level 16+
