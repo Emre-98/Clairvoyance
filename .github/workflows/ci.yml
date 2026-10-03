@@ -25,5 +25,5 @@ jobs:
           npm ci --prefix ui
           npm --prefix ui run check
           npm --prefix ui run build
-      - name: UI unit tests (ability bubbles layout, timeline zoom / frame stepping)
-        run: node --experimental-strip-types --test ui/tests/bubbles.unit.test.ts ui/tests/timeline.unit.test.ts
+      - name: UI unit tests (ability bubbles layout + trail timing, timeline zoom / frame stepping, player controls fitting)
+        run: node --experimental-strip-types --test ui/tests/bubbles.unit.test.ts ui/tests/timeline.unit.test.ts ui/tests/controlsfit.unit.test.ts

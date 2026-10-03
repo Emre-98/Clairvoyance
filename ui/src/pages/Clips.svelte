@@ -108,7 +108,7 @@
             <ChampionIcon id={c.character_id} name={c.character ?? c.game_name} size={32} />
             <div class="txt">
               <div class="title" title={c.title}>{c.title}</div>
-              <div class="sub">{relativeDate(c.created_at)} · {bytes(c.size_bytes)}</div>
+              <div class="sub" title="{relativeDate(c.created_at)} · {bytes(c.size_bytes)}">{relativeDate(c.created_at)} · {bytes(c.size_bytes)}</div>
             </div>
           </div>
           <div class="actions">
@@ -254,6 +254,10 @@
     font-size: 12px;
     color: var(--muted);
     margin-top: 2px;
+    /* One line (the card's height is fixed: a second line would push the buttons out). */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .actions {
     display: flex;

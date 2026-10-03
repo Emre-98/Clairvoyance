@@ -90,6 +90,13 @@
   cast. 49 champions classified against Data Dragon 16.19.1 + the wiki (`ultscan` dev tool).
   `verify::VERSION` 4. The owner's 19 real clips and all his normal-champion games give
   identical results. Details in "Ult kinds".
+- **v1.7 part 1 (2026-10-03): window sizes + one "Trail & bubbles" time.** Nothing overlaps or
+  is cut off at any window size from the new minimum 940 × 560 up to 4K at 100 / 125 / 150 %
+  (automatic check of 21 page states × 24 sizes: 355/504 before, 504/504 after): the player's
+  controls collapse into a "⋯ More controls" menu, popovers stay inside the window. The trail
+  length and the bubbles' fade time are one slider (0.25-3 s); a bubble disappears on the same
+  frame as the piece of trail drawn at its key-down (pixel-tested at 0.25 s and 3 s). Details in
+  "Window sizes, and one Trail & bubbles time".
 - **Waiting for the owner**: the Practice Tool test of the ult kinds (v1.6, see "Next steps"),
   the PC benchmark of the v1.6 player (`--bench-replays` with `"player": true`), and the older
   Practice Tool test of the ability bubbles.
@@ -696,7 +703,8 @@ overlay is switched on for a replay.
   benchmark game, 13 ms for a 2 min one; both share one decode of the input file).
 - **Options:** "Ability bubbles" group (on by default) with the game's categories (Abilities,
   Summoners, Items, Ward) and "Fade time" 0.1-3 s (step 0.1, default 1.0), in the overlay
-  popover, saved with the other overlay options; changes apply on the next frame.
+  popover, saved with the other overlay options; changes apply on the next frame. (v1.7: the
+  fade time and the trail length became one "Trail & bubbles" time, see below.)
 - **Tests:** Rust (`cv-core` actions: interpolation incl. rest-then-move and stroke breaks,
   key-down → frame incl. variable frame rate, modifiers / level-up combos, focus resets,
   rebinds, mouse binds, hints, saved vs default binds; League: defaults, the owner's ini and his
@@ -909,6 +917,70 @@ response that's already fetched every poll; the analysis stays in the maintenanc
 - **Before (v1.5) on the owner's scripted test:** to be filled in from his Practice Tool session
   (see "Next steps"): `mp4tool-v16a ultcheck` (v1.5 logic) vs the new one on the same recording.
 
+### Window sizes, and one "Trail & bubbles" time (2026-10-03, owner's request, v1.7 part 1)
+Rules: replay UI only (nothing during the game); v1.6 behaviour unchanged except below.
+- **Problem (measured, `ui/tests/layout.test.mjs` on v1.6.1):** of 21 page states × 24 window
+  sizes (504), 84 had overlapping or cut-off controls/text: every game-page state in any window
+  narrower than ~1,700 px (the player's controls row got frame steps, zoom and settings in v1.6
+  and didn't fit: play / steps / next under the zoom slider, the time label under the zoom
+  buttons), the overlay options popover cut by the player at 1280 × 720 / 150 %, and in
+  fullscreen at small screens. 65 more shortened text with "…" and no way to read it (champion
+  names on game cards, event details, mode names, paths).
+- **Controls row (`Player.svelte`, `lib/controlsfit.ts`):** never overlaps. The row's parts are
+  measured (ResizeObserver, margins included) and, when the player is too narrow, collapsed one
+  step at a time: volume slider → speed → player settings (these go into a new **⋯ More
+  controls** menu), the "Input overlay" label (icon only), the second half of the time label,
+  the zoom controls, previous / next event, frame steps (menu; their keys keep working). The
+  level is recomputed from the measured widths (no trial renders); going back to a wider level
+  needs 6 px to spare and, after having to go up, a few px more room or a shorter time label
+  (no flapping: the first version flapped between two levels while "Loading" changed the time
+  label). In fullscreen the filter chips keep ≥ 150 px between the two groups. Widths at 100 %:
+  everything fits from a ~1,060 px wide player; the minimum window shows play, steps, time,
+  overlay icon + options, mute, ⋯, fullscreen.
+- **Popovers (`lib/popfit.ts`):** the player no longer clips them (the video box clips the
+  video instead); each popover is kept inside whatever clips it (window, scrolling page,
+  fullscreen player): opens below its button when there's more room there, max height = the
+  room it has (it scrolls), shifted sideways if needed; rows inside never shrink.
+- **Pages:** game header buttons wrap to their own line in a narrow window (the title keeps one
+  line); game cards: name + KDA on one line, mode + date on the next (a long date no longer
+  shortens the champion name), full text as tooltips; clip cards: date · size on one line (a
+  second line pushed the buttons out of the fixed-height card); game modes: the "New" badge
+  goes under a long mode name; event details, paths, mode names: tooltips.
+- **Minimum window 940 × 560** (was 980 × 620): fits 1366 × 768 at 125 % maximized (1093 × 576)
+  and 1920 × 1080 at 150 %.
+- **One "Trail & bubbles" time (`lib/overlayoptions.ts`, `lib/bubbles.ts`):** the trail length
+  and the bubbles' fade time are one slider, 0.25-3 s (step 0.05, default 1 s), saved with the
+  other overlay options (`cv.inputOverlay`, format `v: 2`). Old saves: the trail length is kept
+  when the trail was on; trail off + bubbles on → their fade time; clamped to 0.25-3 (0.1 →
+  0.25). **A bubble goes with its piece of the trail:** the trail draws the segment ending at
+  sample k while `mt[k] >= t - secs`; each bubble gets `end` = the time of the sample whose
+  segment carries its press position (same interpolation rule as `cursor_at`: cursor moving →
+  the first sample after the key-down), and is drawn while `end >= t - secs`: the same test, so
+  both disappear on the same frame. Cursor at rest at the key-down (no sample within ~1 period,
+  a stroke break, no samples): no trail moves under it, so the press time itself (it leaves
+  the trail's time window with its moment). Frame and position rules of v1.5 unchanged (shown
+  from the key-down's frame, anchored at the interpolated cursor), pop-in unchanged; the fade
+  ends at the trail's faintest level (1/8, its oldest bucket) instead of 0, so the bubble
+  doesn't vanish before its trail piece. **Trail off, bubbles on:** the bubbles keep the time
+  the trail would have (the slider stays enabled, with a note); off only when both are off.
+- **Tests:** `layout.test.mjs` (new; Chromium + mock): 21 page states (Home, Games, Clips, 11
+  Settings sections, game page, overlay options, player settings / More menu, zoomed, paused
+  with frame label, fullscreen, fullscreen + options) × 24 sizes (940 × 560 … 3840 × 2160 at
+  100 %, 125 % and 150 %, narrow-tall, wide-short), scrolling every scroll box: controls
+  overlapping, controls covered (hit test), text over text / controls, anything clipped by a box
+  that can't scroll, "…" without a tooltip, popovers outside, horizontal page scroll; before /
+  after screenshots. `controlsfit.unit.test.ts` (in CI). `bubbles.unit.test.ts`: trail ends,
+  same-frame end vs the trail rule at 0.25 / 3 s, 60 / 30 fps, timer jitter, rest and stroke
+  breaks; option migration. `bubbles.test.mjs` (Chromium pixels): bubble and trail piece end on
+  the same frame at 0.25 s and 3 s. `overlay-regression.mjs`: v1.6.1 vs v1.7 identical with
+  bubbles off (default, everything on) and with bubbles on while they pop in / hold (28/28).
+  Found on the way: a race in `framestep.test.mjs` (waited 100 ms for the marker hit targets
+  that follow the view after 120 ms): now 300 ms.
+- **Results:** layout before 355/504 (84 overlapping / cut off + 65 "…" without tooltip),
+  after 504/504. Overlay 20/20, bubbles 20/20, fullscreen 94/94, frame steps 27/27, regression
+  28/28, UI unit 24/24, Rust 129. The tests run with Linux's Inter font, wider than Windows'
+  Segoe UI Variable, so Windows has more room, not less.
+
 ### Replay benchmark and end-to-end tests (developer tools)
 - `Clairvoyance.exe --bench-replays=<config.json>`: opens the given games N times in the real
   window and measures page / first frame / playable / marker jumps / "marker clicked right away"
@@ -968,6 +1040,7 @@ response that's already fetched every poll; the analysis stays in the maintenanc
 - [x] 27. Fullscreen without black bars (overlay panel, drop-down, Fit/Fill) + zoomable timeline + frame-exact stepping (v1.6 part A)
 - [x] 28. Ult kinds: command / multi_cast / transform / charges, ult episodes live and after the game, "Ult recast" / "Form swap", Data Dragon scan tool (v1.6 part B)
 - [ ] Owner's Practice Tool test of the ult kinds (Annie, Ivern, Shaco, Ahri, Jhin, Jayce/Nidalee, Kog'Maw)
+- [x] 29. Every window size from 940 × 560 to 4K at 100/125/150 %: no overlap or cut-off (More controls menu, popover placement, page fixes, layout audit test); one "Trail & bubbles" time, bubbles end with their trail piece (v1.7 part 1)
 
 ## Known issues
 - v1.6 player: frame steps are seeks, so on recordings with long keyframe gaps (before v1.2:
@@ -1019,6 +1092,11 @@ response that's already fetched every poll; the analysis stays in the maintenanc
   keeps the binds it was played with. Binds changed in the middle of a game count from the next
   game. The first switch-on of the overlay for the 33 min worst case stays ~120-130 ms (as in
   v1.4); the bubbles arrive in parallel and don't add to it.
+
+- v1.7 layout: checked in Chromium (Linux, Inter font) against the mock backend, not inside
+  WebView2 on Windows (no Node on the owner's PC); WebView2 is the same engine and Segoe UI
+  Variable is narrower than Inter. The "More controls" level is decided from measured widths,
+  so other fonts / scalings adapt by themselves.
 
 ## Next steps
 - **Owner, Practice Tool test of the ult kinds (v1.6, ~15 min):** see the steps in the v1.6

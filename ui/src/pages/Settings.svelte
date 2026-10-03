@@ -261,7 +261,7 @@
         <label>Seconds after<input class="input" type="number" min="1" max="60" bind:value={draft.events.clip_after_secs} /></label>
         <div class="wide ffrow">
           {#if ff?.available}
-            <span class="ok"><Icon name="check" size={14} /> ffmpeg ready</span><span class="muted path">{ff.path}</span>
+            <span class="ok"><Icon name="check" size={14} /> ffmpeg ready</span><span class="muted path" title={ff.path}>{ff.path}</span>
           {:else}
             <span class="warn">Clips need the free ffmpeg tool.</span>
             <button class="btn small primary" onclick={getFfmpeg} disabled={ffdl != null}><Icon name="download" size={13} />{ffdl ? `Downloading ${ffdl.total ? Math.round((ffdl.done / ffdl.total) * 100) + "%" : bytes(ffdl.done)}` : "Download ffmpeg (~100 MB)"}</button>
@@ -478,8 +478,8 @@
       </div>
       <h3 class="sub">Files</h3>
       <div class="card box list">
-        <div class="item"><div><strong>Log file</strong><span class="muted path">{app.info?.log_file}</span></div><button class="btn small" onclick={() => api.reveal(app.info?.log_file ?? "")}>Show</button></div>
-        <div class="item"><div><strong>Settings file</strong><span class="muted path">{app.info?.config_file}</span></div><button class="btn small" onclick={() => api.reveal(app.info?.config_file ?? "")}>Show</button></div>
+        <div class="item"><div><strong>Log file</strong><span class="muted path" title={app.info?.log_file}>{app.info?.log_file}</span></div><button class="btn small" onclick={() => api.reveal(app.info?.log_file ?? "")}>Show</button></div>
+        <div class="item"><div><strong>Settings file</strong><span class="muted path" title={app.info?.config_file}>{app.info?.config_file}</span></div><button class="btn small" onclick={() => api.reveal(app.info?.config_file ?? "")}>Show</button></div>
       </div>
       <p class="muted small">Clairvoyance {app.info?.version}. No accounts, no cloud, no telemetry.</p>
     {/if}

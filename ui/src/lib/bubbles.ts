@@ -1,6 +1,7 @@
 // Ability bubbles on the replay's input overlay: when an action key (League: Q W E R, D F, item
 // slots, ward) was pressed, a small bubble pops up exactly where the cursor was at that moment,
-// on exactly that video frame, and fades out.
+// on exactly that video frame, and fades out together with the piece of the cursor trail drawn
+// at that moment (v1.7: one "Trail & bubbles" time for both).
 //
 // The list (time, frame, exact position, action, state) is computed once by the backend
 // (`input_actions`, cv_core::input::actions) when the overlay is first switched on. This file
@@ -41,7 +42,7 @@ export interface ActionsView {
 export interface BubbleOptions {
   /** The "Ability bubbles" group. */
   on: boolean;
-  /** Total time a bubble is visible (s), 0.1-3. */
+  /** The trail length (s, 0.25-3): a bubble lives until the trail piece of its moment is gone. */
   fade: number;
   /** Category id -> shown (missing = shown). */
   cats: Record<string, boolean>;
@@ -49,29 +50,93 @@ export interface BubbleOptions {
   unconfirmed: boolean;
 }
 
-export const FADE_MIN = 0.1;
-export const FADE_MAX = 3;
-export const FADE_DEFAULT = 1;
+/** The faintest the bubble gets before it goes, together with its trail piece: the same as the
+ * trail's oldest part (lib/inputoverlay.ts, 8 buckets: 1/8). */
+export const ALPHA_END = 1 / 8;
 
-/** Animation of a bubble `age` seconds after its frame, with total visible time `fade`:
- * pop in (scale, ~100 ms), hold, fade out. null = not visible. */
 /** Recast bubbles (later presses of the same ult) are this much smaller. */
 export const RECAST_SCALE = 0.72;
 
-export function animation(age: number, fade: number): { scale: number; alpha: number } | null {
-  if (age < 0 || age >= fade) return null;
-  const pop = Math.min(0.1, fade * 0.3);
-  const out = Math.min(Math.max(0.06, fade * 0.45), fade - pop);
+/** Animation of a bubble `age` seconds after its frame, with total visible time `total`:
+ * pop in (scale, ~100 ms), hold, fade out to the trail's faintest level (`ALPHA_END`), then it
+ * is gone (with its trail piece). null = not visible. */
+export function animation(age: number, total: number): { scale: number; alpha: number } | null {
+  if (age < 0 || age >= total) return null;
+  return anim(age, total);
+}
+
+function anim(age: number, total: number): { scale: number; alpha: number } {
+  const pop = Math.min(0.1, total * 0.3);
+  const out = Math.min(Math.max(0.06, total * 0.45), total - pop);
   let scale = 1;
   if (age < pop) {
     // ease-out-back from 0.55 to 1 (a little overshoot = "pop").
-    const p = age / pop;
+    const p = Math.max(0, age) / pop;
     const c = 1.9;
     const e = 1 + (c + 1) * Math.pow(p - 1, 3) + c * Math.pow(p - 1, 2);
     scale = 0.55 + 0.45 * e;
   }
-  const alpha = age > fade - out ? Math.max(0, (fade - age) / out) : 1;
+  const alpha = age > total - out ? ALPHA_END + (1 - ALPHA_END) * Math.min(1, Math.max(0, (total - age) / out)) : 1;
   return { scale, alpha };
+}
+
+/**
+ * When each bubble's piece of the cursor trail is drawn from: `end[i]` is the time of the trail
+ * sample whose segment carries the press position, so the bubble is alive at `t` exactly while
+ * `end[i] >= t - secs`, the same test the trail uses for that segment (`mt[k] >= t0`).
+ * `max` is the running maximum (for the binary search of the first alive bubble).
+ */
+export interface Ends {
+  end: Float64Array;
+  max: Float64Array;
+}
+
+/**
+ * Ends from the cursor samples (lib/inputoverlay.ts InputData: times `mt`, stroke breaks `mb`,
+ * the sample rate). Same rule as the press position (cv_core::input::actions::cursor_at): the
+ * cursor moving, the press lies on the segment ending at the first sample after it, and that
+ * segment's sample time is the end. The cursor at rest (no sample within ~1 period after the
+ * press, a stroke break, no sample at all): no trail piece moves under it, so the trail's own
+ * clock decides: the press time (it leaves the trail's time window when its moment does).
+ */
+export function trailEnds(t: ArrayLike<number>, mt: ArrayLike<number>, mb: ArrayLike<number>, rate: number): Ends {
+  const n = t.length;
+  const end = new Float64Array(n);
+  const period = 1 / Math.max(1, rate);
+  for (let i = 0; i < n; i++) {
+    const tp = t[i];
+    let e = tp;
+    const k = ub(mt, tp);
+    if (k > 0 && k < mt.length && !mb[k] && mt[k] > mt[k - 1]) {
+      const start = mt[k] - mt[k - 1] > 1.5 * period ? mt[k] - period : mt[k - 1];
+      if (tp > start) e = mt[k];
+    }
+    end[i] = e;
+  }
+  return withMax(end);
+}
+
+/** Without cursor samples: each bubble's moment is its press time. */
+export function pressEnds(t: ArrayLike<number>): Ends {
+  return withMax(Float64Array.from(t));
+}
+
+function withMax(end: Float64Array): Ends {
+  const max = new Float64Array(end.length);
+  let m = -Infinity;
+  for (let i = 0; i < end.length; i++) max[i] = m = Math.max(m, end[i]);
+  return { end, max };
+}
+
+/** Index of the first element >= v. */
+function lb(a: ArrayLike<number>, v: number): number {
+  let lo = 0, hi = a.length;
+  while (lo < hi) {
+    const m = (lo + hi) >> 1;
+    if (a[m] < v) lo = m + 1;
+    else hi = m;
+  }
+  return lo;
 }
 
 /** Base bubble radius (CSS px) for a video drawn `h` px high. */
@@ -122,7 +187,7 @@ export interface Layout {
  * top) moves its body sideways just enough to clear it; its anchor and tail stay on the exact
  * position. Decided when a bubble appears, so it never jumps while it's visible.
  */
-export function layout(p: PressArrays, actions: ActionKey[], o: BubbleOptions, base: number, anchor: (i: number) => [number, number]): Layout {
+export function layout(p: PressArrays, actions: ActionKey[], o: BubbleOptions, base: number, anchor: (i: number) => [number, number], ends: Ends = pressEnds(p.t)): Layout {
   const t0 = performance.now();
   const n = p.t.length;
   const L: Layout = { ax: new Float32Array(n), ay: new Float32Array(n), dx: new Float32Array(n), on: new Uint8Array(n), ms: 0 };
@@ -140,10 +205,11 @@ export function layout(p: PressArrays, actions: ActionKey[], o: BubbleOptions, b
     if (!L.on[i]) continue;
     const gi = geo[p.action[i]];
     const cy = L.ay[i] - gi.lift;
-    // Bubbles of other actions alive when this one appears.
+    // Bubbles of other actions alive when this one appears (their trail piece still drawn).
     others.length = 0;
-    for (let j = i - 1; j >= 0 && p.show[j] > p.show[i] - o.fade; j--) {
-      if (!L.on[j] || p.action[j] === p.action[i]) continue;
+    const birth0 = p.show[i] - o.fade;
+    for (let j = i - 1; j >= 0 && ends.max[j] >= birth0; j--) {
+      if (!L.on[j] || p.action[j] === p.action[i] || ends.end[j] < birth0) continue;
       const gj = geo[p.action[j]];
       const reachY = gi.r + gj.letter;
       if (Math.abs(cy - (L.ay[j] - gj.lift)) < reachY) others.push(j);
@@ -178,22 +244,29 @@ export function layout(p: PressArrays, actions: ActionKey[], o: BubbleOptions, b
   return L;
 }
 
-/** Index range [from, to) of the presses alive at `t` (shown in (t - fade, t]). */
-export function aliveRange(show: ArrayLike<number>, t: number, fade: number): [number, number] {
-  return [ub(show, t - fade), ub(show, t)];
+/** Index range [from, to) that holds every press alive at `t`: shown at or before `t`, and its
+ * trail piece (`ends`) still in the trail (>= t - secs). Inside it, check `end[i]` per press. */
+export function aliveRange(show: ArrayLike<number>, endMax: ArrayLike<number>, t: number, secs: number): [number, number] {
+  return [lb(endMax, t - secs), ub(show, t)];
+}
+
+/** Is press `i` drawn at `t`: on or after its frame, and its trail piece not yet gone. */
+export function alive(show: ArrayLike<number>, ends: Ends, i: number, t: number, secs: number): boolean {
+  return show[i] <= t && ends.end[i] >= t - secs;
 }
 
 /** Draws the bubbles alive at `t`: first every tail and anchor dot (a layer under all bodies, so a
  * slanted tail never crosses another bubble's letter), then the bodies oldest first (the newest
  * is on top). */
-export function draw(g: CanvasRenderingContext2D, p: PressArrays, actions: ActionKey[], L: Layout, o: BubbleOptions, base: number, t: number): number {
-  const [from, to] = aliveRange(p.show, t, o.fade);
+export function draw(g: CanvasRenderingContext2D, p: PressArrays, actions: ActionKey[], L: Layout, o: BubbleOptions, base: number, t: number, ends: Ends = pressEnds(p.t)): number {
+  const t0 = t - o.fade;
+  const [from, to] = aliveRange(p.show, ends.max, t, o.fade);
   let drawn = 0;
   for (let pass = 0; pass < 2; pass++) {
     for (let i = from; i < to; i++) {
-      if (!L.on[i]) continue;
-      const an = animation(t - p.show[i], o.fade);
-      if (!an) continue;
+      // Exactly the trail's test for the segment under the press (mt[k] >= t - secs).
+      if (!L.on[i] || ends.end[i] < t0) continue;
+      const an = anim(t - p.show[i], ends.end[i] + o.fade - p.show[i]);
       const a = actions[p.action[i]];
       const faded = p.state[i] === 2;
       // A recast of the same ult (command, second part): smaller and outlined.
@@ -330,8 +403,17 @@ export class Bubbles {
   /** Last layout time and bubbles drawn (tests, benchmark). */
   stats = { layoutMs: 0, drawn: 0, base: 0 };
   v: ActionsView;
+  /** Each bubble's trail piece (see `trailEnds`); the press times until the samples are set. */
+  ends: Ends;
   constructor(v: ActionsView) {
     this.v = v;
+    this.ends = pressEnds(v.presses.t);
+  }
+
+  /** Ties every bubble to the trail drawn from these cursor samples. */
+  setTrail(mt: ArrayLike<number>, mb: ArrayLike<number>, rate: number) {
+    this.ends = trailEnds(this.v.presses.t, mt, mb, rate);
+    this.cacheKey = "";
   }
 
   get count() {
@@ -345,7 +427,7 @@ export class Bubbles {
 
   layoutFor(key: string, o: BubbleOptions, base: number, anchor: (i: number) => [number, number]): Layout {
     if (key !== this.cacheKey || !this.cached) {
-      this.cached = layout(this.v.presses, this.v.actions, o, base, anchor);
+      this.cached = layout(this.v.presses, this.v.actions, o, base, anchor, this.ends);
       this.cacheKey = key;
       this.stats.layoutMs = this.cached.ms;
     }
@@ -356,7 +438,7 @@ export class Bubbles {
     if (!o.on || !this.count) return;
     const L = this.layoutFor(key, o, base, anchor);
     this.stats.base = base;
-    this.stats.drawn = draw(g, this.v.presses, this.v.actions, L, o, base, t);
+    this.stats.drawn = draw(g, this.v.presses, this.v.actions, L, o, base, t, this.ends);
   }
 }
 

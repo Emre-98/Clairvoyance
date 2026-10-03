@@ -9,9 +9,11 @@
   import { attachVideo, detachVideo, setVideoUrl } from "../lib/videopool";
   import InputOverlay from "./InputOverlay.svelte";
   import { Overlay, parse as parseInput, loadOptions, saveOptions } from "../lib/inputoverlay";
-  import { FADE_MAX, FADE_MIN } from "../lib/bubbles";
+  import { SECS_MAX, SECS_MIN, SECS_STEP } from "../lib/overlayoptions";
   import { frameIndexAt, frameNearest, frameSeekTime, preciseClock } from "../lib/timelineview";
   import { loadPrefs, savePrefs } from "../lib/playerprefs";
+  import { collapseLevel, COLLAPSE, type CollapseId } from "../lib/controlsfit";
+  import { popfit } from "../lib/popfit";
 
   let {
     src,
@@ -62,6 +64,8 @@
   let overlayOpts = $state(loadOptions());
   let optsOpen = $state(false);
   $effect(() => saveOptions($state.snapshot(overlayOpts)));
+  /** 0.25 -> "0.25", 1 -> "1", 1.5 -> "1.5". */
+  const secsLabel = (v: number) => String(Math.round(v * 100) / 100);
 
   export async function toggleOverlay() {
     if (!inputId) return;
@@ -122,6 +126,67 @@
   let fsJust = $state(false);
   let chromeH = $state(0);
   let settingsOpen = $state(false);
+  let moreOpen = $state(false);
+  /** Opens one of the player's popovers (closing the others). */
+  function openPop(which: "opts" | "settings" | "more" | null) {
+    optsOpen = which === "opts";
+    settingsOpen = which === "settings";
+    moreOpen = which === "more";
+  }
+
+  // ---------- controls row: what fits at this player width ----------
+  // The row never overlaps: when the player gets narrower, controls move into the "More controls"
+  // menu (or get shorter) in the order of COLLAPSE (lib/controlsfit.ts), from the measured widths.
+  let chromeW = $state(0);
+  let timeW = $state(0);
+  let cleftEl = $state<HTMLDivElement>();
+  let crinEl = $state<HTMLDivElement>();
+  /** How many of COLLAPSE are collapsed. */
+  let level = $state(0);
+  /** Measured widths (CSS px) of the parts that collapse. */
+  let nat = $state<Record<string, number>>({});
+  /** Last level the row had to go up to, and the room it had then. */
+  let fitFloor: { lv: number; avail: number; tw: number; fs: boolean } | null = null;
+  const shown = (id: CollapseId) => COLLAPSE.indexOf(id) >= level;
+  /** Records an element's width while it's shown. */
+  function wid(el: HTMLElement, id: string) {
+    const ro = new ResizeObserver(() => {
+      const cs = getComputedStyle(el);
+      const w = el.offsetWidth + (parseFloat(cs.marginLeft) || 0) + (parseFloat(cs.marginRight) || 0);
+      if (w > 0 && Math.abs((nat[id] ?? 0) - w) > 0.5) nat[id] = w;
+    });
+    ro.observe(el);
+    return { destroy: () => ro.disconnect() };
+  }
+  $effect(() => {
+    // Inputs: the width, the measured parts, the time label, fullscreen.
+    const tw = timeW;
+    const w = chromeW;
+    const n = { ...nat };
+    const fs = isFs;
+    // In fullscreen the time label has no second half (nothing to collapse there).
+    if (fs) n.tsub = 0.01;
+    const lv = level;
+    if (!cleftEl || !crinEl || w <= 0) return;
+    const gap = parseFloat(getComputedStyle(crinEl).columnGap) || 0;
+    const used = cleftEl.offsetWidth + crinEl.offsetWidth;
+    // Fullscreen: the filter chips sit between the two groups and keep at least this much.
+    const avail = w - (fs ? 150 : 0) - 2;
+    let next = collapseLevel(avail, used, lv, n, gap);
+    // Never flap between two levels: after having to go up, stay until there's clearly more room.
+    // (A shorter time label, e.g. "Loading" gone, also counts as more room.)
+    // The label's width is noted once the row has taken the new level.
+    if (fitFloor && Number.isNaN(fitFloor.tw) && lv === fitFloor.lv) fitFloor.tw = tw;
+    if (fitFloor && (avail > fitFloor.avail + 8 || tw < fitFloor.tw - 4 || fs !== fitFloor.fs)) fitFloor = null;
+    if (next > lv) fitFloor = { lv: next, avail, tw: NaN, fs };
+    else if (fitFloor && next < fitFloor.lv) next = Math.min(lv, fitFloor.lv);
+    if (next !== lv) level = next;
+  });
+  $effect(() => {
+    // Nothing left in the menu: close it.
+    if (level === 0 && moreOpen) moreOpen = false;
+  });
+  const RATES = [0.25, 0.5, 1, 1.5, 2];
   /** The up-arrow circle (panel down, mouse in the bottom-centre zone). */
   let upShown = $state(false);
   let upTimer: ReturnType<typeof setTimeout> | undefined;
@@ -542,6 +607,40 @@
 
 <svelte:window onkeydown={key} />
 
+{#snippet stepBtn(dir: number)}
+  {#if dir < 0}
+    <button class="cbtn" onpointerdown={(e) => holdStart(e, -1)} onpointerup={holdEnd} onpointerleave={holdEnd} onpointercancel={holdEnd} title="Previous frame (,) · Shift: 10 frames" aria-label="Previous frame" data-testid="step-back" use:wid={"stepb"}><Icon name="stepback" size={16} /></button>
+  {:else}
+    <button class="cbtn" onpointerdown={(e) => holdStart(e, 1)} onpointerup={holdEnd} onpointerleave={holdEnd} onpointercancel={holdEnd} title="Next frame (.) · Shift: 10 frames" aria-label="Next frame" data-testid="step-fwd" use:wid={"stepf"}><Icon name="stepfwd" size={16} /></button>
+  {/if}
+{/snippet}
+{#snippet zoomCtl()}
+  <button class="cbtn sm" onclick={() => timeline?.zoomBy(0.5)} disabled={!zoomed} aria-label="Zoom out" data-testid="zoom-out"><Icon name="zoomout" size={15} /></button>
+  <input class="zslider" type="range" min="0" max="1" step="0.001" value={zoomLevel} oninput={(e) => timeline?.setLevel(Number((e.currentTarget as HTMLInputElement).value))} aria-label="Timeline zoom" data-testid="zoom-slider" />
+  <button class="cbtn sm" onclick={() => timeline?.zoomBy(2)} aria-label="Zoom in" data-testid="zoom-in"><Icon name="zoomin" size={15} /></button>
+  <button class="cbtn sm" onclick={() => timeline?.fit()} disabled={!zoomed} title="Whole game" aria-label="Show the whole game" data-testid="zoom-fit"><Icon name="fitwidth" size={15} /></button>
+{/snippet}
+{#snippet rateSel()}
+  <select class="rate" bind:value={rate} title="Speed" aria-label="Playback speed">
+    {#each RATES as r}<option value={r}>{r}×</option>{/each}
+  </select>
+{/snippet}
+{#snippet volSlider()}
+  <input class="vol" type="range" min="0" max="1" step="0.05" bind:value={volume} aria-label="Volume" />
+{/snippet}
+{#snippet fsSettings()}
+  <span class="lbl">Video on a screen with another shape</span>
+  <div class="seg nomargin" role="radiogroup" aria-label="Video fit in fullscreen">
+    <button role="radio" aria-checked={prefs.fit === "fit"} class:on={prefs.fit === "fit"} onclick={() => (prefs.fit = "fit")} data-testid="fit-fit">Fit (whole video)</button>
+    <button role="radio" aria-checked={prefs.fit === "fill"} class:on={prefs.fit === "fill"} onclick={() => (prefs.fit = "fill")} data-testid="fit-fill">Fill (crop)</button>
+  </div>
+  <label class="slider nopad">
+    <span>Controls panel opacity <b>{Math.round(prefs.panelOpacity * 100)}%</b></span>
+    <input type="range" min="0.4" max="1" step="0.05" bind:value={prefs.panelOpacity} aria-label="Controls panel opacity" data-testid="panel-opacity" />
+  </label>
+  <small class="muted">In fullscreen: H or the arrow hides the controls; hover the bottom centre to bring them back.</small>
+{/snippet}
+
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
   class="player"
@@ -585,56 +684,53 @@
     {/if}
   </div>
 
-  <div class="chrome" bind:clientHeight={chromeH} inert={panelDown} data-testid="player-panel">
+  <div class="chrome" bind:clientHeight={chromeH} bind:clientWidth={chromeW} inert={panelDown} data-testid="player-panel">
     {#if isFs}
       <button class="dropbtn" onclick={() => setPanel(true)} title="Hide the controls (H)" aria-label="Hide the controls" data-testid="panel-down"><Icon name="chevdown" size={16} stroke={2.6} /></button>
     {/if}
-    <div class="cleft">
-      <button class="cbtn" onclick={prev} title="Previous event (P)"><Icon name="prev" size={17} /></button>
-      <button class="cbtn" onpointerdown={(e) => holdStart(e, -1)} onpointerup={holdEnd} onpointerleave={holdEnd} onpointercancel={holdEnd} title="Previous frame (,) · Shift: 10 frames" aria-label="Previous frame" data-testid="step-back"><Icon name="stepback" size={16} /></button>
-      <button class="cbtn play" onclick={toggle} title="Play/pause (Space)"><Icon name={paused ? "play" : "pause"} size={18} fill /></button>
-      <button class="cbtn" onpointerdown={(e) => holdStart(e, 1)} onpointerup={holdEnd} onpointerleave={holdEnd} onpointercancel={holdEnd} title="Next frame (.) · Shift: 10 frames" aria-label="Next frame" data-testid="step-fwd"><Icon name="stepfwd" size={16} /></button>
-      <button class="cbtn" onclick={next} title="Next event (N)"><Icon name="next" size={17} /></button>
-      <div class="time" data-testid="time">
-        {#if (paused || zoomed) && frameReady}
-          <span class="game">{current - offset < 0 ? "Loading " + preciseClock(current - offset) : preciseClock((frames && curFrame != null ? frames[curFrame] : current) - offset)}</span>
-          <span class="muted"> · {curFrame != null ? `frame ${curFrame}` : clock(current)}{isFs ? "" : ` · ${clock(current)} / ${clock(dur)}`}</span>
+    <div class="cleft" bind:this={cleftEl}>
+      {#if shown("evnav")}<button class="cbtn" onclick={prev} title="Previous event (P)" aria-label="Previous event" use:wid={"evprev"}><Icon name="prev" size={17} /></button>{/if}
+      {#if shown("step")}{@render stepBtn(-1)}{/if}
+      <button class="cbtn play" onclick={toggle} title="Play/pause (Space)" aria-label={paused ? "Play" : "Pause"}><Icon name={paused ? "play" : "pause"} size={18} fill /></button>
+      {#if shown("step")}{@render stepBtn(1)}{/if}
+      {#if shown("evnav")}<button class="cbtn" onclick={next} title="Next event (N)" aria-label="Next event" use:wid={"evnext"}><Icon name="next" size={17} /></button>{/if}
+      <div class="time" data-testid="time" bind:offsetWidth={timeW}>
+        {#if frames && (paused || zoomed)}
+          <span class="game">{current - offset < 0 ? "Loading " + preciseClock(current - offset) : preciseClock((frames && curFrame != null ? frames[curFrame] : current) - offset)}</span><span class="muted">&nbsp;· {curFrame != null ? `frame ${curFrame}` : clock(current)}</span>{#if shown("tsub") && !isFs}<span class="muted" use:wid={"tsub"}>&nbsp;· {clock(current)} / {clock(dur)}</span>{/if}
         {:else}
-          <span class="game">{current - offset < 0 ? "Loading screen" : clock(current - offset)}</span>
-          <span class="muted"> game · {clock(current)} / {clock(dur)}</span>
+          <span class="game">{current - offset < 0 ? "Loading screen" : clock(current - offset)}</span>{#if shown("tsub")}<span class="muted" use:wid={"tsub"}>&nbsp;game · {clock(current)} / {clock(dur)}</span>{/if}
         {/if}
       </div>
     </div>
     <div class="cright">
-      <div class="zoomctl" title="Zoom the timeline (Ctrl + mouse wheel over it)">
-        <button class="cbtn sm" onclick={() => timeline?.zoomBy(0.5)} disabled={!zoomed} aria-label="Zoom out" data-testid="zoom-out"><Icon name="zoomout" size={15} /></button>
-        <input class="zslider" type="range" min="0" max="1" step="0.001" value={zoomLevel} oninput={(e) => timeline?.setLevel(Number((e.currentTarget as HTMLInputElement).value))} aria-label="Timeline zoom" data-testid="zoom-slider" />
-        <button class="cbtn sm" onclick={() => timeline?.zoomBy(2)} aria-label="Zoom in" data-testid="zoom-in"><Icon name="zoomin" size={15} /></button>
-        <button class="cbtn sm" onclick={() => timeline?.fit()} disabled={!zoomed} title="Whole game" aria-label="Show the whole game" data-testid="zoom-fit"><Icon name="fitwidth" size={15} /></button>
-      </div>
-      <div class="ovwrap">
-        <button
-          class="chip ovchip"
-          class:off={!overlayOn}
-          style="--c:var(--accent)"
-          onclick={toggleOverlay}
-          disabled={!inputId}
-          aria-pressed={overlayOn}
-          title={inputId ? (overlayError ? `Input overlay: ${overlayError}` : "Input overlay: your cursor, clicks and keys from this game (I)") : "No input recorded for this game"}
-          data-testid="overlay-toggle"
-        >
-          <span class="chip-ic">{#if overlayLoading}<span class="mini-spin"></span>{:else}<Icon name="mouse" size={11} stroke={2.6} />{/if}</span>
-          Input overlay
-        </button>
-        <button class="cbtn optbtn" onclick={() => (optsOpen = !optsOpen)} disabled={!inputId} title="Input overlay options" aria-expanded={optsOpen} data-testid="overlay-options"><Icon name="sliders" size={15} /></button>
-        {#if optsOpen && inputId}
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="ovpop card" onkeydown={(e) => e.key === "Escape" && (optsOpen = false)}>
+      <div class="crin" bind:this={crinEl}>
+        {#if shown("zoom")}<div class="zoomctl" title="Zoom the timeline (Ctrl + mouse wheel over it)" use:wid={"zoom"}>{@render zoomCtl()}</div>{/if}
+        <div class="ovwrap">
+          <button
+            class="chip ovchip"
+            class:off={!overlayOn}
+            class:icononly={!shown("ovtext")}
+            style="--c:var(--accent)"
+            onclick={toggleOverlay}
+            disabled={!inputId}
+            aria-pressed={overlayOn}
+            aria-label="Input overlay"
+            title={inputId ? (overlayError ? `Input overlay: ${overlayError}` : "Input overlay: your cursor, clicks and keys from this game (I)") : "No input recorded for this game"}
+            data-testid="overlay-toggle"
+          >
+            <span class="chip-ic">{#if overlayLoading}<span class="mini-spin"></span>{:else}<Icon name="mouse" size={11} stroke={2.6} />{/if}</span>
+            {#if shown("ovtext")}<span use:wid={"ovtext"}>Input overlay</span>{/if}
+          </button>
+          <button class="cbtn optbtn" onclick={() => openPop(optsOpen ? null : "opts")} disabled={!inputId} title="Input overlay options" aria-label="Input overlay options" aria-expanded={optsOpen} data-testid="overlay-options"><Icon name="sliders" size={15} /></button>
+          {#if optsOpen && inputId}
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div class="ovpop card" use:popfit onkeydown={(e) => e.key === "Escape" && (optsOpen = false)}>
             <div class="ovhead"><strong>Input overlay</strong><button class="x" onclick={() => (optsOpen = false)} aria-label="Close"><Icon name="x" size={14} /></button></div>
             <label class="check"><input type="checkbox" bind:checked={overlayOpts.trail} />Cursor trail</label>
-            <label class="slider" class:dim={!overlayOpts.trail}>
-              <span>Trail length <b>{overlayOpts.trailSecs.toFixed(2).replace(/0$/, "")} s</b></span>
-              <input type="range" min="0.25" max="3" step="0.25" bind:value={overlayOpts.trailSecs} disabled={!overlayOpts.trail} aria-label="Trail length in seconds" />
+            <!-- One time for both: a bubble goes together with the trail piece of its moment. -->
+            <label class="slider" class:dim={!overlayOpts.trail && !(overlayOpts.bubbles && bubbleCats.length)} title={bubbleCats.length ? "How long the cursor trail is, and how long an ability bubble stays: it goes together with the trail piece under it" : "How long the cursor trail is"}>
+              <span>{bubbleCats.length ? "Trail & bubbles" : "Trail length"} <b>{secsLabel(overlayOpts.trailSecs)} s</b></span>
+              <input type="range" min={SECS_MIN} max={SECS_MAX} step={SECS_STEP} bind:value={overlayOpts.trailSecs} disabled={!overlayOpts.trail && !(overlayOpts.bubbles && bubbleCats.length)} aria-label="Trail and bubble time in seconds" data-testid="trail-secs" />
             </label>
             <label class="check"><input type="checkbox" bind:checked={overlayOpts.clicks} />Clicks <span class="legend"><i style="background:#4dabf7"></i>left <i style="background:#ff6b6b"></i>right</span></label>
             <label class="check"><input type="checkbox" bind:checked={overlayOpts.dot} />Cursor dot</label>
@@ -662,41 +758,71 @@
                     </label>
                   {/each}
                 </div>
-                <label class="slider" class:dim={!overlayOpts.bubbles}>
-                  <span>Fade time <b>{overlayOpts.bubbleFade.toFixed(1)} s</b></span>
-                  <input type="range" min={FADE_MIN} max={FADE_MAX} step="0.1" bind:value={overlayOpts.bubbleFade} disabled={!overlayOpts.bubbles} aria-label="Bubble fade time in seconds" />
-                </label>
+                {#if overlayOpts.bubbles && !overlayOpts.trail}
+                  <small class="muted sub">Bubbles stay as long as the trail would ({secsLabel(overlayOpts.trailSecs)} s).</small>
+                {/if}
               </div>
             {/if}
             <small class="muted">Shortcut: I</small>
           </div>
-        {/if}
-      </div>
-      <select class="rate" bind:value={rate} title="Speed">
-        {#each [0.25, 0.5, 1, 1.5, 2] as r}<option value={r}>{r}×</option>{/each}
-      </select>
-      <button class="cbtn" onclick={() => (muted = !muted)} title="Mute (M)"><Icon name={muted ? "mute" : "volume"} size={17} /></button>
-      <input class="vol" type="range" min="0" max="1" step="0.05" bind:value={volume} aria-label="Volume" />
-      <div class="setwrap">
-        <button class="cbtn" onclick={() => (settingsOpen = !settingsOpen)} title="Player settings" aria-expanded={settingsOpen} data-testid="player-settings"><Icon name="gear" size={16} /></button>
-        {#if settingsOpen}
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="ovpop card setpop" onkeydown={(e) => e.key === "Escape" && (settingsOpen = false)}>
-            <div class="ovhead"><strong>Fullscreen</strong><button class="x" onclick={() => (settingsOpen = false)} aria-label="Close"><Icon name="x" size={14} /></button></div>
-            <span class="lbl">Video on a screen with another shape</span>
-            <div class="seg nomargin" role="radiogroup" aria-label="Video fit in fullscreen">
-              <button role="radio" aria-checked={prefs.fit === "fit"} class:on={prefs.fit === "fit"} onclick={() => (prefs.fit = "fit")} data-testid="fit-fit">Fit (whole video)</button>
-              <button role="radio" aria-checked={prefs.fit === "fill"} class:on={prefs.fit === "fill"} onclick={() => (prefs.fit = "fill")} data-testid="fit-fill">Fill (crop)</button>
-            </div>
-            <label class="slider nopad">
-              <span>Controls panel opacity <b>{Math.round(prefs.panelOpacity * 100)}%</b></span>
-              <input type="range" min="0.4" max="1" step="0.05" bind:value={prefs.panelOpacity} aria-label="Controls panel opacity" data-testid="panel-opacity" />
-            </label>
-            <small class="muted">In fullscreen: H or the arrow hides the controls; hover the bottom centre to bring them back.</small>
+          {/if}
+        </div>
+        {#if shown("rate")}<span class="rwrap" use:wid={"rate"}>{@render rateSel()}</span>{/if}
+        <button class="cbtn" onclick={() => (muted = !muted)} title="Mute (M)" aria-label={muted ? "Unmute" : "Mute"}><Icon name={muted ? "mute" : "volume"} size={17} /></button>
+        {#if shown("vol")}<span class="vwrap" use:wid={"vol"}>{@render volSlider()}</span>{/if}
+        {#if shown("set")}
+          <div class="setwrap" use:wid={"set"}>
+            <button class="cbtn" onclick={() => openPop(settingsOpen ? null : "settings")} title="Player settings" aria-label="Player settings" aria-expanded={settingsOpen} data-testid="player-settings"><Icon name="gear" size={16} /></button>
+            {#if settingsOpen}
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <div class="ovpop card setpop" use:popfit onkeydown={(e) => e.key === "Escape" && (settingsOpen = false)}>
+                <div class="ovhead"><strong>Fullscreen</strong><button class="x" onclick={() => (settingsOpen = false)} aria-label="Close"><Icon name="x" size={14} /></button></div>
+                {@render fsSettings()}
+              </div>
+            {/if}
           </div>
         {/if}
+        {#if level > 0}
+          <!-- Controls that don't fit at this player width are in here. -->
+          <div class="setwrap">
+            <button class="cbtn" onclick={() => openPop(moreOpen ? null : "more")} title="More controls" aria-label="More controls" aria-expanded={moreOpen} data-testid="player-more" use:wid={"more"}><Icon name="more" size={18} stroke={3.4} /></button>
+            {#if moreOpen}
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <div class="ovpop card morepop" use:popfit onkeydown={(e) => e.key === "Escape" && (moreOpen = false)} data-testid="player-more-menu">
+                <div class="ovhead"><strong>More controls</strong><button class="x" onclick={() => (moreOpen = false)} aria-label="Close"><Icon name="x" size={14} /></button></div>
+                {#if !shown("evnav") || !shown("step")}
+                  <div class="mrow">
+                    {#if !shown("evnav")}<button class="cbtn" onclick={prev} title="Previous event (P)" aria-label="Previous event"><Icon name="prev" size={17} /></button>{/if}
+                    {#if !shown("step")}{@render stepBtn(-1)}{/if}
+                    {#if !shown("step")}{@render stepBtn(1)}{/if}
+                    {#if !shown("evnav")}<button class="cbtn" onclick={next} title="Next event (N)" aria-label="Next event"><Icon name="next" size={17} /></button>{/if}
+                  </div>
+                {/if}
+                {#if !shown("zoom")}
+                  <span class="lbl">Timeline zoom <small class="muted">(Ctrl + wheel)</small></span>
+                  <div class="zoomctl mrow">{@render zoomCtl()}</div>
+                {/if}
+                {#if !shown("rate")}
+                  <span class="lbl">Speed</span>
+                  <div class="seg nomargin" role="radiogroup" aria-label="Playback speed">
+                    {#each RATES as r}<button role="radio" aria-checked={rate === r} class:on={rate === r} onclick={() => (rate = r)}>{r}×</button>{/each}
+                  </div>
+                {/if}
+                {#if !shown("vol")}
+                  <label class="slider nopad"><span>Volume <b>{Math.round(volume * 100)}%</b></span>{@render volSlider()}</label>
+                {/if}
+                {#if !shown("set")}
+                  <div class="ovgroup">
+                    <strong class="lbl">Fullscreen</strong>
+                    {@render fsSettings()}
+                  </div>
+                {/if}
+              </div>
+            {/if}
+          </div>
+        {/if}
+        <button class="cbtn" onclick={fullscreen} title="Fullscreen (F)" aria-label="Fullscreen"><Icon name="fullscreen" size={17} /></button>
       </div>
-      <button class="cbtn" onclick={fullscreen} title="Fullscreen (F)"><Icon name="fullscreen" size={17} /></button>
     </div>
 
     <div class="tlwrap">
@@ -730,13 +856,15 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    overflow: hidden;
+    /* Not clipped: the popovers above the controls may reach past the player's top. */
     padding-bottom: 12px;
   }
   .screen {
     position: relative;
     aspect-ratio: 16 / 9;
     background: var(--media-bg);
+    overflow: hidden;
+    border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0;
   }
   .vhost {
     position: absolute;
@@ -844,9 +972,20 @@
     display: flex;
     align-items: center;
     justify-content: flex-end;
+    min-width: 0;
+  }
+  /* The right-hand controls at their natural width (measured to decide what fits). */
+  .crin {
+    display: flex;
+    align-items: center;
     gap: 4px;
     padding: 8px 10px 6px 8px;
-    min-width: 0;
+    flex: none;
+  }
+  .rwrap,
+  .vwrap {
+    display: inline-flex;
+    align-items: center;
   }
   .tlwrap {
     grid-area: tl;
@@ -972,7 +1111,7 @@
     padding: 0 0 1px 8px;
     gap: 2px;
   }
-  .player:fullscreen .cright {
+  .player:fullscreen .crin {
     padding: 0 8px 1px 6px;
     gap: 2px;
   }
@@ -1068,6 +1207,7 @@
     margin-left: 8px;
     font-variant-numeric: tabular-nums;
     font-size: 13px;
+    white-space: nowrap;
   }
   .time .game {
     font-weight: 700;
@@ -1133,6 +1273,36 @@
   }
   .ovchip {
     cursor: pointer;
+    white-space: nowrap;
+  }
+  .ovchip.icononly {
+    padding: 4px 5px;
+  }
+  .player:fullscreen .ovchip.icononly {
+    padding: 2px 3px;
+  }
+  .morepop {
+    width: 260px;
+  }
+  .morepop .lbl {
+    font-size: 12px;
+    color: var(--text-2);
+  }
+  .mrow {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .morepop .zoomctl {
+    margin-right: 0;
+  }
+  .morepop .zslider {
+    flex: 1;
+    min-width: 0;
+  }
+  .morepop .vol,
+  .player:fullscreen .morepop .vol {
+    width: 100%;
   }
   .ovchip:disabled,
   .optbtn:disabled {
@@ -1165,6 +1335,10 @@
     animation: fade 0.15s;
     max-height: min(70vh, 480px);
     overflow-y: auto;
+  }
+  /* A popover shorter than its content scrolls; its rows never get squeezed. */
+  .ovpop > :global(*) {
+    flex-shrink: 0;
   }
   .ovhead {
     display: flex;

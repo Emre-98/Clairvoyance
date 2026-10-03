@@ -59,15 +59,17 @@
   </div>
   <div class="meta">
     <ChampionIcon id={s.player?.character_id} name={s.player?.character ?? s.game_name} size={38} />
+    <!-- Two lines that share the width separately: name + KDA, then mode + date (so a long date
+         never shortens the champion's name). Anything shortened has its full text as a tooltip. -->
     <div class="txt">
-      <div class="title">{s.player?.character ?? s.game_name}</div>
-      <div class="sub">
-        {#if s.mode_name ?? s.player?.mode}<span class="modetag" title={s.queue_id ? `Queue ${s.queue_id}` : ""}>{s.mode_name ?? s.player?.mode}</span>{:else}{s.game_name}{/if}
+      <div class="line">
+        <span class="title" title={s.player?.character ?? s.game_name}>{s.player?.character ?? s.game_name}</span>
+        <span class="kda">{kda(s.stats)}</span>
       </div>
-    </div>
-    <div class="right">
-      <div class="kda">{kda(s.stats)}</div>
-      <div class="sub">{relativeDate(s.started_at)}</div>
+      <div class="line sub">
+        {#if s.mode_name ?? s.player?.mode}<span class="modetag" title={(s.mode_name ?? s.player?.mode) + (s.queue_id ? ` (queue ${s.queue_id})` : "")}>{s.mode_name ?? s.player?.mode}</span>{:else}<span class="gname" title={s.game_name}>{s.game_name}</span>{/if}
+        <span class="date" title={relativeDate(s.started_at)}>{relativeDate(s.started_at)}</span>
+      </div>
     </div>
   </div>
 </button>
@@ -198,17 +200,37 @@
     flex: 1;
     min-width: 0;
   }
+  .line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+  }
   .title {
     font-weight: 650;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    min-width: 0;
   }
   .sub {
     font-size: 12px;
     color: var(--muted);
     margin-top: 2px;
     white-space: nowrap;
+  }
+  .gname,
+  .date {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+  /* The date gives way last (the mode name shortens first; both have their full text as a
+     tooltip). */
+  .date {
+    flex: 0 0 auto;
+    text-align: right;
   }
   .modetag {
     display: inline-block;
@@ -224,11 +246,11 @@
     overflow: hidden;
     text-overflow: ellipsis;
     vertical-align: middle;
-  }
-  .right {
-    text-align: right;
+    flex: 0 1 auto;
+    min-width: 2.5em;
   }
   .kda {
+    flex: none;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
   }

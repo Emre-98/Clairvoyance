@@ -30,7 +30,7 @@ const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
 page.on("pageerror", (e) => console.log("pageerror", e.message));
 await page.goto(BASE);
 // Only the bubbles on the canvas: no trail, clicks, dot, keys or heatmap.
-const only = { trail: false, clicks: false, dot: false, keys: false, heat: false, bubbles: true, bubbleFade: 1, bubbleCats: {} };
+const only = { trail: false, clicks: false, dot: false, keys: false, heat: false, bubbles: true, trailSecs: 1, bubbleCats: {}, v: 2 };
 await page.evaluate((o) => localStorage.setItem("cv.inputOverlay", JSON.stringify(o)), only);
 await page.reload();
 await page.waitForSelector("button.card.game");
@@ -80,7 +80,8 @@ async function scan(kind, box = null, tol = 40) {
           const i = (y * c.width + x) * 4;
           if (d[i + 3] > 0) any++;
           let ok;
-          if (kind === "white") ok = d[i] > 235 && d[i + 1] > 235 && d[i + 2] > 235 && d[i + 3] > 200;
+          if (kind === "any") ok = d[i + 3] > 0;
+          else if (kind === "white") ok = d[i] > 235 && d[i + 1] > 235 && d[i + 2] > 235 && d[i + 3] > 200;
           else if (kind === "Rfaint") ok = d[i + 3] > 40 && d[i] > 110 && d[i + 2] > 170 && d[i + 1] < 140 && d[i + 2] - d[i + 1] > 70;
           else {
             const [r, g, b] = COLORS[kind];
@@ -143,23 +144,79 @@ for (const [t, n0, n1] of [
   check(`key-down at ${t} s shows on frame ${f.toFixed(3)}`, b === a + (t === 41.53 ? 2 : 1) && (n0 == null || (a === n0 && b === n1)), `${a} bubbles on the frame before, ${b} on its frame`);
 }
 
-// 3. Fade time: 0.1 s and 3 s, changed live with the slider (no reload).
+// 3. One "Trail & bubbles" time (v1.7), 0.25 s and 3 s, changed live with the slider (no
+// reload): the ward bubble and the piece of the cursor trail drawn at its key-down end on the
+// same frame: on every frame with the bubble the trail is painted under its anchor, and on the
+// first frame without it the trail's end has moved past the key-down point (a point 3 px behind
+// it on the path, more than the trail's half width + its round cap, is no longer painted).
+// Trail and bubbles are drawn separately (trail only / bubbles only) so the trail pixels under
+// the anchor aren't hidden by the bubble's anchor dot; the bubble's timing doesn't depend on
+// whether the trail is shown.
 await page.locator('[data-testid="overlay-options"]').click();
-const slider = page.getByRole("slider", { name: "Bubble fade time in seconds" });
+const slider = page.getByRole("slider", { name: "Trail and bubble time in seconds" });
 const region = { x0: e.x - 40, y0: e.y - 60, x1: e.x + 40, y1: e.y + 8 };
 const box = [region.x0, region.y0, region.x1, region.y1];
-for (const [fade, alive, gone] of [
-  [0.1, 0.05, 0.12],
-  [3, 2.9, 3.03],
-]) {
-  await slider.fill(String(fade));
-  const shown = await page.evaluate(() => JSON.parse(localStorage.getItem("cv.inputOverlay")).bubbleFade);
-  await seek(fw + alive);
-  const a = await scan("ward", box, 255);
-  await seek(fw + gone);
-  const b = await scan("ward", box, 255);
-  check(`fade ${fade} s: visible for exactly the slider time`, shown === fade && a.any > 10 && b.any === 0, `${a.any} px ${alive} s after its frame, ${b.any} px at ${gone} s (option saved: ${shown})`);
+const under = [e.x - 1, e.y - 1, e.x + 1, e.y + 1];
+// 3 px behind the key-down point on the cursor's path (earlier positions).
+const eb = await (async () => {
+  const p1 = await expectedPx(...pos(tw - 0.01));
+  const d = Math.hypot(p1.x - e.x, p1.y - e.y);
+  return expectedPx(...pos(tw - (0.01 * 3) / d));
+})();
+const behind = [eb.x - 1, eb.y - 1, eb.x + 1, eb.y + 1];
+const trailBox = page.getByRole("checkbox", { name: "Cursor trail" });
+const bubbleBox = page.getByRole("checkbox", { name: "Ability bubbles" });
+/** Frame k's start in the sample video (30 fps, whole-ms WebM timestamps). */
+const frameAt = (k) => Math.round((k * 1000) / 30) / 1000;
+for (const secs of [0.25, 3]) {
+  await slider.fill(String(secs));
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("cv.inputOverlay")));
+  // Frames from just before the expected end (the trail's sample after the key-down + secs).
+  const kEnd = Math.floor((tw + secs) * 30);
+  const rows = [];
+  let lastBubble = null, bubbleNoTrail = 0, goneTrailBehind = null, goneTrailAt = null;
+  const fr = [];
+  for (let k = kEnd - 3; k <= kEnd + 4; k++) {
+    const ft = frameAt(k) + 0.0005;
+    await trailBox.check();
+    await bubbleBox.uncheck();
+    await seek(ft);
+    const tr = await scan("any", under);
+    const tb = await scan("any", behind);
+    await trailBox.uncheck();
+    await bubbleBox.check();
+    await seek(ft);
+    const bu = await scan("ward", box, 255);
+    fr.push({ k, tr: tr.any, tb: tb.any, bu: bu.any });
+    rows.push(`${frameAt(k).toFixed(3)}: trail at/behind ${tr.any}/${tb.any}, bubble ${bu.any}`);
+  }
+  for (const f of fr) {
+    if (f.bu > 10) {
+      lastBubble = f.k;
+      if (f.tr === 0) bubbleNoTrail++;
+    }
+  }
+  const after = fr.find((f) => lastBubble != null && f.k === lastBubble + 1);
+  check(
+    `trail & bubbles ${secs} s: the bubble ends on the same frame as its trail piece`,
+    saved.trailSecs === secs && !("bubbleFade" in saved) && lastBubble != null && bubbleNoTrail === 0 && after && after.bu === 0 && after.tb === 0 && fr[0].bu > 10,
+    `last frame with the bubble ${lastBubble != null ? frameAt(lastBubble).toFixed(3) : "-"} s (key-down ${tw} s + ${secs} s), frames with the bubble but no trail under it: ${bubbleNoTrail}, next frame: trail behind the point ${after?.tb} px; ${rows.join(", ")}; saved ${JSON.stringify({ trailSecs: saved.trailSecs })}`,
+  );
+  // And it was there for the whole time before: on its frame and half-way.
+  await seek(fw + 0.002);
+  const first = await scan("ward", box, 255);
+  await seek(fw + secs / 2);
+  const half = await scan("ward", box, 255);
+  check(`trail & bubbles ${secs} s: visible from its frame on`, first.any > 10 && half.any > 10, `${first.any} px on its frame, ${half.any} px ${secs / 2} s later`);
 }
+// Combined, for the report: trail + bubbles at 1 s, mid-life.
+await trailBox.check();
+await slider.fill("1");
+await seek(fw + 0.5);
+await page.locator(".screen").screenshot({ path: `${OUT}/bubble-trail.png` });
+await trailBox.uncheck();
+// The spam checks below use 3 s (30+ bubbles at once).
+await slider.fill("3");
 await page.locator(".ovpop .x").click();
 
 // 4. Q spam with a W in the middle, fade 3 s: 30+ bubbles at once, Qs overlap at their own
@@ -231,7 +288,7 @@ check("draw < 2 ms per frame with 30+ bubbles", draw.d.length > 30 && draw.maxDr
 
 // 6. Ult tie-in: R at 31.3 s confirmed (solid), R at 38.3 s "no cast" (hidden until the
 // timeline's "Unconfirmed presses" filter is on, then outlined).
-await page.evaluate((o) => localStorage.setItem("cv.inputOverlay", JSON.stringify({ ...o, bubbleFade: 1 })), only);
+await page.evaluate((o) => localStorage.setItem("cv.inputOverlay", JSON.stringify(o)), only);
 await page.locator('[data-testid="overlay-options"]').click();
 await slider.fill("1");
 await page.locator(".ovpop .x").click();

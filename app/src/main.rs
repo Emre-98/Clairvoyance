@@ -108,7 +108,10 @@ fn build_main_window(app: &AppHandle, visible: bool) -> Option<tauri::WebviewWin
         .initialization_script(&boot)
         .title("Clairvoyance")
         .inner_size(1320.0, 820.0)
-        .min_inner_size(980.0, 620.0)
+        // v1.7: small enough for a 1366 x 768 screen at 125 % with the taskbar (1093 x 576) and a
+        // 1920 x 1080 one at 150 %; every page is checked from this size up to 4K at 100 / 125 /
+        // 150 % (ui/tests/layout.test.mjs).
+        .min_inner_size(940.0, 560.0)
         .decorations(false)
         .shadow(true)
         .background_color(theme_background(theme_is_dark(&theme)))

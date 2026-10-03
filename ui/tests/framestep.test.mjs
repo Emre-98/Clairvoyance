@@ -304,7 +304,8 @@ async function stepKey(page, key, opts = {}) {
   check("playhead stays in view while playing zoomed in", inView.out === 0, `span ${vz.span.toFixed(1)} s, ${inView.n} samples, ${inView.out} out of view`);
   // Markers that overlap at the whole-game view spread out when zoomed in.
   await page.click('[data-testid="zoom-fit"]');
-  await page.waitForTimeout(100);
+  // The hit buttons follow the drawn markers 120 ms after the view settles (Timeline.svelte).
+  await page.waitForTimeout(300);
   const lanesAt = () =>
     page.evaluate(() => {
       const els = [...document.querySelectorAll(".timeline .mk")].filter((e) => e.style.display !== "none");
@@ -325,7 +326,7 @@ async function stepKey(page, key, opts = {}) {
     });
   const full = await lanesAt();
   for (let k = 0; k < 5; k++) await page.click('[data-testid="zoom-in"]');
-  await page.waitForTimeout(150);
+  await page.waitForTimeout(300);
   const zoomedL = await lanesAt();
   check("overlapping markers spread out when zoomed in", full.overlaps > 0 && zoomedL.overlaps < full.overlaps / 5, `whole game: ${full.shown} markers, ${full.overlaps} overlapping; zoomed: ${zoomedL.shown} shown, ${zoomedL.overlaps} overlapping`);
   // A marker click works zoomed in.

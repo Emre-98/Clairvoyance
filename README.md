@@ -52,13 +52,15 @@ games, clips and downloaded tools over; the Home page then offers to uninstall t
   Shift + wheel or dragging pans. **Fullscreen**: the video fills the screen and the controls sit
   over its bottom as a see-through panel; the small arrow (or **H**) slides it away for true
   fullscreen, hover the bottom centre to bring it back. Player settings (gear): Fit / Fill for
-  screens of another shape, panel opacity.
+  screens of another shape, panel opacity. In a small window the controls that don't fit move
+  into the **⋯ More controls** menu (volume, speed, player settings, zoom...), so nothing overlaps.
 - **Input overlay** (button under the video, or **I**): your cursor trail, clicks (left blue,
   right red), cursor dot, the keys you pressed and a cursor heatmap, drawn over the replay. Off
   every time a replay opens; options next to the button. **Ability bubbles**: each ability,
   summoner spell, item or ward you used pops up as a small bubble (Q W E R, D F, item slot 1-6,
-  a ward) exactly where your cursor was, on the exact video frame, and fades out (fade time
-  0.1-3 s; Abilities / Summoners / Items / Ward toggles). Your League keybinds are read from
+  a ward) exactly where your cursor was, on the exact video frame, and disappears together with
+  the piece of cursor trail drawn at that moment (one "Trail & bubbles" time, 0.25-3 s;
+  Abilities / Summoners / Items / Ward toggles). Your League keybinds are read from
   League's own settings and saved with each game, so a rebound key still shows its ability (with
   the key as a small hint) and Ctrl+Q level-ups don't count; R follows the ult check (a press
   without a cast is faded, shown with the "Unconfirmed presses" filter). The game page also shows

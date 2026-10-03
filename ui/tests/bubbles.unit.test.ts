@@ -2,7 +2,8 @@
 //   node --experimental-strip-types --test tests/bubbles.unit.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { aliveRange, animation, draw, geometry, layout, sampleFrameOf, syntheticActions, RECAST_SCALE, SAMPLE_ACTIONS, type BubbleOptions, type PressArrays } from "../src/lib/bubbles.ts";
+import { alive, aliveRange, animation, draw, geometry, layout, pressEnds, sampleFrameOf, syntheticActions, trailEnds, ALPHA_END, RECAST_SCALE, SAMPLE_ACTIONS, type BubbleOptions, type PressArrays } from "../src/lib/bubbles.ts";
+import { migrateOptions, clampSecs, DEFAULT_OPTIONS } from "../src/lib/overlayoptions.ts";
 
 const Q = 0, W = 1, R = 3;
 const opts = (o: Partial<BubbleOptions> = {}): BubbleOptions => ({ on: true, fade: 1, cats: {}, unconfirmed: false, ...o });
@@ -23,23 +24,148 @@ function presses(list: [number, number, number, number, number?][]): { p: PressA
   return { p, anchor: (i) => [p.x[i], p.y[i]] };
 }
 
-test("pop in, hold, fade out; visible exactly for the fade time", () => {
-  for (const fade of [0.1, 1, 3]) {
-    assert.equal(animation(-0.001, fade), null, "not before its frame");
-    const a0 = animation(0, fade)!;
+test("pop in, hold, fade out to the trail's faintest level; visible exactly for its time", () => {
+  for (const total of [0.25, 1, 3]) {
+    assert.equal(animation(-0.001, total), null, "not before its frame");
+    const a0 = animation(0, total)!;
     assert.ok(a0 && a0.scale < 1 && a0.alpha === 1, "pops in from its frame");
-    assert.ok(animation(Math.min(0.1, fade * 0.3), fade)!.scale === 1, "pop done within 100 ms");
-    assert.ok(animation(fade - 0.001, fade)!.alpha < 0.05, "almost gone at the end");
-    assert.equal(animation(fade, fade), null, "gone after the fade time");
+    assert.ok(animation(Math.min(0.1, total * 0.3), total)!.scale === 1, "pop done within 100 ms");
+    const last = animation(total - 0.001, total)!.alpha;
+    assert.ok(last >= ALPHA_END && last < ALPHA_END + 0.05, `as faint as the trail's oldest part at the end (${last})`);
+    assert.equal(animation(total, total), null, "gone after its time");
   }
   assert.equal(animation(0.5, 1)!.alpha, 1, "holds before fading");
 });
 
-test("alive range follows the frame time and the fade time", () => {
+test("alive range: from its frame until its trail piece leaves the trail", () => {
   const show = [1, 2, 2.5, 3, 10];
-  assert.deepEqual(aliveRange(show, 2.9, 1), [1, 3]);
-  assert.deepEqual(aliveRange(show, 3, 1), [2, 4], "a bubble is gone exactly fade s after its frame; the new one shows on its frame");
-  assert.deepEqual(aliveRange(show, 0.5, 3), [0, 0]);
+  const e = pressEnds(show);
+  assert.deepEqual(aliveRange(show, e.max, 2.9, 1), [1, 3]);
+  assert.deepEqual(aliveRange(show, e.max, 3, 1), [1, 4], "the one at 2 s is still in the range at exactly 3 s (end >= t - secs, like the trail)");
+  assert.equal(alive(show, e, 1, 3, 1), true);
+  assert.equal(alive(show, e, 1, 3.0001, 1), false);
+  assert.deepEqual(aliveRange(show, e.max, 0.5, 3), [0, 0]);
+});
+
+// The trail's own rule (lib/inputoverlay.ts Overlay.draw): at time t the segment ending at
+// sample k is drawn when lowerBound(mt, t - secs) <= k (= mt[k] >= t - secs), mt[k] <= t, k >= 1
+// and k doesn't start a new stroke.
+function lowerBound(a: ArrayLike<number>, v: number) {
+  let lo = 0, hi = a.length;
+  while (lo < hi) {
+    const m = (lo + hi) >> 1;
+    if (a[m] < v) lo = m + 1;
+    else hi = m;
+  }
+  return lo;
+}
+function segmentDrawn(mt: Float32Array, mb: Uint8Array, k: number, t: number, secs: number) {
+  const t0 = t - secs;
+  const lo = Math.max(1, lowerBound(mt, t0));
+  const hi = lowerBound(mt, t + 1e-12) - 1;
+  return !mb[k] && k >= lo && k <= hi;
+}
+
+/** A cursor moving at 250 Hz with timer jitter, a 2 s rest (no samples), a stroke break. */
+function cursor(dur = 30, rate = 250) {
+  const mt: number[] = [];
+  const mb: number[] = [];
+  let t = 0, seed = 7;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32);
+  while (t < dur) {
+    if (t > 10 && t < 12) {
+      t = 12;
+      continue;
+    }
+    mt.push(t);
+    mb.push(mt.length === 1 || Math.abs(t - 20) < 0.003 ? 1 : 0);
+    t += (1 / rate) * (0.8 + 0.4 * rnd());
+  }
+  return { mt: Float32Array.from(mt), mb: Uint8Array.from(mb), rate };
+}
+
+test("trail ends: the press's trail sample (moving), its own time (at rest / new stroke)", () => {
+  const { mt, mb, rate } = cursor();
+  const k = 1000;
+  const mid = (mt[k - 1] + mt[k]) / 2;
+  const at = trailEnds([mid, mt[k], 11, mt[lowerBound(mt, 12)] - 0.5 / rate], mt, mb, rate);
+  assert.equal(at.end[0], mt[k], "between two samples: the segment ending at the next one");
+  assert.equal(at.end[1], mt[k], "exactly on a sample: that sample (the end of its segment)");
+  assert.equal(at.end[2], 11, "cursor at rest: the press time");
+  assert.equal(at.end[3], mt[lowerBound(mt, 12)], "moving off after the rest, within the last period: that segment");
+  const brk = lowerBound(mt, 19.999);
+  assert.equal(mb[brk], 1);
+  assert.equal(trailEnds([(mt[brk - 1] + mt[brk]) / 2], mt, mb, rate).end[0], (mt[brk - 1] + mt[brk]) / 2, "before a stroke break: the press time");
+  assert.deepEqual([...trailEnds([5], new Float32Array(), new Uint8Array(), 250).end], [5], "no samples: the press time");
+});
+
+test("bubble and its trail piece end on the same frame (0.25 s and 3 s, 60 fps and 30 fps)", () => {
+  const { mt, mb, rate } = cursor();
+  // Presses spread over the moving parts, off the frame grid.
+  const t: number[] = [];
+  for (let x = 0.5; x < 29; x += 0.137) if (!(x > 9.9 && x < 12.1) && Math.abs(x - 20) > 0.05) t.push(Math.round(x * 1e4) / 1e4);
+  const ends = trailEnds(t, mt, mb, rate);
+  for (const fps of [60, 30]) {
+    const frame = (i: number) => Math.round((i * 1000) / fps) / 1000;
+    for (const secs of [0.25, 3]) {
+      let checked = 0, mismatches = 0;
+      for (let i = 0; i < t.length; i++) {
+        const k = lowerBound(mt, t[i] + 1e-12); // the sample ending the segment under the press
+        if (mb[k] || ends.end[i] !== mt[k]) continue;
+        // Frame of the key-down (bubble's first frame) and the last frame the trail piece is drawn.
+        const f0 = Math.floor(t[i] * fps + 1e-9);
+        let lastTrail = -1, lastBubble = -1;
+        for (let f = f0; frame(f) <= t[i] + secs + 0.2; f++) {
+          const ft = frame(f);
+          const show = frame(f0);
+          if (ft >= mt[k] && segmentDrawn(mt, mb, k, ft, secs)) lastTrail = f;
+          if (alive([show], { end: Float64Array.of(ends.end[i]), max: Float64Array.of(ends.end[i]) }, 0, ft, secs)) lastBubble = f;
+        }
+        checked++;
+        if (lastTrail !== lastBubble) mismatches++;
+      }
+      assert.ok(checked > 150, `${checked} presses`);
+      assert.equal(mismatches, 0, `${fps} fps, ${secs} s: ${mismatches} of ${checked} presses end on another frame than their trail piece`);
+    }
+  }
+});
+
+test("draw: the bubble is drawn exactly while its trail piece is", () => {
+  const { mt, mb, rate } = cursor();
+  const { p, anchor } = presses([[5.0021, 200, 150, Q]]);
+  const ends = trailEnds(p.t, mt, mb, rate);
+  const k = lowerBound(mt, 5.0021 + 1e-12);
+  const g: any = new Proxy({}, { get: (_t, key) => (key === "measureText" ? () => ({ width: 10 }) : () => {}), set: () => true });
+  for (const secs of [0.25, 3]) {
+    const L = layout(p, SAMPLE_ACTIONS, opts({ fade: secs }), BASE, anchor, ends);
+    const lastOn = mt[k] + secs;
+    assert.equal(draw(g, p, SAMPLE_ACTIONS, L, opts({ fade: secs }), BASE, lastOn - 0.001, ends), 1);
+    assert.equal(segmentDrawn(mt, mb, k, lastOn - 0.001, secs), true);
+    assert.equal(draw(g, p, SAMPLE_ACTIONS, L, opts({ fade: secs }), BASE, lastOn + 0.001, ends), 0);
+    assert.equal(segmentDrawn(mt, mb, k, lastOn + 0.001, secs), false);
+  }
+});
+
+test("options: one Trail & bubbles time, old saved values migrated", () => {
+  assert.equal(DEFAULT_OPTIONS.trailSecs, 1);
+  assert.equal("bubbleFade" in DEFAULT_OPTIONS, false);
+  // v1.5/v1.6 saves always had both times.
+  assert.equal(migrateOptions({ trail: true, trailSecs: 2.5, bubbles: true, bubbleFade: 0.4 }).trailSecs, 2.5, "trail on: its length is kept");
+  assert.equal(migrateOptions({ trail: false, trailSecs: 2.5, bubbles: true, bubbleFade: 0.4 }).trailSecs, 0.4, "only bubbles in use: their fade time");
+  assert.equal(migrateOptions({ trail: false, trailSecs: 2.5, bubbles: false, bubbleFade: 0.4 }).trailSecs, 2.5, "neither in use: the trail length");
+  assert.equal(migrateOptions({ bubbleFade: 3 }).trailSecs, 3, "a fade time alone");
+  assert.equal(migrateOptions({ trail: false, bubbles: true, trailSecs: 1, bubbleFade: 0.1 }).trailSecs, 0.25, "clamped to 0.25 s");
+  assert.equal(migrateOptions({ trailSecs: 9 }).trailSecs, 3);
+  assert.equal(migrateOptions({ trailSecs: "x" }).trailSecs, 1);
+  assert.equal("bubbleFade" in migrateOptions({ trailSecs: 1, bubbleFade: 2 }), false, "the old field is dropped");
+  // Already the new format: the fade field (if any) is ignored.
+  assert.equal(migrateOptions({ v: 2, trail: false, trailSecs: 1.5, bubbleFade: 0.4 }).trailSecs, 1.5);
+  assert.equal("v" in migrateOptions({ v: 2, trailSecs: 1 }), false);
+  assert.equal(clampSecs(0.35), 0.35);
+  assert.equal(clampSecs(1.03), 1.05);
+  // Other options untouched.
+  const o = migrateOptions({ trail: true, trailSecs: 1.25, clicks: false, keys: true, heat: true, heatRange: "range", bubbleCats: { ward: false }, bubbleFade: 1 });
+  assert.deepEqual(o, { ...DEFAULT_OPTIONS, trailSecs: 1.25, clicks: false, keys: true, heat: true, heatRange: "range", bubbleCats: { ward: false } });
 });
 
 test("same action pressed repeatedly: bubbles overlap at their exact positions, no offsets", () => {

@@ -110,7 +110,7 @@
           {#each r.now as { key, e } (key)}
             <div class="mode">
               <div class="mname">
-                <span>{e.name}</span>
+                <span title={e.name}>{e.name}</span>
                 {#if e.is_new}<span class="newbadge">New mode detected</span>{/if}
                 {#if e.queue_id}<span class="qid" title="Queue id">#{e.queue_id}</span>{/if}
               </div>
@@ -125,7 +125,7 @@
               {#each r.gone as { key, e } (key)}
                 <div class="mode gone">
                   <div class="mname">
-                    <span>{e.name}</span>
+                    <span title={e.name}>{e.name}</span>
                     <span class="gonetag">not currently available</span>
                     {#if e.queue_id}<span class="qid">#{e.queue_id}</span>{/if}
                   </div>
@@ -219,15 +219,22 @@
   .mname {
     flex: 1;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
+    gap: 2px 8px;
     min-width: 0;
     font-size: 13.5px;
   }
+  /* A narrow window: the badges go under the name instead of shortening it. */
   .mname > span:first-child {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .mname > span:not(:first-child) {
+    flex: none;
   }
   .qid {
     font-size: 11px;

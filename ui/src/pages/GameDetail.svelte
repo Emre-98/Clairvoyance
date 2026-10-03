@@ -135,11 +135,13 @@
         </div>
         <div class="muted">{hd.game_name}{(hd.mode_name ?? hd.player?.mode) ? ` · ${hd.mode_name ?? hd.player?.mode}` : ""}{hd.record_mode === "clips_only" ? " · clips only" : ""} · {relativeDate(hd.started_at)}{s ? ` · ${clock(gameLen)}` : ""}</div>
       </div>
-      <div class="spacer"></div>
+      <!-- In a narrow window the buttons go on their own line (the title keeps its width). -->
+      <div class="hact">
       <button class="btn" class:favon={hd.favorite} onclick={toggleFav} disabled={!s} title="Favorites are never deleted by the storage clean-up" aria-pressed={!!hd.favorite}><Icon name="star" size={15} fill={hd.favorite} />{hd.favorite ? "Favorite" : "Add to favorites"}</button>
       <button class="btn" onclick={startClip} disabled={!view?.video_path}><Icon name="scissors" size={15} />Create clip</button>
       <button class="btn" onclick={() => view && api.reveal(view.video_path ?? view.dir)} disabled={!view}><Icon name="folder" size={15} />Folder</button>
-      <button class="btn ghost icon danger" onclick={del} disabled={!s} title="Delete game"><Icon name="trash" size={16} /></button>
+      <button class="btn ghost icon danger" onclick={del} disabled={!s} title="Delete game" aria-label="Delete game"><Icon name="trash" size={16} /></button>
+      </div>
     </div>
 
     <div class="main">
@@ -188,7 +190,7 @@
           {/if}
           {#each listEvents as e (e.id)}
             {@const m = KIND[e.kind] ?? KIND.manual_marker}
-            <button class="ev" class:active={e.id === activeId} data-id={e.id} onclick={() => player?.jumpTo(e)}>
+            <button class="ev" class:active={e.id === activeId} data-id={e.id} onclick={() => player?.jumpTo(e)} title={e.details ? `${e.title}: ${e.details}` : undefined}>
               <span class="ev-ic" style="background:{m.color}"><Icon name={m.icon} size={12} stroke={2.4} /></span>
               <span class="ev-txt">
                 <span class="ev-title">{e.title}{#if e.steal}<span class="steal">STEAL</span>{/if}</span>
@@ -310,9 +312,22 @@
   }
   .head {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 14px;
+    gap: 10px 14px;
     margin-bottom: 20px;
+  }
+  .htxt {
+    flex: 1 1 280px;
+    min-width: 0;
+  }
+  .hact {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px 14px;
+    margin-left: auto;
   }
   .htxt h1 {
     font-size: 24px;

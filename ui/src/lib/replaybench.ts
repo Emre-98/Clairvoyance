@@ -279,7 +279,7 @@ async function overlayBench(id: string) {
         at = show[i];
       }
     }
-    localStorage.setItem("cv.inputOverlay", JSON.stringify({ bubbleFade: 3 }));
+    localStorage.setItem("cv.inputOverlay", JSON.stringify({ trailSecs: 3, v: 2 }));
     go({ page: "games" });
     await sleep(600);
     go({ page: "game", id });
@@ -336,6 +336,11 @@ async function playerBench(id: string) {
   const v = await waitFor(() => video(), 30000);
   if (!v) return { error: "no player" };
   await waitFor(() => v.readyState >= 3, 30000);
+  // v1.7: in a narrow window the zoom controls are in the "More controls" menu.
+  if (!document.querySelector('[data-testid="zoom-slider"]')) {
+    document.querySelector<HTMLButtonElement>('[data-testid="player-more"]')?.click();
+    await sleep(200);
+  }
   if (!document.querySelector('[data-testid="zoom-slider"]')) return { supported: false };
   await sleep(800); // frame times
   // Frame steps in the middle of the game: 30 forward, 30 back (each waits for its frame).

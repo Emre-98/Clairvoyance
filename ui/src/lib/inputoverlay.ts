@@ -1,7 +1,9 @@
 // Replay input overlay: parses the recorded mouse/keyboard data (binary from `input_load`,
 // layout in cv_core::input::stats::ui_payload) and draws it over the video for a time `t`
 // (video seconds). Pure functions + one Overlay class; no Svelte here so it can be tested.
-import { Bubbles, baseRadius, FADE_DEFAULT, FADE_MAX, FADE_MIN, type ActionsView, type BubbleOptions } from "./bubbles";
+import { Bubbles, baseRadius, type ActionsView, type BubbleOptions } from "./bubbles";
+import type { OverlayOptions } from "./overlayoptions";
+export { DEFAULT_OPTIONS, loadOptions, saveOptions, migrateOptions, clampSecs, type OverlayOptions } from "./overlayoptions";
 
 export interface InputData {
   rate: number;
@@ -34,57 +36,6 @@ export interface KeyBar {
   t1: number;
   label: string;
   lane: number;
-}
-
-export interface OverlayOptions {
-  trail: boolean;
-  trailSecs: number;
-  clicks: boolean;
-  dot: boolean;
-  keys: boolean;
-  heat: boolean;
-  /** "game" = whole game, "range" = the selected range (if any). */
-  heatRange: "game" | "range";
-  /** Ability bubbles (action keys: abilities, summoners, items, ward). */
-  bubbles: boolean;
-  /** Total time a bubble is visible (s). */
-  bubbleFade: number;
-  /** Category id -> shown (missing = shown). */
-  bubbleCats: Record<string, boolean>;
-}
-
-export const DEFAULT_OPTIONS: OverlayOptions = {
-  trail: true,
-  trailSecs: 1,
-  clicks: true,
-  dot: true,
-  keys: false,
-  heat: false,
-  heatRange: "game",
-  bubbles: true,
-  bubbleFade: FADE_DEFAULT,
-  bubbleCats: {},
-};
-const OPT_KEY = "cv.inputOverlay";
-
-export function loadOptions(): OverlayOptions {
-  try {
-    const raw = localStorage.getItem(OPT_KEY);
-    if (raw) {
-      const o = { ...DEFAULT_OPTIONS, bubbleCats: {}, ...JSON.parse(raw) } as OverlayOptions;
-      const f = Number(o.bubbleFade);
-      o.bubbleFade = Number.isFinite(f) ? Math.min(FADE_MAX, Math.max(FADE_MIN, Math.round(f * 10) / 10)) : FADE_DEFAULT;
-      if (typeof o.bubbleCats !== "object" || !o.bubbleCats) o.bubbleCats = {};
-      return o;
-    }
-  } catch {}
-  return { ...DEFAULT_OPTIONS, bubbleCats: {} };
-}
-
-export function saveOptions(o: OverlayOptions) {
-  try {
-    localStorage.setItem(OPT_KEY, JSON.stringify(o));
-  } catch {}
 }
 
 export function vkName(vk: number): string {
@@ -339,6 +290,8 @@ export class Overlay {
 
   setBubbles(v: ActionsView | null) {
     this.bubbles = v && v.presses.t.length ? new Bubbles(v) : null;
+    // Every bubble goes with the trail piece of its moment.
+    this.bubbles?.setTrail(this.d.mt, this.d.mb, this.d.rate);
     this.version++;
   }
 
@@ -453,7 +406,9 @@ export class Overlay {
       g.stroke();
     }
     if (o.bubbles && this.bubbles) {
-      const bo: BubbleOptions = { on: true, fade: o.bubbleFade, cats: o.bubbleCats ?? {}, unconfirmed: showUnconfirmed };
+      // One time for the trail and the bubbles (also with the trail switched off: the bubbles
+      // keep the time the trail would have).
+      const bo: BubbleOptions = { on: true, fade: o.trailSecs, cats: o.bubbleCats ?? {}, unconfirmed: showUnconfirmed };
       const base = baseRadius(rect.h);
       const p = this.bubbles.v.presses;
       // Each anchor with the window/letterbox mapping of its own moment (it never follows the
