@@ -3,6 +3,13 @@
 Newest first. `scripts/release.ps1` adds a section for each release; the section becomes the
 release notes on GitHub and in the in-app "Update available" card.
 
+## [1.7.0] - 2026-10-03
+
+- Any window size works: nothing overlaps or gets cut off, from a small window up to 4K at 100/125/150 % scaling. Player controls that don't fit move into a new '...' More controls menu, and menus always stay on screen
+- The window can now be made smaller (940 x 560)
+- Input overlay: one 'Trail & bubbles' slider (0.25-3 s) instead of two; an ability bubble now disappears on the same frame as the piece of cursor trail under it. Your old setting is kept
+- Game cards show the full champion name; long texts show in full when you hover them
+
 ## [1.6.1] - 2026-10-02
 
 - Gaming laptops with two GPUs: recording now uses the NVIDIA/AMD encoder, and that GPU can go back to sleep after a game
