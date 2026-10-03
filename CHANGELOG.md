@@ -3,6 +3,13 @@
 Newest first. `scripts/release.ps1` adds a section for each release; the section becomes the
 release notes on GitHub and in the in-app "Update available" card.
 
+## [1.7.1] - 2026-10-03
+
+- Your game is ready a few seconds after it ends: the recording makes itself instantly playable the moment it stops (no more waiting for it to be prepared), so it opens and jumps to markers at once, also after a long game
+- Recording now stops 2 seconds into the victory / defeat screen (was 6), and leaving a game is noticed faster; the thumbnail is made right away
+- Replays (watching a .rofl or 'Watch' in match history) are no longer recorded; the tray says 'Replay: not recorded'. Spectating someone's game isn't recorded either, unless you turn on Settings > Games > League > 'Record games you spectate'
+- Settings > Advanced > Simulate: try a replay or spectating too
+
 ## [1.7.0] - 2026-10-03
 
 - Any window size works: nothing overlaps or gets cut off, from a small window up to 4K at 100/125/150 % scaling. Player controls that don't fit move into a new '...' More controls menu, and menus always stay on screen
