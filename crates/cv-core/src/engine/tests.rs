@@ -46,6 +46,7 @@ struct FakeRecorder {
     full_video: Mutex<Option<bool>>,
     started: Mutex<bool>,
     game_clock: Arc<Mutex<f64>>,
+    stops: Mutex<u32>,
 }
 
 #[async_trait]
@@ -58,6 +59,7 @@ impl Recorder for FakeRecorder {
     }
     async fn start_recording(&self) -> anyhow::Result<()> { *self.started.lock().unwrap() = true; Ok(()) }
     async fn stop_recording(&self) -> anyhow::Result<PathBuf> {
+        *self.stops.lock().unwrap() += 1;
         let p = self.dir.lock().unwrap().clone().unwrap().join("raw.mp4");
         std::fs::write(&p, b"video")?;
         Ok(p)
@@ -489,4 +491,200 @@ async fn input_recording_keys_chat_and_mouse_marks() {
     ctx.send(EngineCommand::Shutdown).unwrap();
     handle.await.unwrap();
     std::fs::remove_dir_all(root).ok();
+}
+
+// ---------- v1.7.1: replays and spectating are never recorded ----------
+
+/// A game whose process start is checked (`session_check`) and whose API answers from the 3rd
+/// poll: `watching` (spectator mode) or a normal match (`playing`).
+struct WatchGame {
+    check: SessionCheck,
+    /// What the API says once it answers: Some = spectator mode.
+    api_watching: Option<WatchKind>,
+    spectate_setting: bool,
+    polls: u32,
+}
+
+#[async_trait]
+impl GameIntegration for WatchGame {
+    fn id(&self) -> &'static str { "fake" }
+    fn name(&self) -> &'static str { "Fake Game" }
+    fn short_name(&self) -> &'static str { "Fake" }
+    fn process_names(&self) -> &'static [&'static str] { &["fake.exe"] }
+    fn capture(&self) -> CaptureTarget { CaptureTarget { exe: "fake.exe".into(), display_capture_only: false } }
+    fn supports_events(&self) -> bool { true }
+    fn end_grace(&self) -> Duration { Duration::from_millis(0) }
+    async fn session_check(&mut self) -> SessionCheck { self.check }
+    fn record_spectating(&self) -> bool { self.spectate_setting }
+    async fn poll(&mut self) -> anyhow::Result<PollUpdate> {
+        self.polls += 1;
+        if self.polls <= 2 {
+            anyhow::bail!("loading screen, API not up");
+        }
+        let gt = (self.polls - 3) as f64 * 10.0;
+        let mut u = PollUpdate { phase: MatchPhase::InProgress, game_time: Some(gt), ..Default::default() };
+        u.events.push(GameEvent::new("k1", EventKind::Kill, 5.0, "Killed Ahri"));
+        u.watching = self.api_watching;
+        u.playing = self.api_watching.is_none();
+        Ok(u)
+    }
+}
+
+struct WatchRun {
+    root: PathBuf,
+    recorder: Arc<FakeRecorder>,
+    platform: Arc<FakePlatform>,
+    rx: tokio::sync::mpsc::UnboundedReceiver<EngineEvent>,
+    ctx: UnboundedSender<EngineCommand>,
+    handle: tokio::task::JoinHandle<()>,
+    last: Option<LiveStatus>,
+    ended: Vec<String>,
+}
+
+impl WatchRun {
+    fn start(name: &str, game: WatchGame) -> Self {
+        let root = std::env::temp_dir().join(format!("cv-engine-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let recorder = Arc::new(FakeRecorder::default());
+        let platform = Arc::new(FakePlatform { procs: Mutex::new(vec![]), capture: Mutex::new(None) });
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let (ctx, crx) = tokio::sync::mpsc::unbounded_channel();
+        let (_itx, irx) = tokio::sync::mpsc::unbounded_channel();
+        let mut settings = Settings::default();
+        settings.save_dir = root.to_string_lossy().to_string();
+        settings.events.clip_kinds.clear();
+        let engine = Engine::new(vec![Box::new(game)], recorder.clone(), platform.clone(), None, settings, root.clone(), tx);
+        let handle = tokio::spawn(engine.run(crx, irx));
+        // Keep the receiver's other end alive for input.
+        std::mem::forget(_itx);
+        WatchRun { root, recorder, platform, rx, ctx, handle, last: None, ended: Vec::new() }
+    }
+    async fn wait(&mut self, secs: u64) {
+        for _ in 0..secs * 2 {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            while let Ok(ev) = self.rx.try_recv() {
+                match ev {
+                    EngineEvent::Status(s) => self.last = Some(s),
+                    EngineEvent::GameEnded { session_id } => self.ended.push(session_id),
+                    _ => {}
+                }
+            }
+        }
+    }
+    /// Game folders left in the save folder.
+    fn folders(&self) -> Vec<String> {
+        std::fs::read_dir(&self.root).map(|rd| rd.flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect()).unwrap_or_default()
+    }
+    async fn finish(self) {
+        self.ctx.send(EngineCommand::Shutdown).unwrap();
+        self.handle.await.unwrap();
+        std::fs::remove_dir_all(&self.root).ok();
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn replay_seen_by_the_client_is_never_recorded() {
+    let mut r = WatchRun::start("replay", WatchGame { check: SessionCheck::Watching(WatchKind::Replay), api_watching: Some(WatchKind::Replay), spectate_setting: false, polls: 0 });
+    r.platform.procs.lock().unwrap().push("fake.exe".into());
+    r.wait(12).await;
+    assert!(!*r.recorder.started.lock().unwrap(), "recorder never started");
+    let st = r.last.clone().unwrap();
+    assert_eq!(st.watching, Some(WatchKind::Replay));
+    assert_eq!(st.state, EngineState::Detected);
+    assert_eq!(st.message.as_deref(), Some("Replay: not recorded"));
+    assert!(r.folders().is_empty(), "nothing saved: {:?}", r.folders());
+    r.platform.procs.lock().unwrap().clear();
+    r.wait(6).await;
+    assert_eq!(r.last.as_ref().unwrap().state, EngineState::Idle);
+    assert!(r.ended.is_empty() && r.folders().is_empty());
+    r.finish().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn replay_found_late_deletes_the_partial_recording() {
+    // The client couldn't tell (e.g. not reachable): recording starts, then the game's API says
+    // spectator mode.
+    let mut r = WatchRun::start("late", WatchGame { check: SessionCheck::Unknown, api_watching: Some(WatchKind::Replay), spectate_setting: false, polls: 0 });
+    r.platform.procs.lock().unwrap().push("fake.exe".into());
+    r.wait(2).await;
+    assert!(*r.recorder.started.lock().unwrap(), "recording started (unknown yet)");
+    r.wait(10).await;
+    assert_eq!(*r.recorder.stops.lock().unwrap(), 1, "stopped when the API answered");
+    assert!(r.folders().is_empty(), "partial recording deleted: {:?}", r.folders());
+    let st = r.last.clone().unwrap();
+    assert_eq!((st.state, st.watching), (EngineState::Detected, Some(WatchKind::Replay)));
+    assert_eq!(st.message.as_deref(), Some("Replay: not recorded"));
+    r.platform.procs.lock().unwrap().clear();
+    r.wait(6).await;
+    assert!(r.ended.is_empty(), "no game saved");
+    assert!(r.folders().is_empty());
+    r.finish().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn unsure_waits_for_the_api_then_records_a_real_match() {
+    let mut r = WatchRun::start("unsure-play", WatchGame { check: SessionCheck::Unsure(WatchKind::Unknown), api_watching: None, spectate_setting: false, polls: 0 });
+    r.platform.procs.lock().unwrap().push("fake.exe".into());
+    r.wait(2).await;
+    assert!(!*r.recorder.started.lock().unwrap(), "not recorded while unsure");
+    assert_eq!(r.last.as_ref().unwrap().message.as_deref(), Some("Checking whether this is a replay…"));
+    r.wait(6).await;
+    assert!(*r.recorder.started.lock().unwrap(), "the API confirmed a real match: recording");
+    assert_eq!(r.last.as_ref().unwrap().state, EngineState::Recording);
+    r.platform.procs.lock().unwrap().clear();
+    r.wait(8).await;
+    assert_eq!(r.ended.len(), 1, "saved as a game");
+    r.finish().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn unsure_then_spectator_mode_is_never_recorded() {
+    let mut r = WatchRun::start("unsure-watch", WatchGame { check: SessionCheck::Unsure(WatchKind::Unknown), api_watching: Some(WatchKind::Unknown), spectate_setting: false, polls: 0 });
+    r.platform.procs.lock().unwrap().push("fake.exe".into());
+    r.wait(10).await;
+    assert!(!*r.recorder.started.lock().unwrap());
+    let st = r.last.clone().unwrap();
+    assert_eq!(st.watching, Some(WatchKind::Unknown));
+    assert_eq!(st.message.as_deref(), Some("Replay or spectating: not recorded"));
+    r.platform.procs.lock().unwrap().clear();
+    r.wait(6).await;
+    assert!(r.ended.is_empty() && r.folders().is_empty());
+    r.finish().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn spectating_follows_its_setting() {
+    // Off (default): not recorded.
+    let mut r = WatchRun::start("spec-off", WatchGame { check: SessionCheck::Watching(WatchKind::Spectate), api_watching: Some(WatchKind::Spectate), spectate_setting: false, polls: 0 });
+    r.platform.procs.lock().unwrap().push("fake.exe".into());
+    r.wait(10).await;
+    assert!(!*r.recorder.started.lock().unwrap());
+    assert_eq!(r.last.as_ref().unwrap().message.as_deref(), Some("Spectating: not recorded"));
+    r.finish().await;
+    // On: recorded like a game, tagged "Spectating", even though the API says spectator mode.
+    let mut r = WatchRun::start("spec-on", WatchGame { check: SessionCheck::Watching(WatchKind::Spectate), api_watching: Some(WatchKind::Spectate), spectate_setting: true, polls: 0 });
+    r.platform.procs.lock().unwrap().push("fake.exe".into());
+    r.wait(10).await;
+    assert!(*r.recorder.started.lock().unwrap());
+    assert_eq!(*r.recorder.stops.lock().unwrap(), 0, "not aborted by the API's spectator mode");
+    r.platform.procs.lock().unwrap().clear();
+    r.wait(8).await;
+    assert_eq!(r.ended.len(), 1);
+    let s = GameSession::load(&r.root.join(&r.ended[0])).unwrap();
+    assert_eq!(s.mode_name.as_deref(), Some("Spectating"));
+    r.finish().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn leaving_the_game_ends_the_session() {
+    // A match in progress, then the game closes.
+    let mut r = WatchRun::start("leave", WatchGame { check: SessionCheck::Playing, api_watching: None, spectate_setting: false, polls: 0 });
+    r.platform.procs.lock().unwrap().push("fake.exe".into());
+    r.wait(8).await;
+    assert_eq!(r.last.as_ref().unwrap().state, EngineState::Recording);
+    r.platform.procs.lock().unwrap().clear();
+    // The fake API keeps answering (it's not tied to the process): the 2 s process checks end it.
+    r.wait(5).await;
+    assert_eq!(r.ended.len(), 1);
+    r.finish().await;
 }

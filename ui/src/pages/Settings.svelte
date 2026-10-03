@@ -153,6 +153,7 @@
   let simSpeed = $state(1);
   let simLength = $state(180);
   let simQueue = $state(400);
+  let simWatch = $state("");
   let reporting = $state(false);
   async function saveReport() {
     reporting = true;
@@ -169,8 +170,8 @@
 
   async function simulate() {
     try {
-      await api.simulateGame(simSpeed, simLength, simQueue);
-      toast("Simulated League game started. It records your desktop.", "ok", 7000);
+      await api.simulateGame(simSpeed, simLength, simQueue, simWatch || null);
+      toast(simWatch ? "Simulated League replay / spectating started. It shouldn't be recorded." : "Simulated League game started. It records your desktop.", "ok", 7000);
     } catch (e) {
       toast(String(e), "error");
     }
@@ -466,6 +467,14 @@
               <option value={1700}>Arena</option>
               <option value={-1}>Practice Tool</option>
               <option value={9999}>A brand-new mode</option>
+            </select>
+          </label>
+          <label class="inline" title="A match you play, or League's spectator mode (never recorded)">What
+            <select class="input" bind:value={simWatch}>
+              <option value="">A match</option>
+              <option value="replay">A replay</option>
+              <option value="spectate">Spectating</option>
+              <option value="replay-late">A replay found late</option>
             </select>
           </label>
           <button class="btn primary" onclick={simulate} disabled={app.status?.state !== "idle"}><Icon name="play" size={14} fill />Simulate a League game</button>

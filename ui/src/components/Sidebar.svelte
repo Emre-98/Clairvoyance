@@ -53,12 +53,12 @@
       <div class="row">
         <span class="dot"></span>
         <strong>
-          {#if st.state === "recording"}Recording{:else if st.state === "detected"}Game detected{:else}Waiting for a game{/if}
+          {#if st.state === "recording"}Recording{:else if st.watching}Not recording{:else if st.state === "detected"}Game detected{:else}Waiting for a game{/if}
         </strong>
       </div>
       {#if st.state !== "idle"}
         <div class="sub">
-          {st.game_name}{#if st.game_time != null}&nbsp;· {clock(st.game_time)}{/if}
+          {#if st.watching}{st.message}{:else}{st.game_name}{#if st.game_time != null}&nbsp;· {clock(st.game_time)}{/if}{/if}
         </div>
         {#if st.state === "recording"}
           <div class="row btns">

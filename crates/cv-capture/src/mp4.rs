@@ -3,6 +3,9 @@
 //! - [`FragmentedWriter`]: the full-game recording. Fragmented MP4: a small header, then a
 //!   `moof`+`mdat` pair about every second. Each fragment is complete on its own, so a crash
 //!   or power cut only loses the last second. A clean stop appends an `mfra` index for fast seeking.
+//!   Right after the header the writer leaves an empty `free` box ([`reserve_bytes`]): when the
+//!   recording stops, the full index is written into it in place (`remux::index_in_place`), so
+//!   the file becomes a "faststart" MP4 within a fraction of a second, without copying the media.
 //! - [`write_clip`]: a normal MP4 (index at the front) for replay-buffer clips.
 //!
 //! Tracks: H.264 video (AVCC samples, no B-frames) and any number of AAC audio tracks.
@@ -174,6 +177,12 @@ fn cat(parts: &[Vec<u8>]) -> Vec<u8> {
 }
 
 const MATRIX: [u32; 9] = [0x0001_0000, 0, 0, 0, 0x0001_0000, 0, 0, 0, 0x4000_0000];
+
+/// The `ftyp` the recorder writes (test tools).
+#[doc(hidden)]
+pub fn fragmented_ftyp() -> Vec<u8> {
+    ftyp(true)
+}
 
 fn ftyp(fragmented: bool) -> Vec<u8> {
     let mut b = B::new();
@@ -370,6 +379,16 @@ struct TrackState {
     frags: Vec<(u64, u64)>, // (decode time, moof offset) for mfra
 }
 
+/// Room left after the header for the full index written when the recording stops: enough for
+/// 3 hours at `fps` with `audio_tracks` AAC tracks (worst case: every video frame its own
+/// duration entry), 2-64 MB. A longer game is finalized by copying instead (as before v1.7.1).
+pub fn reserve_bytes(fps: u32, audio_tracks: usize) -> u64 {
+    let secs = 3 * 3600u64;
+    let per_sec = fps.max(1) as u64 * 12 + audio_tracks as u64 * 200;
+    let per_frag = (1 + audio_tracks as u64) * 20;
+    (secs * (per_sec + per_frag) + (256 << 10)).clamp(2 << 20, 64 << 20)
+}
+
 pub struct FragmentedWriter<W: Write + Seek> {
     out: W,
     video: VideoConfig,
@@ -381,7 +400,14 @@ pub struct FragmentedWriter<W: Write + Seek> {
 }
 
 impl<W: Write + Seek> FragmentedWriter<W> {
-    pub fn new(mut out: W, video: VideoConfig, audio: Vec<AudioConfig>) -> std::io::Result<Self> {
+    /// A recording with room for the in-place index ([`reserve_bytes`]).
+    pub fn new(out: W, video: VideoConfig, audio: Vec<AudioConfig>) -> std::io::Result<Self> {
+        let reserve = reserve_bytes(video.fps, audio.len());
+        Self::with_reserve(out, video, audio, reserve)
+    }
+
+    /// `reserve` = size of the empty `free` box after the header (0 = none, the pre-v1.7.1 layout).
+    pub fn with_reserve(mut out: W, video: VideoConfig, audio: Vec<AudioConfig>, reserve: u64) -> std::io::Result<Self> {
         let mut traks = vec![trak(1, false, avc1(&video), VIDEO_TIMESCALE, 0, video.width, video.height, "Video", &Tables::default())];
         let mut trex = Vec::new();
         for (i, a) in audio.iter().enumerate() {
@@ -396,7 +422,14 @@ impl<W: Write + Seek> FragmentedWriter<W> {
         let mut moov_parts = vec![mvhd(0, 2 + audio.len() as u32)];
         moov_parts.extend(traks);
         moov_parts.push(mvex);
-        let head = cat(&[ftyp(true), boxed(b"moov", &cat(&moov_parts))]);
+        let mut head = cat(&[ftyp(true), boxed(b"moov", &cat(&moov_parts))]);
+        if reserve >= 8 {
+            // 32-bit box size: the reserve is at most 64 MB.
+            let r = reserve.min(u32::MAX as u64);
+            head.extend_from_slice(&(r as u32).to_be_bytes());
+            head.extend_from_slice(b"free");
+            head.resize(head.len() + (r - 8) as usize, 0);
+        }
         out.write_all(&head)?;
         out.flush()?;
         let n = audio.len() + 1;

@@ -233,6 +233,10 @@ struct Parsed {
     chunks: Vec<Chunk>,
     fragments: usize,
     moov_bytes: u64,
+    /// Every complete top-level box, in file order (for the in-place index).
+    tops: Vec<Hdr>,
+    /// The `moov` box used.
+    moov_hdr: Hdr,
 }
 
 fn read_box(f: &mut File, h: &Hdr) -> io::Result<Vec<u8>> {
@@ -291,7 +295,9 @@ fn parse(path: &Path) -> io::Result<Parsed> {
     let mut moov: Option<(Vec<u8>, Hdr)> = None;
     let mut moofs: Vec<Hdr> = Vec::new();
     let mut mdat_first = false;
-    while let Some(h) = read_hdr(&mut f, pos, len)? {
+    let mut tops: Vec<Hdr> = Vec::new();
+    loop {
+        let Some(h) = read_hdr(&mut f, pos, len)? else { break };
         if h.end() > len {
             // Cut off by a crash: whatever is complete before it is kept.
             if &h.kind == b"moof" {
@@ -300,9 +306,12 @@ fn parse(path: &Path) -> io::Result<Parsed> {
             if &h.kind != b"mdat" {
                 break;
             }
+        } else {
+            tops.push(h);
         }
         match &h.kind {
-            b"moov" => moov = Some((read_box(&mut f, &h)?, h)),
+            // The first `moov` counts (a player ignores a second one too).
+            b"moov" if moov.is_none() => moov = Some((read_box(&mut f, &h)?, h)),
             b"moof" => moofs.push(h),
             b"mdat" if moov.is_none() => mdat_first = true,
             _ => {}
@@ -311,6 +320,17 @@ fn parse(path: &Path) -> io::Result<Parsed> {
             break;
         }
         pos = h.end();
+    }
+    if moov.is_none() {
+        // A write torn by a power cut in the middle of `index_in_place` step 2 can leave the
+        // index in a box still marked `free`: use the first one that is really a moov.
+        for h in tops.iter().filter(|h| &h.kind == b"free" && h.size > 24 && h.size < 256 << 20) {
+            let b = read_box(&mut f, h)?;
+            if b.get(h.header as usize + 4..h.header as usize + 8) == Some(b"mvhd") {
+                moov = Some((b, *h));
+                break;
+            }
+        }
     }
     let (moov, mh) = moov.ok_or_else(|| bad("no moov box (not an MP4 recording?)"))?;
     let mb = &moov[mh.header as usize..];
@@ -367,13 +387,16 @@ fn parse(path: &Path) -> io::Result<Parsed> {
     } else {
         Layout::Faststart
     };
-    let fragments = moofs.len();
-    for (i, h) in moofs.iter().enumerate() {
-        let moof = read_box(&mut f, h)?;
-        read_moof(i + 1, &moof[h.header as usize..], h.start, &mut tracks, &mut chunks, len)?;
+    // Fragments only count for a fragmented `moov`.
+    let fragments = if fragmented { moofs.len() } else { 0 };
+    if fragmented {
+        for (i, h) in moofs.iter().enumerate() {
+            let moof = read_box(&mut f, h)?;
+            read_moof(i + 1, &moof[h.header as usize..], h.start, &mut tracks, &mut chunks, len)?;
+        }
     }
     chunks.sort_by_key(|c| c.src);
-    Ok(Parsed { layout, len, mvhd, extra, tracks, chunks, fragments, moov_bytes: mh.size })
+    Ok(Parsed { layout, len, mvhd, extra, tracks, chunks, fragments, moov_bytes: mh.size, tops, moov_hdr: mh })
 }
 
 /// Reads the sample tables of a regular `stbl`.
@@ -958,6 +981,162 @@ pub fn finalize_in_place(video: &Path, cancel: &dyn Fn() -> bool) -> io::Result<
     }
 }
 
+/// What [`index_in_place`] did.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct InPlaceReport {
+    /// Layout before.
+    pub from: Layout,
+    /// The full index was written into the reserved room (false: the file was already
+    /// faststart, nothing done).
+    pub indexed: bool,
+    pub moov_bytes: u64,
+    /// Room that was reserved for it.
+    pub reserve_bytes: u64,
+    /// Fragments now inside the one `mdat`.
+    pub fragments: usize,
+    pub samples: usize,
+    pub duration_secs: f64,
+    pub ms: u64,
+}
+
+/// Turns a recording written by [`crate::mp4::FragmentedWriter`] (fragments + an empty `free`
+/// box right after its header) into a faststart MP4 **in place**, without copying the media:
+///
+/// 1. the full index (`moov` with every sample; chunk offsets point at the media where it
+///    already is, inside the fragments) is written into the reserved `free` box, followed by
+///    the header of one `mdat` box that runs to the end of the file, all still hidden (the
+///    reserved box stays `free`);
+/// 2. one small write at the start of the file (within the first 4 KB, one disk sector) turns the
+///    fragmented `moov` into `free` and the reserved box into the new `moov`.
+///
+/// The result is laid out like any faststart MP4: `ftyp`, `free`, `moov`, then one `mdat` with
+/// all the media (the old `moof` boxes are just bytes inside it). A player reads the few boxes
+/// at the start and is done: it doesn't walk the file (FFmpeg / Chromium walk every top-level
+/// box of a file until its end, which is what makes a fragmented recording slow to open).
+///
+/// Crash-safe: until step 2 the file is the untouched fragmented recording (a second run starts
+/// over); step 2 is a single write within one sector; after it the file is final. A recording
+/// cut off by a crash is indexed up to the cut (the cut piece is inside the `mdat`).
+///
+/// Errors with `ErrorKind::Unsupported` when there's no reserved room (recordings made before
+/// v1.7.1) or the index doesn't fit (a game of more than ~3 hours): use [`finalize_in_place`].
+pub fn index_in_place(path: &Path) -> io::Result<InPlaceReport> {
+    index_steps(path, 2)
+}
+
+/// [`index_in_place`], stopping after step `last` (tests of power cuts between the steps).
+fn index_steps(path: &Path, last: u8) -> io::Result<InPlaceReport> {
+    let t0 = std::time::Instant::now();
+    let p = parse(path)?;
+    let samples: usize = p.tracks.iter().map(|t| t.samples.len()).sum();
+    let video = p.tracks.iter().find(|t| t.video).ok_or_else(|| bad("no video track"))?;
+    if video.samples.is_empty() {
+        return Err(bad("the recording has no video frames"));
+    }
+    let duration_secs = out_durations(video).iter().map(|d| *d as u64).sum::<u64>() as f64 / video.timescale as f64;
+    let mut rep = InPlaceReport { from: p.layout, indexed: false, moov_bytes: 0, reserve_bytes: 0, fragments: p.fragments, samples, duration_secs, ms: 0 };
+    let mh = p.moov_hdr;
+    let fragmented = p.fragments > 0 || {
+        // A fragmented moov without any complete fragment yet.
+        let mut f = File::open(path)?;
+        let m = read_box(&mut f, &mh)?;
+        child(&m[mh.header as usize..], b"mvex").is_some()
+    };
+    if !fragmented {
+        if p.layout == Layout::Faststart {
+            rep.ms = t0.elapsed().as_millis() as u64;
+            return Ok(rep); // already done
+        }
+        return Err(io::Error::new(io::ErrorKind::Unsupported, "not a fragmented recording"));
+    }
+    // The reserved room: the `free` box right after the fragmented moov (`moov` there: a torn
+    // step 2 of an earlier run, the first moov still wins: redo).
+    let reserve = p.tops.iter().find(|h| h.start == mh.end()).copied().filter(|h| (&h.kind == b"free" || &h.kind == b"moov") && h.header == 8);
+    let Some(res) = reserve else {
+        return Err(io::Error::new(io::ErrorKind::Unsupported, "no room reserved for the index (recorded before v1.7.1)"));
+    };
+    rep.reserve_bytes = res.size;
+    let co64 = p.len > u32::MAX as u64;
+    let movie_ts = movie_timescale(&p.mvhd);
+    let longest = p
+        .tracks
+        .iter()
+        .map(|t| out_durations(t).iter().map(|d| *d as u64).sum::<u64>() * movie_ts as u64 / t.timescale as u64)
+        .max()
+        .unwrap_or(0);
+    let mut parts = vec![with_duration(&p.mvhd, b"mvhd", longest)];
+    for (i, t) in p.tracks.iter().enumerate() {
+        if t.samples.is_empty() {
+            continue;
+        }
+        // Chunks stay where they are: absolute offsets into the fragments.
+        let chunks: Vec<(usize, usize, u64)> = p.chunks.iter().filter(|c| c.track == i).map(|c| (c.first, c.count, c.src)).collect();
+        parts.push(new_trak(t, movie_ts, &chunks, co64)?);
+    }
+    parts.extend(p.extra.iter().cloned());
+    let moov = mk(b"moov", &parts.concat());
+    let m = moov.len() as u64;
+    // After the moov: one mdat to the end of the file (64-bit size if it needs it).
+    let mdat_at = res.start + m;
+    let mdat_len = p.len - mdat_at;
+    let mut mdat_hdr = Vec::with_capacity(16);
+    if mdat_len <= u32::MAX as u64 {
+        put32(&mut mdat_hdr, mdat_len as u32);
+        mdat_hdr.extend_from_slice(b"mdat");
+    } else {
+        put32(&mut mdat_hdr, 1);
+        mdat_hdr.extend_from_slice(b"mdat");
+        mdat_hdr.extend_from_slice(&mdat_len.to_be_bytes());
+    }
+    if m + mdat_hdr.len() as u64 > res.size {
+        return Err(io::Error::new(io::ErrorKind::Unsupported, format!("the index ({m} bytes) doesn't fit the reserved room ({} bytes)", res.size)));
+    }
+    rep.moov_bytes = m;
+    let mut f = std::fs::OpenOptions::new().read(true).write(true).open(path)?;
+    // 1. Hidden write of the new index and the mdat header (the box at res.start still says
+    //    `free` and covers both).
+    f.seek(SeekFrom::Start(res.start + 8))?;
+    let mut body = moov[8..].to_vec();
+    body.extend_from_slice(&mdat_hdr);
+    f.write_all(&body)?;
+    f.sync_data()?;
+    if last < 2 {
+        return Ok(rep);
+    }
+    // 2. One write from the old moov's header to the end of the new moov's header: the old
+    //    one becomes `free`, the reserved box becomes the new `moov`.
+    let mut head = read_box(&mut f, &mh)?;
+    head[4..8].copy_from_slice(b"free");
+    head.extend_from_slice(&moov[..8]);
+    f.seek(SeekFrom::Start(mh.start))?;
+    f.write_all(&head)?;
+    f.sync_data()?;
+    drop(f);
+    rep.indexed = true;
+    // Check the result.
+    let check = parse(path)?;
+    let n: usize = check.tracks.iter().map(|t| t.samples.len()).sum();
+    let kinds: Vec<[u8; 4]> = check.tops.iter().map(|h| h.kind).collect();
+    if check.layout != Layout::Faststart || n != samples || kinds.last() != Some(b"mdat") || check.tops.last().map(|h| h.end()) != Some(check.len) {
+        return Err(bad(&format!("the indexed file didn't check out ({:?}, {n} of {samples} samples)", check.layout)));
+    }
+    rep.ms = t0.elapsed().as_millis() as u64;
+    Ok(rep)
+}
+
+/// The quickest way to make `video` instantly playable: [`index_in_place`] when the recording
+/// has room for it, else a copy ([`finalize_in_place`]).
+pub fn make_playable(video: &Path, cancel: &dyn Fn() -> bool) -> io::Result<(bool, FinalizeReport)> {
+    match index_in_place(video) {
+        Ok(r) => Ok((
+            true,
+            FinalizeReport { from: r.from, bytes_in: 0, bytes_out: std::fs::metadata(video).map(|m| m.len()).unwrap_or(0), fragments: r.fragments, samples: r.samples, duration_secs: r.duration_secs },
+        )),
+        Err(e) if e.kind() == io::ErrorKind::Unsupported => finalize_in_place(video, cancel).map(|r| (false, r)),
+        Err(e) => Err(e),
+    }
+}
+
 fn replace(from: &Path, to: &Path) -> io::Result<()> {
     // `rename` replaces an existing file on Windows too (MoveFileEx + REPLACE_EXISTING); it fails
     // if the original is open without delete sharing, e.g. in an external player: retry later.
@@ -1045,11 +1224,26 @@ pub fn cut(src: &Path, dst: &Path, start: f64, secs: f64) -> io::Result<f64> {
 /// writes them (same header, one `moof`+`mdat` per source fragment, continuous timestamps).
 #[doc(hidden)]
 pub fn loop_recording(src: &Path, dst: &Path, secs: f64) -> io::Result<f64> {
-    let p = parse(src)?;
-    if p.layout != Layout::Fragmented {
-        return Err(bad("the source must be a fragmented recording"));
-    }
+    loop_recording_r(src, dst, secs, 0)
+}
+
+/// [`loop_recording`] with `reserve` bytes of room for the in-place index after the header, like
+/// the recorder writes since v1.7.1 (0 = none).
+#[doc(hidden)]
+pub fn loop_recording_r(src: &Path, dst: &Path, secs: f64, reserve: u64) -> io::Result<f64> {
+    let mut p = parse(src)?;
     let vi = p.tracks.iter().position(|t| t.video).ok_or_else(|| bad("no video"))?;
+    if p.layout != Layout::Fragmented {
+        // A finalized recording keeps the recorder's runs of samples as chunks, in order (one
+        // video run, then the audio runs, per second): a new fragment at every video run.
+        let mut frag = 0;
+        for c in p.chunks.iter_mut() {
+            if c.track == vi {
+                frag += 1;
+            }
+            c.frag = frag.max(1);
+        }
+    }
     // Decode time of every sample, per track.
     let dts: Vec<Vec<u64>> = p
         .tracks
@@ -1069,7 +1263,7 @@ pub fn loop_recording(src: &Path, dst: &Path, secs: f64) -> io::Result<f64> {
     let mut inp = File::open(src)?;
     let first_moof = p.chunks.iter().filter(|c| c.frag > 0).map(|c| c.src).min().unwrap_or(0);
     let mut head = Vec::new();
-    {
+    if p.layout == Layout::Fragmented {
         let mut pos = 0;
         while let Some(h) = read_hdr(&mut inp, pos, p.len)? {
             if &h.kind == b"moof" || h.start >= first_moof {
@@ -1080,6 +1274,28 @@ pub fn loop_recording(src: &Path, dst: &Path, secs: f64) -> io::Result<f64> {
             }
             pos = h.end();
         }
+    } else {
+        // The recorder's header for these tracks: ftyp + a moov without samples + mvex.
+        head.extend(crate::mp4::fragmented_ftyp());
+        let mut parts = vec![with_duration(&p.mvhd, b"mvhd", 0)];
+        for t in &p.tracks {
+            parts.push(empty_trak(t)?);
+        }
+        let mut trex = Vec::new();
+        for t in &p.tracks {
+            let mut b = Vec::new();
+            for v in [t.id, 1, 0, 0, 0] {
+                put32(&mut b, v);
+            }
+            trex.push(mk_full(b"trex", 0, 0, &b));
+        }
+        parts.push(mk(b"mvex", &trex.concat()));
+        head.extend(mk(b"moov", &parts.concat()));
+    }
+    if reserve >= 8 {
+        put32(&mut head, reserve as u32);
+        head.extend_from_slice(b"free");
+        head.resize(head.len() + reserve as usize - 8, 0);
     }
     let mut out = BufWriter::with_capacity(4 << 20, File::create(dst)?);
     out.write_all(&head)?;
@@ -1147,6 +1363,43 @@ pub fn loop_recording(src: &Path, dst: &Path, secs: f64) -> io::Result<f64> {
     Ok(written)
 }
 
+/// A track's `trak` with empty sample tables (the header of a fragmented recording).
+fn empty_trak(t: &Track) -> io::Result<Vec<u8>> {
+    let empty = Track { id: t.id, trak: t.trak.clone(), timescale: t.timescale, video: t.video, samples: Vec::new(), first_dts: 0, next_dts: 0, trex: t.trex };
+    let body = &t.trak[8..];
+    let mut out = Vec::new();
+    for b in boxes(body) {
+        match &b.kind {
+            b"tkhd" => out.push(with_duration(b.whole, b"tkhd", 0)),
+            b"edts" => {}
+            b"mdia" => {
+                let mut m = Vec::new();
+                for c in boxes(b.body) {
+                    match &c.kind {
+                        b"mdhd" => m.push(with_duration(c.whole, b"mdhd", 0)),
+                        b"minf" => {
+                            let mut n = Vec::new();
+                            for d in boxes(c.body) {
+                                if &d.kind == b"stbl" {
+                                    let stsd = child(d.body, b"stsd").ok_or_else(|| bad("no stsd"))?;
+                                    n.push(new_stbl(stsd.whole, &empty, &[], false));
+                                } else {
+                                    n.push(d.whole.to_vec());
+                                }
+                            }
+                            m.push(mk(b"minf", &n.concat()));
+                        }
+                        _ => m.push(c.whole.to_vec()),
+                    }
+                }
+                out.push(mk(b"mdia", &m.concat()));
+            }
+            _ => out.push(b.whole.to_vec()),
+        }
+    }
+    Ok(mk(b"trak", &out.concat()))
+}
+
 fn put32_w(w: &mut impl Write, x: u32) -> io::Result<()> {
     w.write_all(&x.to_be_bytes())
 }
@@ -1163,9 +1416,14 @@ mod tests {
     }
 
     fn write_fragmented(path: &Path, secs: i64, video_delay: i64) -> usize {
+        write_fragmented_r(path, secs, video_delay, 0)
+    }
+
+    /// Like the recorder: `reserve` bytes of room after the header (0 = pre-v1.7.1 layout).
+    fn write_fragmented_r(path: &Path, secs: i64, video_delay: i64, reserve: u64) -> usize {
         let vc = VideoConfig { width: 64, height: 36, sps: vec![0x67, 0x64, 0, 0x1f, 1], pps: vec![0x68, 1], fps: 60 };
         let ac = vec![AudioConfig::aac_lc(48000, 2, "Game audio")];
-        let mut w = FragmentedWriter::new(std::io::BufWriter::new(File::create(path).unwrap()), vc, ac).unwrap();
+        let mut w = FragmentedWriter::with_reserve(std::io::BufWriter::new(File::create(path).unwrap()), vc, ac, reserve).unwrap();
         let mut pk: Vec<Packet> = Vec::new();
         for i in 0..secs * 60 {
             pk.push(Packet { track: 0, pts: video_delay + i * HNS / 60, data: vec![(i % 251) as u8; 300 + (i % 7) as usize], key: i % 60 == 0 });
@@ -1283,6 +1541,181 @@ mod tests {
         let fast = tmp("d-long-fast.mp4");
         finalize(&long, &fast, &|| false).unwrap();
         assert_eq!(info(&fast).unwrap().video_frames, i.video_frames);
+        // With room for the in-place index (benchmarks of v1.7.1): same media, indexes in place.
+        let res = tmp("d-long-res.mp4");
+        loop_recording_r(&src, &res, 17.0, 64 << 10).unwrap();
+        assert_eq!(info(&res).unwrap().video_frames, i.video_frames);
+        assert!(index_in_place(&res).unwrap().indexed);
+        assert_eq!(frame_times(&res).unwrap(), frame_times(&fast).unwrap());
+        // From a finalized (or in-place indexed) recording: the same fragments again.
+        let again = tmp("d-again.mp4");
+        loop_recording(&fast, &again, 17.0).unwrap();
+        let ia = info(&again).unwrap();
+        assert_eq!(ia.layout, Layout::Fragmented);
+        assert_eq!(ia.video_frames, i.video_frames);
+        assert_eq!(ia.fragments, i.fragments);
+        assert_eq!(sample_bytes(&again), sample_bytes(&long));
+        let again2 = tmp("d-again2.mp4");
+        loop_recording(&res, &again2, 17.0).unwrap();
+        assert_eq!(sample_bytes(&again2), sample_bytes(&long));
+    }
+
+    /// Top-level box kinds of a file, in order.
+    fn top_kinds(path: &Path) -> Vec<String> {
+        parse(path).unwrap().tops.iter().map(|h| String::from_utf8_lossy(&h.kind).to_string()).collect()
+    }
+
+    /// Every sample's bytes, per track (to compare files sample by sample).
+    fn sample_bytes(path: &Path) -> Vec<Vec<Vec<u8>>> {
+        let p = parse(path).unwrap();
+        let mut f = File::open(path).unwrap();
+        p.tracks
+            .iter()
+            .map(|t| {
+                t.samples
+                    .iter()
+                    .map(|s| {
+                        let mut b = vec![0; s.size as usize];
+                        f.seek(SeekFrom::Start(s.off)).unwrap();
+                        f.read_exact(&mut b).unwrap();
+                        b
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn reserve_size() {
+        // 60 fps + game audio: ~10.6 MB for 3 hours; bounds.
+        let r = reserve_bytes(60, 1);
+        assert!(r > 9 << 20 && r < 12 << 20, "{r}");
+        assert_eq!(reserve_bytes(1, 0), 2 << 20);
+        assert_eq!(reserve_bytes(1000, 4), 64 << 20);
+    }
+
+    #[test]
+    fn index_in_place_matches_the_copy() {
+        let src = tmp("ip.mp4");
+        let n = write_fragmented_r(&src, 12, 300_000, 256 << 10);
+        let len = std::fs::metadata(&src).unwrap().len();
+        let before = info(&src).unwrap();
+        assert_eq!(before.layout, Layout::Fragmented);
+        // The copy (pre-v1.7.1 way) as the reference.
+        let copy = tmp("ip-copy.mp4");
+        finalize(&src, &copy, &|| false).unwrap();
+        let rep = index_in_place(&src).unwrap();
+        assert!(rep.indexed, "{rep:?}");
+        assert_eq!(rep.samples, n);
+        assert_eq!(rep.fragments, before.fragments, "{rep:?}");
+        // Same file size: nothing copied, nothing appended.
+        assert_eq!(std::fs::metadata(&src).unwrap().len(), len);
+        assert_eq!(probe(&src).unwrap(), Layout::Faststart);
+        // Laid out like any faststart file: the index, then one mdat to the end of the file (a
+        // player reads 4 box headers, not one per fragment).
+        assert_eq!(top_kinds(&src), vec!["ftyp", "free", "moov", "mdat"]);
+        let pp = parse(&src).unwrap();
+        assert_eq!(pp.tops.last().unwrap().end(), pp.len);
+        let after = info(&src).unwrap();
+        let reference = info(&copy).unwrap();
+        assert_eq!(after.fragments, 0);
+        assert_eq!(after.video_frames, reference.video_frames);
+        assert_eq!(after.keyframes, reference.keyframes);
+        assert!((after.duration_secs - reference.duration_secs).abs() < 1e-9);
+        assert_eq!(keyframes(&src).unwrap(), keyframes(&copy).unwrap());
+        assert_eq!(frame_times(&src).unwrap(), frame_times(&copy).unwrap());
+        assert_eq!(sample_bytes(&src), sample_bytes(&copy));
+        // Running it again is a no-op.
+        let again = index_in_place(&src).unwrap();
+        assert!(!again.indexed, "{again:?}");
+        // make_playable picks the in-place way.
+        let src2 = tmp("ip2.mp4");
+        write_fragmented_r(&src2, 3, 0, 256 << 10);
+        let (in_place, _) = make_playable(&src2, &|| false).unwrap();
+        assert!(in_place);
+    }
+
+    #[test]
+    fn old_recordings_and_no_room_fall_back_to_the_copy() {
+        // No reserve (recorded before v1.7.1): untouched, Unsupported; make_playable copies.
+        let src = tmp("noroom.mp4");
+        write_fragmented(&src, 4, 0);
+        let bytes = std::fs::read(&src).unwrap();
+        let e = index_in_place(&src).unwrap_err();
+        assert_eq!(e.kind(), io::ErrorKind::Unsupported);
+        assert_eq!(std::fs::read(&src).unwrap(), bytes);
+        let (in_place, rep) = make_playable(&src, &|| false).unwrap();
+        assert!(!in_place && rep.from == Layout::Fragmented);
+        assert_eq!(probe(&src).unwrap(), Layout::Faststart);
+        // A reserve too small for the index (a very long game): untouched too.
+        let small = tmp("small.mp4");
+        write_fragmented_r(&small, 6, 0, 600);
+        let bytes = std::fs::read(&small).unwrap();
+        let e = index_in_place(&small).unwrap_err();
+        assert_eq!(e.kind(), io::ErrorKind::Unsupported, "{e}");
+        assert_eq!(std::fs::read(&small).unwrap(), bytes);
+    }
+
+    #[test]
+    fn power_cut_between_the_steps_is_resumed() {
+        let reference = tmp("pc-ref.mp4");
+        write_fragmented_r(&reference, 6, 100_000, 128 << 10);
+        let want = sample_bytes(&reference);
+        let frames = info(&reference).unwrap().video_frames;
+        // Cut after step 1 (index hidden in the reserve): still the plain fragmented recording.
+        let a = tmp("pc-a.mp4");
+        std::fs::copy(&reference, &a).unwrap();
+        index_steps(&a, 1).unwrap();
+        assert_eq!(probe(&a).unwrap(), Layout::Fragmented);
+        assert_eq!(info(&a).unwrap().fragments, info(&reference).unwrap().fragments);
+        assert_eq!(sample_bytes(&a), want);
+        assert!(index_in_place(&a).unwrap().indexed);
+        assert_eq!(probe(&a).unwrap(), Layout::Faststart);
+        assert_eq!(sample_bytes(&a), want);
+        // After step 2 the file is final (the same as a full run).
+        let b = tmp("pc-b.mp4");
+        std::fs::copy(&reference, &b).unwrap();
+        index_steps(&b, 2).unwrap();
+        assert_eq!(probe(&b).unwrap(), Layout::Faststart);
+        assert_eq!(sample_bytes(&b), want);
+        assert!(!index_in_place(&b).unwrap().indexed);
+        // A torn step 2: the old moov already `free`, the new one still hidden. The old one is
+        // found again and the run redone.
+        let c = tmp("pc-c.mp4");
+        std::fs::copy(&reference, &c).unwrap();
+        index_steps(&c, 1).unwrap();
+        let mh = parse(&c).unwrap().moov_hdr;
+        {
+            let mut f = std::fs::OpenOptions::new().write(true).open(&c).unwrap();
+            f.seek(SeekFrom::Start(mh.start + 4)).unwrap();
+            f.write_all(b"free").unwrap();
+        }
+        assert_eq!(info(&c).unwrap().video_frames, frames, "torn: the old index is still found");
+        assert!(index_in_place(&c).unwrap().indexed);
+        assert_eq!(probe(&c).unwrap(), Layout::Faststart);
+        assert_eq!(sample_bytes(&c), want);
+    }
+
+    #[test]
+    fn crashed_recording_is_indexed_up_to_the_cut() {
+        let full = tmp("cr-full.mp4");
+        write_fragmented_r(&full, 10, 0, 32 << 10);
+        let bytes = std::fs::read(&full).unwrap();
+        for frac in [0.37, 0.5, 0.81] {
+            let cut = tmp("cr-cut.mp4");
+            std::fs::write(&cut, &bytes[..(bytes.len() as f64 * frac) as usize + 17]).unwrap();
+            let before = info(&cut).unwrap();
+            let r = index_in_place(&cut).unwrap();
+            assert!(r.indexed);
+            let after = info(&cut).unwrap();
+            assert_eq!(after.layout, Layout::Faststart);
+            assert_eq!(after.video_frames, before.video_frames);
+            assert!(after.duration_secs > 10.0 * frac - 1.5 && after.duration_secs < 10.0 * frac + 0.5, "{frac}: {after:?}");
+            // The cut piece is inside the one mdat, which runs to the end of the file.
+            let p = parse(&cut).unwrap();
+            assert_eq!(top_kinds(&cut), vec!["ftyp", "free", "moov", "mdat"], "{frac}");
+            assert_eq!(p.tops.last().unwrap().end(), p.len);
+        }
     }
 
     #[test]

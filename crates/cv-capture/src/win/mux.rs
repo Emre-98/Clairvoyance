@@ -144,7 +144,10 @@ pub fn run(p: MuxParams, rx: Receiver<MuxMsg>) {
                     Some(w) => {
                         let d = w.duration_secs();
                         match w.finish().and_then(|b| b.into_inner().map_err(|e| e.into_error())).and_then(|f| f.sync_all()) {
-                            Ok(()) => Ok((p.path.clone(), d)),
+                            Ok(()) => {
+                                make_playable(&p.path);
+                                Ok((p.path.clone(), d))
+                            }
                             Err(e) => Err(anyhow!("finishing the recording failed: {e}")),
                         }
                     }
@@ -168,5 +171,42 @@ pub fn run(p: MuxParams, rx: Receiver<MuxMsg>) {
                 }
             }
         }
+    }
+}
+
+/// v1.7.1: right when the recording stops, its full index goes into the room reserved after the
+/// header (`remux::index_in_place`): the file is a faststart MP4 a fraction of a second later,
+/// without copying the media, so the game can be watched at once. If that isn't possible (no
+/// room, an error), the file stays the crash-safe fragmented recording and the maintenance pass
+/// finalizes it later by copying, as before.
+fn make_playable(path: &std::path::Path) {
+    let t = Instant::now();
+    let mut last = None;
+    // The file was just closed; an antivirus scan can hold it for a moment.
+    for attempt in 0..3 {
+        match crate::remux::index_in_place(path) {
+            Ok(r) => {
+                log::info!(
+                    "recording ready for playback in {} ms (index written in place: {} KB of {} KB reserved, {} fragments, {:.1} s)",
+                    t.elapsed().as_millis(),
+                    r.moov_bytes / 1024,
+                    r.reserve_bytes / 1024,
+                    r.fragments,
+                    r.duration_secs
+                );
+                return;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied && attempt < 2 => {
+                last = Some(e);
+                std::thread::sleep(Duration::from_millis(200));
+            }
+            Err(e) => {
+                last = Some(e);
+                break;
+            }
+        }
+    }
+    if let Some(e) = last {
+        log::warn!("recording not indexed in place ({e}); it will be finalized by copying after the game");
     }
 }

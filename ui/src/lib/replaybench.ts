@@ -81,9 +81,11 @@ async function seekVia(mk: HTMLButtonElement, t0?: number): Promise<number | nul
   return Math.round(shown - start);
 }
 
-async function openOnce(id: string, early: boolean) {
-  go({ page: "games" });
-  await sleep(900);
+async function openOnce(id: string, early: boolean, direct = false) {
+  if (!direct) {
+    go({ page: "games" });
+    await sleep(900);
+  }
   const t0 = performance.now();
   go({ page: "game", id });
   const r: Record<string, number | null | number[]> = {};
@@ -132,6 +134,12 @@ async function openOnce(id: string, early: boolean) {
   }
   video()?.pause();
   return r;
+}
+
+/** Opens a game right away (no detour through the Games page) and measures it (end-to-end
+ * tests: a game opened the moment it appears after the match). Times are ms from the open. */
+export async function measureOpen(id: string) {
+  return openOnce(id, false, true);
 }
 
 async function environment(sample: string | null) {

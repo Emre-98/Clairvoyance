@@ -97,7 +97,18 @@
   length and the bubbles' fade time are one slider (0.25-3 s); a bubble disappears on the same
   frame as the piece of trail drawn at its key-down (pixel-tested at 0.25 s and 3 s). Details in
   "Window sizes, and one Trail & bubbles time".
-- **Waiting for the owner**: the Practice Tool test of the ult kinds (v1.6, see "Next steps"),
+- **v1.7.1 (2026-10-03, v1.7 part 2): ready right after the game + replays not recorded.** The
+  recording makes itself instantly playable the moment it stops (full index written in place
+  into room reserved after its header, no copy, crash-safe); League's victory-screen tail is 2 s
+  (was 6 s); the thumbnail is made right away. Owner's PC, simulated real-time games opened the
+  moment they appear: the game is in Games 2.5 s (5 min) / 3.2 s (35 min) after the match ended and shows its first
+  frame at 2.8 / 3.3 s (v1.7.0: 6.5 / 6.4 s and 7.9 / 16.7 s, faststart only after ~28 s); a
+  real-size 35 min game (3.15 GB) opens in 134 ms instead of 24.3 s, marker jumps 82-183 ms. Replays and spectated games are detected before anything is
+  recorded (League client + in-game API, from a replay captured on the owner's PC) and never
+  recorded ("Replay: not recorded"; setting "Record games you spectate"). Details in "Ready
+  right after the game" and "Replays and spectating aren't recorded".
+- **Waiting for the owner**: the v1.7.1 checks (watch a replay, a short Practice Tool game; see
+  "Next steps"), the Practice Tool test of the ult kinds (v1.6, see "Next steps"),
   the PC benchmark of the v1.6 player (`--bench-replays` with `"player": true`), and the older
   Practice Tool test of the ability bubbles.
 
@@ -981,6 +992,122 @@ Rules: replay UI only (nothing during the game); v1.6 behaviour unchanged except
   28/28, UI unit 24/24, Rust 129. The tests run with Linux's Inter font, wider than Windows'
   Segoe UI Variable, so Windows has more room, not less.
 
+### Ready right after the game (2026-10-03, owner's request, v1.7.1 part 2)
+Goal: a game is in the library and plays instantly (first frame, marker jumps) a few seconds
+after the match ends (victory/defeat screen or leaving), also for a 40 min game; crash-safe; no
+new work during the game; nothing slows down the next game.
+- **Measured first** (owner's PC, v1.7.0 + test harness, sandbox profile, simulated real-time
+  games recording the desktop, game opened the moment its card appears; plus the post-game
+  steps on real-size copies of the owner's 2026-10-02 Aphelios game cut to 5 / 35 min):
+  - end of match → card: 6.5 s (5 min) / 6.4 s (35 min): ≤ 1 s until the next poll sees
+    GameEnd, then **6 s of victory screen** (`end_grace`), then stop + save (~0.1 s);
+  - the video stayed **fragmented** until the maintenance pass copied it, which only ran after
+    the auto clips (ffmpeg on the fragmented file), the mode-list refresh and the thumbnails:
+    faststart 28 s after a 5 min game (thumbnail 27.7 s, 18.5 s for 35 min);
+  - opened before that, the player plays the fragmented file: first frame after opening 1.3 s
+    (5 min desktop sim, 79 MB) / 10.3 s (35 min sim) / **3.8 s and 24.3 s for the real-size
+    452 MB / 3.15 GB files** (Chromium's FFmpeg demuxer walks every top-level box until the end
+    of the file: one read per fragment, 2,084 for 35 min);
+  - post-game steps on the real-size files (old → new): finalize copy 0.66 s / 4.3 s → in-place
+    index 0.16 s / 0.06 s; thumbnail 0.40 s / 0.59 s → 0.14 s / 0.42 s; one auto clip (ffmpeg
+    stream copy) 0.19 s / 0.42 s → 0.09 s / 0.10 s; reading the index 4 / 30 ms → 1.4 / 7.6 ms.
+- **Choice: the recording makes itself instantly playable when it stops, in place, without a
+  copy** (`remux::index_in_place`). Alternatives considered: finalizing first by copying (still
+  4-5 s for a 35 min game and a second copy of 3 GB on disk); a player that opens the unfinished
+  file and switches (the fragmented file is what's slow to open: no player trick avoids the
+  2,000 reads). How it works:
+  - the recorder leaves an empty `free` box right after its header (`mp4::reserve_bytes`:
+    room for 3 h at the recording's fps, 10.4 MB at 60 fps; the index measures 2.7-3.0 MB per
+    hour on the owner's games, so ~3.5 h fit; longer games fall back to the copy);
+  - when the recording stops (in the muxer thread, after the last fragment is synced): 1. the
+    full `moov` (every sample, chunk offsets pointing at the media where it already is) plus
+    the header of one `mdat` running to the end of the file is written into that box, still
+    hidden; 2. one write inside the first 4 KB (one sector) turns the fragmented `moov` into
+    `free` and the reserved box into the new `moov`. Result: `ftyp, free, moov, mdat` like any
+    faststart file (the old `moof` boxes are bytes inside the `mdat`), same size, no copy;
+  - crash-safe: during the game it's the same fragmented recording as before (the reserve is
+    ignored by players); until step 2 the file is untouched (a second run starts over); step 2
+    is one sector; a torn step 2 is recognized (the old index is found in its `free` box) and
+    redone. A recording cut off by a crash is indexed at the next start up to the cut (the cut
+    piece is inside the `mdat`). Older recordings (no reserve) are still copied by the
+    maintenance pass, as before;
+  - **first version found by the benchmark**: hiding each `moof` as a `free` box kept one
+    top-level box per fragment, and FFmpeg still walked them all (first frame 23 s for 35 min).
+    The single `mdat` to the end of the file fixed it; `mux_ffmpeg` now counts the top-level
+    boxes FFmpeg reads (in place ≤ 4, like the copy; fragmented: one per fragment).
+- **Order after the game:** stop → in-place index (60-160 ms) → save → in the library at once →
+  its thumbnail right away (`maintenance::post_game_thumbnail`, background priority, 0.1-0.4 s)
+  → auto clips (now from the indexed file) → the maintenance pass (ult check, input, clean-up),
+  which still stops the moment a game starts.
+- **End detection:** League's victory-screen tail is 2 s (was 6 s): the recording still ends on
+  the victory/defeat banner. Leaving the game: when the in-game API stops answering, the process
+  list is checked every second instead of every 2 s, and one miss ends the session (≤ ~2 s).
+- **Caches:** keyframe / frame-time caches are keyed by size + modification time (an in-place
+  index keeps the size).
+- **Results after** (same PC and tests, v1.7.1): 
+  | after the match ends | v1.7.0, 5 min | v1.7.1, 5 min | v1.7.0, 35 min | v1.7.1, 35 min |
+  |---|---|---|---|---|
+  | recording stopped + playable | 6.3 s (fragmented) | 2.2 s (indexed in 83 ms) | 6.2 s (fragmented) | 2.2 s (indexed in 126 ms) |
+  | game card in the library | 6.5 s | 2.5 s | 6.4 s | 3.2 s |
+  | first frame (opened at once) | 7.9 s | 2.8 s | 16.7 s | 3.3 s |
+  | thumbnail | 27.7 s | 2.6 s | 18.5 s | 3.3 s |
+  | faststart | ~28 s (copy) | 2.2 s | later (copy) | 2.2 s |
+
+  (Simulated games recording the desktop, so small files; the end of a match is seen at the next
+  1 s poll, then 2 s of victory screen. Thumbnail times of v1.7.1 from the log: made 0.14-0.19 s
+  after the game was saved.) Real-size files in the real window (replay benchmark, sandbox): first
+  open 3,760 → 62 ms (5 min, 452 MB) and 24,276 → 134 ms (35 min, 3.15 GB); repeat opens 34-68
+  ms; marker jumps 82-183 ms (fragmented 116-184 ms); a marker clicked right away 150 ms.
+  Marker jumps in the 35 min simulation measured 2-3 s: its desktop video ends at 8 min (the
+  screen went idle and Windows stopped sending frames) and the markers after that point past
+  the end of the video; the same file finalized by copying gives the same 37-115 ms for markers
+  inside the video (job 84), so it's the test content, not the layout.
+- Nothing new during the game: the recorder writes the 10 MB reserve once when the recording
+  starts (loading screen); the in-place index runs after the recording stopped; the League
+  module asks `/liveclientdata/activeplayer` once more at the start of the match (replays,
+  below). Regression: the ult check gives identical results on in-place indexed copies of 3 of
+  the owner's games (34 + 107, 12 + 9 + 6, 5 events, decoded by Media Foundation); recorder
+  self-test: the file is faststart right after it stops.
+
+### Replays and spectating aren't recorded (2026-10-03, owner's request, v1.7.1 part 2)
+Problem: watching a replay (`.rofl`, "Watch" in match history) started "League of Legends.exe"
+like a match, so it was recorded as a game.
+- **Captured on the owner's PC** (job 70, a replay of one of his games through the client's own
+  replay API, patch 16.19): League client `/lol-gameflow/v1/gameflow-phase` "None" and
+  `/lol-gameflow/v1/session` 404 "No gameflow session exists." for the whole replay; the
+  in-game API answers ~6 s after the process starts: `activeplayername` "Unknown",
+  `activeplayer` 400 "Spectator mode doesn't currently support this feature", `gamestats` /
+  `playerlist` / `eventdata` normal. v1.7.0 recorded it ("unknown mode" rule). Not captured
+  (the League client didn't open again unattended): `/lol-replays/v1/configuration`
+  `isPlayingReplay` during a replay (idle: false) and the client's spectate state
+  (`/lol-gameflow/v1/watch`, assumed `watchPhase: "WatchInProgress"`); spectating uses the same
+  in-game spectator mode as replays.
+- **Detection** (`games/league/src/watch.rs`, `GameIntegration::session_check` +
+  `PollUpdate::watching / playing`), before anything is recorded:
+  - League client: a game session in progress (GameStart / InProgress / Reconnect) → a match:
+    recorded as before; `isPlayingReplay` → **Replay**; the watch state → **Spectating**;
+  - no game session at all (the captured replay) → nothing is recorded until the in-game API
+    answers: spectator mode → not recorded, your champion (`activeplayer` with stats) →
+    recording starts then (only the loading screen is missing; never seen for a real match);
+  - client not reachable → recorded, and if the in-game API then says spectator mode (a few
+    seconds in), the recording is stopped and its folder deleted (a `discarded.txt` mark if a
+    file is still in use: never listed, removed by the maintenance pass).
+- Not recorded = no recorder, no input capture, nothing saved; the tray, the sidebar and Home say
+  "Replay: not recorded" / "Spectating: not recorded" / "Replay or spectating: not recorded"
+  until the game closes. Setting **"Record games you spectate"** (Settings > Games > League,
+  off): spectated live games are recorded, tagged "Spectating" (mode). Replays never are.
+- Simulator: Settings > Advanced > Simulate > What: A match / A replay / Spectating / A replay
+  found late; `--simulate-watch=replay|spectate|replay-late|replay-unsure`. The fake client and
+  game answer like the captured replay.
+- Tests: `watch.rs` unit tests on the captured answers; `games/league/tests/watch_mock.rs` (the
+  League module against the fake client + game over HTTP: replay, spectating, replay the client
+  hides, replay without a session, normal match); engine tests (never recorded, found late →
+  partial recording deleted, unsure → waits then records a real match / never records a
+  replay, spectating setting off / on); end-to-end in the app on the owner's PC (`--ui-test`
+  `watch`): v1.7.0 recorded the replay, the spectated game and the replay found late as games (the
+  fourth was only dropped for being under 30 s); v1.7.1 recorded none (nothing left in the
+  recordings folder, status "… not recorded") and still records a normal match.
+
 ### Replay benchmark and end-to-end tests (developer tools)
 - `Clairvoyance.exe --bench-replays=<config.json>`: opens the given games N times in the real
   window and measures page / first frame / playable / marker jumps / "marker clicked right away"
@@ -996,7 +1123,13 @@ Rules: replay UI only (nothing during the game); v1.6 behaviour unchanged except
   game process must be gone, or the engine treats the next one as the same process still open
   after its match). Found by the end-to-end tests.
 - `mp4tool` (cv-capture example): `info`, `finalize`, `loop` (make a recording of any length from
-  a real one), `benchsession`.
+  a real one, also from a finalized one; `--reserve`: with room for the in-place index),
+  `index` (in-place index), `postgame` (times every post-game step the old and the new way),
+  `benchsession`.
+- `--ui-test` tests `postgame` (real-time simulated games of `postgame_lengths` seconds, opened
+  the moment they appear: card / first frame / marker jumps / thumbnail after the match end) and
+  `watch` (replay, spectating, replay found late, replay without a client session: nothing
+  recorded or left; a normal match still recorded).
 - Settings > Advanced > **Save test report**: a zip (log, latest game's session.json, settings
   without Riot ID, report.txt with file layout/keyframes of the latest recordings and the
   responsiveness numbers) in `<recordings>\test-reports\`. No videos.
@@ -1041,6 +1174,9 @@ Rules: replay UI only (nothing during the game); v1.6 behaviour unchanged except
 - [x] 28. Ult kinds: command / multi_cast / transform / charges, ult episodes live and after the game, "Ult recast" / "Form swap", Data Dragon scan tool (v1.6 part B)
 - [ ] Owner's Practice Tool test of the ult kinds (Annie, Ivern, Shaco, Ahri, Jhin, Jayce/Nidalee, Kog'Maw)
 - [x] 29. Every window size from 940 × 560 to 4K at 100/125/150 %: no overlap or cut-off (More controls menu, popover placement, page fixes, layout audit test); one "Trail & bubbles" time, bubbles end with their trail piece (v1.7 part 1)
+- [x] 30. Ready right after the game: in-place index when the recording stops (no copy, crash-safe), 2 s victory-screen tail, thumbnail right away, faster exit detection (v1.7.1)
+- [x] 31. Replays and spectating aren't recorded: League client + in-game API detection before recording, late detection deletes the partial recording, "Record games you spectate" setting, simulator replay / spectate modes (v1.7.1)
+- [ ] Owner's check of v1.7.1: watch a replay (not recorded), a short Practice Tool game (ready in seconds)
 
 ## Known issues
 - v1.6 player: frame steps are seeks, so on recordings with long keyframe gaps (before v1.2:
@@ -1070,8 +1206,14 @@ Rules: replay UI only (nothing during the game); v1.6 behaviour unchanged except
 - Recordings made before v1.2.0 keep their 2–5.5 s keyframe spacing (only a re-encode would
   change that); marker jumps snap to keyframes so they're fast anyway, but scrubbing to an
   arbitrary point in an old recording can take ~0.1–0.3 s.
-- A recording is finalized shortly after its game (seconds); if you open it in those seconds, it
-  plays from the fragmented file (slow first frame) and is finalized the next time.
+- v1.7.1: each recording has ~10 MB of reserved room for its index (8-10 MB of it stays unused
+  inside the file). A game longer than ~3.5 h doesn't fit and is finalized by copying after the
+  game (as before v1.7.1). Recordings made before v1.7.1 are still finalized by copying.
+- Replays: detected from the League client's state + the in-game API's spectator mode (captured
+  on patch 16.19). If Riot changes those answers, a replay could be recorded again (the in-game
+  check is the safety net; the log says "session check: ..." and "in-game API: spectator mode").
+  The client's spectate state (`/lol-gameflow/v1/watch`) wasn't captured: spectating is still
+  caught by the in-game API (not recorded), only the label may say "Replay or spectating".
 - Hovering a game card starts loading its video: a few MB read from disk per hovered game.
 - Ult check: tuned on the owner's HUD (4K, HUD scale 0, numeric cooldowns, HUD animations off);
   other HUD scales are found by the scale search (tested synthetically at 1.5×), but colour
@@ -1099,6 +1241,13 @@ Rules: replay UI only (nothing during the game); v1.6 behaviour unchanged except
   so other fonts / scalings adapt by themselves.
 
 ## Next steps
+- **Owner, v1.7.1 checks (~10 min; job 83 waits on the PC and collects the results):**
+  1. Watch a replay: League client > Profile > Match History > a recent game > Download (if
+     shown) > Watch. Expected: tray tooltip / Home "Replay: not recorded" (or "Replay or
+     spectating: not recorded"), nothing new in Games after closing it.
+  2. A short Practice Tool game (Settings > Game modes: Practice Tool on Record), 2-3 min, then
+     end it. Expected: the game is in Games ~3 s after the victory screen / closing, plays at
+     once (first frame and marker jumps instant), thumbnail within a few seconds.
 - **Owner, Practice Tool test of the ult kinds (v1.6, ~15 min):** see the steps in the v1.6
   test report (also below). Practice Tool with cooldowns ON (not "No Cooldowns"; use the "Reset
   cooldowns" button between ults), Settings > Game modes > Practice Tool on "Record". Level 16+

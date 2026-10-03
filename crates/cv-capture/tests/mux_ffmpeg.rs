@@ -130,7 +130,9 @@ fn fragmented_recording_and_clip() {
     // Crash in the middle of the file: everything before the last fragment still plays.
     let bytes = std::fs::read(&path).unwrap();
     let cut = tmp("crashed.mp4");
-    std::fs::write(&cut, &bytes[..bytes.len() * 6 / 10]).unwrap();
+    // (60 % of the media after the header and the reserved room for the index.)
+    let head = cv_capture::remux::info(&path).unwrap().moov_bytes as usize + reserve_bytes(30, 2) as usize;
+    std::fs::write(&cut, &bytes[..head + (bytes.len() - head) * 6 / 10]).unwrap();
     let frames = probe(&cut, &["-count_frames", "-select_streams", "v:0", "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0"]);
     let n: u32 = frames.trim().parse().unwrap_or(0);
     assert!(n >= 90, "only {n} frames survived the crash");
@@ -217,4 +219,108 @@ fn finalized_recording_plays_the_same() {
     assert_eq!(info.codec.as_deref().map(|c| &c[..7]), Some("avc1.64"));
     assert_eq!((info.width, info.height), (640, 360));
     assert!((info.keyframe_interval_avg - 2.0).abs() < 0.05, "{info:?}");
+}
+
+/// v1.7.1: the recording is made playable in place when it stops (index written into the room
+/// reserved after the header). ffmpeg (Chromium's demuxer) must see exactly what the copied
+/// faststart file has: same frames, same times, no errors, the index before the media.
+#[test]
+fn indexed_in_place_plays_like_the_copy() {
+    if !have_ffmpeg() {
+        eprintln!("ffmpeg not installed, skipping");
+        return;
+    }
+    use cv_capture::remux;
+    let (vc, video, audio) = sources(8);
+    let acfg = vec![AudioConfig::aac_lc(48000, 2, "Game audio"), AudioConfig::aac_lc(48000, 2, "Microphone")];
+    let mic: Vec<Packet> = audio.iter().map(|p| Packet { track: 2, ..p.clone() }).collect();
+    let mut all: Vec<Packet> = video.iter().map(|p| Packet { pts: p.pts + 200_000, ..p.clone() }).chain(audio.clone()).chain(mic).collect();
+    all.sort_by_key(|p| p.pts);
+    let src = tmp("ip-src.mp4");
+    // The recorder's own writer, with its default reserve.
+    let mut w = FragmentedWriter::new(std::io::BufWriter::new(std::fs::File::create(&src).unwrap()), vc.clone(), acfg).unwrap();
+    let mut next = HNS;
+    for p in all {
+        if p.pts >= next {
+            w.flush_fragment().unwrap();
+            next += HNS;
+        }
+        w.push(p);
+    }
+    w.finish().unwrap();
+    let copy = tmp("ip-copy.mp4");
+    remux::finalize(&src, &copy, &|| false).unwrap();
+    // The fragmented recording with its reserve plays too (crash safety during the game).
+    let errs = decode_errors(&src);
+    assert!(errs.trim().is_empty(), "fragmented decode errors: {errs}");
+    let frag_copy = tmp("ip-frag.mp4");
+    std::fs::copy(&src, &frag_copy).unwrap();
+    let len = std::fs::metadata(&src).unwrap().len();
+    let rep = remux::index_in_place(&src).unwrap();
+    assert!(rep.indexed, "{rep:?}");
+    assert_eq!(std::fs::metadata(&src).unwrap().len(), len);
+    let errs = decode_errors(&src);
+    assert!(errs.trim().is_empty(), "decode errors: {errs}");
+    let frames = probe(&src, &["-count_frames", "-select_streams", "v:0", "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0"]);
+    assert_eq!(frames.trim(), "240");
+    let streams = probe(&src, &["-show_entries", "stream=codec_name", "-of", "csv=p=0"]);
+    assert_eq!(streams.lines().collect::<Vec<_>>(), vec!["h264", "aac", "aac"], "{streams}");
+    for s in ["v:0", "a:0", "a:1"] {
+        assert_eq!(pts_list(&src, s), pts_list(&copy, s), "stream {s}");
+    }
+    let d1: f64 = probe(&src, &["-show_entries", "format=duration", "-of", "csv=p=0"]).trim().parse().unwrap();
+    let d2: f64 = probe(&copy, &["-show_entries", "format=duration", "-of", "csv=p=0"]).trim().parse().unwrap();
+    assert!((d1 - d2).abs() < 0.01, "duration {d1} vs {d2}");
+    // Same decoded pictures (frame checksums).
+    let md5 = |p: &std::path::Path| {
+        let o = Command::new("ffmpeg").args(["-v", "error", "-i"]).arg(p).args(["-map", "0:v", "-f", "framemd5", "-"]).output().unwrap();
+        String::from_utf8_lossy(&o.stdout).lines().filter(|l| !l.starts_with('#')).map(|l| l.rsplit(',').next().unwrap().trim().to_string()).collect::<Vec<_>>()
+    };
+    assert_eq!(md5(&src), md5(&copy));
+    // Opening it reads a few boxes at the start, like the copied faststart file: FFmpeg (the
+    // demuxer in Chromium / WebView2) walks every top-level box of a file until it finds the
+    // index and the media and reaches the end: a fragmented recording costs one read per
+    // fragment (and so did a first version of this that kept the fragments as `free` boxes).
+    let root_atoms = |p: &std::path::Path| {
+        let o = Command::new("ffprobe").args(["-v", "trace", "-show_entries", "format=duration", "-of", "csv=p=0"]).arg(p).output().unwrap();
+        String::from_utf8_lossy(&o.stderr).lines().filter(|l| l.contains("parent:'root'")).count()
+    };
+    let (n_frag, n_copy, n_inplace) = (root_atoms(&frag_copy), root_atoms(&copy), root_atoms(&src));
+    assert!(n_frag >= 8, "fragmented: {n_frag} top-level boxes read (the check must see them)");
+    assert!(n_inplace <= n_copy + 1 && n_inplace <= 4, "in place: {n_inplace} top-level boxes read (copy: {n_copy}, fragmented: {n_frag})");
+    assert_eq!(remux::probe(&src).unwrap(), remux::Layout::Faststart);
+}
+
+/// A recording cut off by a crash, made playable in place when the app starts again.
+#[test]
+fn crashed_recording_indexed_in_place_plays() {
+    if !have_ffmpeg() {
+        eprintln!("ffmpeg not installed, skipping");
+        return;
+    }
+    use cv_capture::remux;
+    let (vc, video, audio) = sources(6);
+    let acfg = vec![AudioConfig::aac_lc(48000, 2, "Game audio")];
+    let mut all: Vec<Packet> = video.iter().cloned().chain(audio.clone()).collect();
+    all.sort_by_key(|p| p.pts);
+    let src = tmp("ipc-src.mp4");
+    let mut w = FragmentedWriter::new(std::io::BufWriter::new(std::fs::File::create(&src).unwrap()), vc, acfg).unwrap();
+    let mut next = HNS;
+    for p in all {
+        if p.pts >= next {
+            w.flush_fragment().unwrap();
+            next += HNS;
+        }
+        w.push(p);
+    }
+    w.finish().unwrap();
+    let bytes = std::fs::read(&src).unwrap();
+    let head = remux::info(&src).unwrap().moov_bytes as usize + reserve_bytes(30, 1) as usize;
+    let cut = tmp("ipc-cut.mp4");
+    std::fs::write(&cut, &bytes[..head + (bytes.len() - head) * 6 / 10]).unwrap();
+    remux::index_in_place(&cut).unwrap();
+    let errs = decode_errors(&cut);
+    assert!(errs.trim().is_empty(), "decode errors: {errs}");
+    let n: u32 = probe(&cut, &["-count_frames", "-select_streams", "v:0", "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0"]).trim().parse().unwrap_or(0);
+    assert!(n >= 90, "only {n} frames");
 }

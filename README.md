@@ -35,9 +35,14 @@ games, clips and downloaded tools over; the Home page then offers to uninstall t
 
 ## Using it
 
-- Start a League game. Recording starts at the loading screen and stops after the match.
-  The window stays available, so you can alt-tab to it in the loading screen; the tray icon
-  turns red. Closing the window hides it to the tray (paused, reopens instantly).
+- Start a League game. Recording starts at the loading screen and stops after the match
+  (2 seconds into the victory / defeat screen, or when you leave). The game is in **Games** and
+  plays a few seconds later. The window stays available, so you can alt-tab to it in the
+  loading screen; the tray icon turns red. Closing the window hides it to the tray (paused,
+  reopens instantly).
+- Replays (a `.rofl` file, "Watch" in match history) are never recorded, and neither is
+  spectating someone's game unless you turn on Settings > Games > League > "Record games you
+  spectate". The tray and Home say why ("Replay: not recorded").
 - In game: **F8** saves the last 30 seconds as a clip, **F9** adds a marker. Change them in
   Settings > Hotkeys. Your ult key (default R) is logged as "Ult pressed"; after the game the
   recording confirms each cast ("Ult used"). One ult gives one marker: commanding Tibbers,

@@ -17,11 +17,12 @@ pub mod hud;
 pub mod ult;
 pub mod ultkind;
 pub mod verify;
+pub mod watch;
 
 use async_trait::async_trait;
 use events::{translate, Ctx, EventList};
 use cv_core::game::{
-    CaptureTarget, ConfigField, GameIntegration, GameResult, KeyPress, MatchPhase, PlayerInfo, PlayerStats, PollUpdate,
+    CaptureTarget, ConfigField, GameIntegration, GameResult, KeyPress, MatchPhase, PlayerInfo, PlayerStats, PollUpdate, SessionCheck, WatchKind,
 };
 use cv_core::modes::{CatalogMode, MatchMode, ModeGroupInfo};
 use cv_core::{EventKind, GameEvent};
@@ -166,6 +167,13 @@ pub struct LeagueIntegration {
     patch: Option<String>,
     /// Action keys (abilities, summoners, items, ward) with League's binds for this match.
     actions: Vec<cv_core::input::actions::ActionKey>,
+    /// Setting "Record games you spectate" (replays are never recorded).
+    record_spectating: bool,
+    /// What the League client said at the start (replay / spectating), for the in-game check.
+    watch_hint: Option<WatchKind>,
+    /// The in-game API has said whether this is spectator mode (checked once per match).
+    live_decided: bool,
+    live_checks: u32,
 }
 
 impl Default for LeagueIntegration {
@@ -209,7 +217,19 @@ impl LeagueIntegration {
             ult_kind_mark: None,
             patch: None,
             actions: actions::default_actions(),
+            record_spectating: false,
+            watch_hint: None,
+            live_decided: false,
+            live_checks: 0,
         }
+    }
+
+    /// Status code and body of an in-game API request, errors included.
+    async fn get_raw(&self, path: &str) -> anyhow::Result<(u16, String)> {
+        let url = format!("{}/{}", self.base, path);
+        let resp = self.client.get(&url).send().await?;
+        let status = resp.status().as_u16();
+        Ok((status, resp.text().await.unwrap_or_default()))
     }
 
     async fn get<T: serde::de::DeserializeOwned>(&self, path: &str) -> anyhow::Result<T> {
@@ -239,6 +259,9 @@ impl LeagueIntegration {
         self.ult_kind_mark = None;
         self.patch = None;
         self.actions = actions::default_actions();
+        self.watch_hint = None;
+        self.live_decided = false;
+        self.live_checks = 0;
     }
 
     /// League's own key binds and patch, read at the start of each match (cheap file reads).
@@ -423,6 +446,13 @@ impl GameIntegration for LeagueIntegration {
                 options: &[],
             },
             ConfigField {
+                key: "record_spectating",
+                label: "Record games you spectate",
+                kind: "bool",
+                help: "Off: spectating someone's live game isn't recorded (the tray says \"Spectating: not recorded\"). Replays (.rofl, \"Watch\" in match history) are never recorded.",
+                options: &[],
+            },
+            ConfigField {
                 key: "client_dir",
                 label: "League install folder",
                 kind: "text",
@@ -432,12 +462,13 @@ impl GameIntegration for LeagueIntegration {
         ]
     }
     fn default_config(&self) -> serde_json::Value {
-        serde_json::json!({ "riot_id": "", "ult_key": "", "client_dir": "" })
+        serde_json::json!({ "riot_id": "", "ult_key": "", "client_dir": "", "record_spectating": false })
     }
     fn configure(&mut self, config: &serde_json::Value) {
         self.riot_id = config["riot_id"].as_str().unwrap_or("").trim().to_string();
         self.ult_key = cv_core::settings::normalize_key(config["ult_key"].as_str().unwrap_or(""));
         self.client_dir = config["client_dir"].as_str().unwrap_or("").trim().to_string();
+        self.record_spectating = config["record_spectating"].as_bool().unwrap_or(false);
         // Empty (or the old default "R"): League's own binds. Anything else overrides them.
         self.ult.manual = match self.ult_key.as_str() {
             "" | "R" | "Auto" => None,
@@ -454,6 +485,57 @@ impl GameIntegration for LeagueIntegration {
         self.reset_match();
         self.read_league_config();
         Ok(())
+    }
+
+    /// How long the victory / defeat screen is still recorded after the match ends. Short, so
+    /// the game is ready to watch a few seconds after it ends (v1.7.1; was 6 s).
+    fn end_grace(&self) -> Duration {
+        Duration::from_secs(2)
+    }
+
+    /// Replay / spectating / your match, from the League client (before anything is recorded).
+    async fn session_check(&mut self) -> SessionCheck {
+        self.watch_hint = None;
+        self.live_decided = false;
+        self.live_checks = 0;
+        let Some(lcu) = queues::find_lockfile(&self.client_dir).and_then(|l| queues::Lcu::new(&l)) else {
+            log::info!("session check: League client not found; the in-game API decides");
+            return SessionCheck::Unknown;
+        };
+        let mut facts = watch::ClientFacts::default();
+        for attempt in 0..2 {
+            if attempt > 0 {
+                tokio::time::sleep(Duration::from_millis(300)).await;
+            }
+            let (phase, replays, w) = tokio::join!(
+                lcu.get_raw("/lol-gameflow/v1/gameflow-phase"),
+                lcu.get_raw("/lol-replays/v1/configuration"),
+                lcu.get_raw("/lol-gameflow/v1/watch")
+            );
+            if let Ok((200, v)) = phase {
+                facts.phase = v.as_str().map(str::to_string);
+            }
+            if let Ok((200, v)) = replays {
+                facts.playing_replay = v.get("isPlayingReplay").and_then(|b| b.as_bool());
+            }
+            if let Ok((200, v)) = w {
+                facts.watch_phase = ["watchPhase", "phase"].iter().find_map(|k| v.get(*k).and_then(|p| p.as_str())).map(str::to_string);
+            }
+            if facts.phase.is_some() {
+                break;
+            }
+        }
+        let c = watch::classify_client(&facts);
+        log::info!("session check: League client phase {:?}, playing replay {:?}, watch {:?} -> {c:?}", facts.phase, facts.playing_replay, facts.watch_phase);
+        self.watch_hint = match c {
+            SessionCheck::Watching(k) | SessionCheck::Unsure(k) => Some(k),
+            _ => None,
+        };
+        c
+    }
+
+    fn record_spectating(&self) -> bool {
+        self.record_spectating
     }
 
     fn mode_groups(&self) -> Vec<ModeGroupInfo> {
@@ -602,6 +684,29 @@ impl GameIntegration for LeagueIntegration {
                 return Ok(u);
             }
         };
+        // Once the in-game API answers: spectator mode (replay / spectating) or your champion?
+        // Asked once per match (until it answers either way).
+        if !self.live_decided && self.live_checks < 60 {
+            self.live_checks += 1;
+            if let Ok((status, body)) = self.get_raw("activeplayer").await {
+                match watch::classify_active_player(status, &body) {
+                    watch::LiveVerdict::Spectator => {
+                        self.live_decided = true;
+                        let k = self.watch_hint.unwrap_or(WatchKind::Unknown);
+                        log::info!("in-game API: spectator mode ({})", k.label().to_lowercase());
+                        u.watching = Some(k);
+                        u.game_time = Some(stats.game_time);
+                        u.phase = if stats.game_time > 0.0 { MatchPhase::InProgress } else { MatchPhase::Loading };
+                        return Ok(u);
+                    }
+                    watch::LiveVerdict::Playing => {
+                        self.live_decided = true;
+                        u.playing = true;
+                    }
+                    watch::LiveVerdict::Undecided => {}
+                }
+            }
+        }
         if self.mode.is_none() && !stats.game_mode.is_empty() {
             self.mode = Some(events::mode_name(&stats.game_mode));
         }

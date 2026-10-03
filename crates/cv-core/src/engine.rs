@@ -6,7 +6,7 @@
 //! While a game runs it polls the game module about once per second.
 
 use crate::events::{fmt_clock, EventKind, GameEvent};
-use crate::game::{GameIntegration, KeyPress, MatchPhase, PlayerInfo, PlayerStats};
+use crate::game::{GameIntegration, KeyPress, MatchPhase, PlayerInfo, PlayerStats, SessionCheck, WatchKind};
 use crate::modes::{GameModes, ModeRule};
 use crate::recorder::{RecordOptions, Recorder, RecorderStatus};
 use crate::session::{self, ClipInfo, GameSession, StatSample, CLIPS_DIR};
@@ -107,6 +107,8 @@ pub struct LiveStatus {
     pub mode_name: Option<String>,
     /// What this mode's rule said: record / clips_only / off.
     pub mode_rule: Option<ModeRule>,
+    /// A replay / spectating (not recorded): the tray and Home say so.
+    pub watching: Option<WatchKind>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -150,6 +152,16 @@ struct Active {
     pending_clips: Vec<PendingClip>,
     /// Mouse and keyboard recording (cursor-based games, full recordings only).
     input: Option<Arc<crate::input::InputWriter>>,
+    /// A replay / spectating: nothing recorded, nothing saved, waiting for the game to close.
+    watch: Option<WatchKind>,
+    /// Probably a replay (see `SessionCheck::Unsure`): polling the game's API, nothing recorded
+    /// until it says whether this is a match you play.
+    hold: Option<WatchKind>,
+    /// A spectated game recorded because the setting allows it.
+    spectating: bool,
+    /// When the match was seen ending (victory screen) or the game closing (for the post-game
+    /// timings in the log).
+    over_at: Option<Instant>,
 }
 
 /// An automatic event clip in clips-only mode, saved from the replay buffer once `due`.
@@ -258,7 +270,8 @@ impl Engine {
             st.last_event = a.last_event.clone();
             st.video_offset = (!a.offset_samples.is_empty()).then_some(a.session.video_offset);
             st.mode_name = a.session.mode_name.clone();
-            st.mode_rule = Some(a.rule);
+            st.mode_rule = if a.hold.is_some() { None } else { Some(a.rule) };
+            st.watching = a.watch;
         }
         st
     }
@@ -407,13 +420,94 @@ impl Engine {
         if let Err(e) = self.games[idx].start().await {
             log::warn!("game module start failed: {e:#}");
         }
-        let (gid, gname, capture) = {
+        let (gid, gname) = {
             let g = &self.games[idx];
-            (g.id(), g.name(), g.capture())
+            (g.id(), g.name())
         };
-        let mut session = GameSession::new(id.clone(), gid, gname, started);
+        let session = GameSession::new(id.clone(), gid, gname, started);
         log::info!("{gname} detected, session {id}");
+        let mut active = Active {
+            game: idx,
+            session,
+            dir: dir.clone(),
+            seen: HashSet::new(),
+            phase: MatchPhase::Waiting,
+            reached_in_progress: false,
+            recording: false,
+            rec_started: None,
+            clock: None,
+            offset_samples: Vec::new(),
+            ended_at: None,
+            last_save: Instant::now(),
+            next_stat_sample: 0.0,
+            missing_checks: 0,
+            last_perf: Instant::now(),
+            last_event: None,
+            rule: ModeRule::Record,
+            pending_clips: Vec::new(),
+            input: None,
+            watch: None,
+            hold: None,
+            spectating: false,
+            over_at: None,
+        };
+        self.message = None;
 
+        // A replay or spectating? Decided before anything is recorded (v1.7.1).
+        let t0 = Instant::now();
+        let check = self.games[idx].session_check().await;
+        log::info!("session check: {check:?} in {} ms", t0.elapsed().as_millis());
+        match check {
+            SessionCheck::Watching(WatchKind::Spectate) if self.games[idx].record_spectating() => {
+                log::info!("spectating a live game: recorded (setting \"Record games you spectate\" is on)");
+                active.spectating = true;
+            }
+            SessionCheck::Watching(k) => {
+                self.enter_watch(&mut active, k);
+                self.platform.set_input_enabled(false);
+                self.active = Some(active);
+                self.emit(EngineEvent::GameStarted { game_name: gname.into() });
+                self.emit_status();
+                return;
+            }
+            SessionCheck::Unsure(k) => {
+                // Not recorded until the game's API says this is a match you play.
+                log::info!("probably {} (no game session in the client): not recording until the game confirms", k.label().to_lowercase());
+                active.hold = Some(k);
+                self.message = Some("Checking whether this is a replay…".into());
+                self.platform.set_input_enabled(false);
+                self.active = Some(active);
+                self.emit(EngineEvent::GameStarted { game_name: gname.into() });
+                self.emit_status();
+                return;
+            }
+            SessionCheck::Playing | SessionCheck::Unknown => {}
+        }
+        self.begin(&mut active).await;
+        self.active = Some(active);
+        self.emit(EngineEvent::GameStarted { game_name: gname.into() });
+        self.emit_status();
+    }
+
+    /// A replay / spectating: nothing recorded or saved; only the tray / Home say why.
+    fn enter_watch(&mut self, a: &mut Active, k: WatchKind) {
+        a.watch = Some(k);
+        a.hold = None;
+        a.rule = ModeRule::Off;
+        a.recording = false;
+        self.message = Some(format!("{}: not recorded", k.label()));
+        log::info!("{}: not recorded", k.label());
+        let _ = std::fs::remove_dir_all(&a.dir);
+    }
+
+    /// Decides the mode's rule, then starts recording (unless the mode is off).
+    async fn begin(&mut self, active: &mut Active) {
+        let idx = active.game;
+        let (gid, capture) = {
+            let g = &self.games[idx];
+            (g.id(), g.capture())
+        };
+        let dir = active.dir.clone();
         // Which mode is this, and is it recorded? Decided once, before recording starts.
         let mut rule = ModeRule::Record;
         let mut reason: Option<String> = None;
@@ -442,36 +536,21 @@ impl Engine {
             rule = d.rule;
             reason = Some(d.reason);
             if let Some(m) = &mode {
-                session.queue_id = m.queue_id;
-                session.mode_name = Some(m.name.clone());
-                session.mode_key = m.key.clone();
+                active.session.queue_id = m.queue_id;
+                active.session.mode_name = Some(m.name.clone());
+                active.session.mode_key = m.key.clone();
             }
         }
-        if rule != ModeRule::Off {
-            let _ = session.save(&dir);
+        if active.spectating {
+            active.session.mode_name = Some(match active.session.mode_name.take() {
+                Some(m) => format!("Spectating · {m}"),
+                None => "Spectating".into(),
+            });
         }
-        let mut active = Active {
-            game: idx,
-            session,
-            dir: dir.clone(),
-            seen: HashSet::new(),
-            phase: MatchPhase::Waiting,
-            reached_in_progress: false,
-            recording: false,
-            rec_started: None,
-            clock: None,
-            offset_samples: Vec::new(),
-            ended_at: None,
-            last_save: Instant::now(),
-            next_stat_sample: 0.0,
-            missing_checks: 0,
-            last_perf: Instant::now(),
-            last_event: None,
-            rule,
-            pending_clips: Vec::new(),
-            input: None,
-        };
-        self.message = None;
+        active.rule = rule;
+        if rule != ModeRule::Off {
+            let _ = active.session.save(&dir);
+        }
         if rule == ModeRule::Off {
             // Not recorded: no recorder, no polling, nothing saved. Only the tray says why.
             self.message = reason.clone();
@@ -503,8 +582,53 @@ impl Engine {
             self.recorder_status = self.recorder.status().await;
         }
         self.platform.set_input_enabled(rule != ModeRule::Off);
-        self.active = Some(active);
-        self.emit(EngineEvent::GameStarted { game_name: gname.into() });
+    }
+
+    /// A replay / spectating found out only after recording started (the game's API answers a
+    /// few seconds after the process appears): everything recorded so far is deleted.
+    async fn abort_watch(&mut self, k: WatchKind) {
+        let Some(mut a) = self.active.take() else { return };
+        let since = a.rec_started.map(|r| r.elapsed().as_secs_f64()).unwrap_or(0.0);
+        if let Some(w) = a.input.take() {
+            let _ = self.platform.stop_input_capture();
+            let _ = w.finish(0);
+        }
+        self.platform.set_input_enabled(false);
+        a.pending_clips.clear();
+        if a.recording {
+            if let Err(e) = self.recorder.stop_recording().await {
+                log::debug!("stopping the recording of a replay: {e:#}");
+            }
+            let _ = self.recorder.finish().await;
+            self.recorder_status = self.recorder.status().await;
+        }
+        a.recording = false;
+        // Never listed in the library from now on (it lists folders with a session.json), and
+        // removed by the maintenance pass if a file can't be deleted right now.
+        let _ = std::fs::write(a.dir.join(session::DISCARDED_MARK), b"replay or spectating: not recorded");
+        let _ = std::fs::remove_file(a.dir.join(session::SESSION_FILE));
+        // The recorder has closed its files; an antivirus scan may hold one for a moment.
+        let mut gone = false;
+        for _ in 0..20 {
+            match std::fs::remove_dir_all(&a.dir) {
+                Ok(()) => {
+                    gone = true;
+                    break;
+                }
+                Err(_) if !a.dir.exists() => {
+                    gone = true;
+                    break;
+                }
+                Err(_) => tokio::time::sleep(Duration::from_millis(250)).await,
+            }
+        }
+        log::info!(
+            "{} detected {since:.1} s after recording started: the partial recording was deleted{}",
+            k.label().to_lowercase(),
+            if gone { "" } else { " (some files were still in use; the folder is removed at the next start)" }
+        );
+        self.enter_watch(&mut a, k);
+        self.active = Some(a);
         self.emit_status();
     }
 
@@ -569,6 +693,10 @@ impl Engine {
 
     async fn tick_active(&mut self, n: u64) {
         let idx = self.active.as_ref().unwrap().game;
+        if self.active.as_ref().unwrap().hold.is_some() {
+            self.tick_hold(n).await;
+            return;
+        }
         if self.active.as_ref().unwrap().rule == ModeRule::Off {
             // Mode switched off: just wait for the game to close (every 2 s).
             if n % 2 == 0 {
@@ -589,6 +717,14 @@ impl Engine {
                 None
             }
         };
+        // Spectator mode found by the game's API after recording started: delete it all.
+        if let Some(k) = update.as_ref().and_then(|u| u.watching) {
+            let spectating_ok = k == WatchKind::Spectate && self.games[idx].record_spectating();
+            if !spectating_ok {
+                self.abort_watch(k).await;
+                return;
+            }
+        }
         let recording = self.active.as_ref().unwrap().recording;
         // Ask the recorder for its own elapsed time right after the poll (used for the offset).
         // Only sample while the clock runs (League reports 0:00 during the loading screen).
@@ -604,6 +740,7 @@ impl Engine {
             None
         };
 
+        let update_failed = update.is_none();
         let mut new_events = Vec::new();
         if let Some(u) = update {
             let a = self.active.as_mut().unwrap();
@@ -649,7 +786,9 @@ impl Engine {
             }
             if a.phase == MatchPhase::Ended && a.ended_at.is_none() {
                 a.ended_at = Some(tokio::time::Instant::now());
+                a.over_at.get_or_insert_with(Instant::now);
                 a.session.game_duration = a.clock.map(|(_, t)| t);
+                log::info!("match over (victory/defeat screen): stopping in {} ms", self.games[idx].end_grace().as_millis());
             }
         }
         for ev in new_events {
@@ -680,11 +819,16 @@ impl Engine {
         let grace = self.games[idx].end_grace();
         let ended = self.active.as_ref().unwrap().ended_at.is_some_and(|t| t.elapsed() >= grace);
         let mut gone = false;
-        if n % 2 == 0 {
+        // The process list every 2 s; every second while the game's API doesn't answer (it
+        // stops answering the moment the game closes), so leaving the game is noticed fast.
+        if n % 2 == 0 || update_failed {
             let running = self.game_running(idx);
             let a = self.active.as_mut().unwrap();
             a.missing_checks = if running { 0 } else { a.missing_checks + 1 };
-            gone = a.missing_checks >= 2;
+            gone = a.missing_checks >= 2 || (update_failed && a.missing_checks >= 1 && a.reached_in_progress);
+            if gone {
+                a.over_at.get_or_insert_with(Instant::now);
+            }
         }
         let match_only = self.games[idx].match_only();
         let left_match = {
@@ -703,6 +847,49 @@ impl Engine {
         } else {
             self.emit_status();
         }
+    }
+
+    /// Probably a replay (no game session in the client): poll the game's API until it says
+    /// whether this is spectator mode (never recorded) or a match you play (recording starts).
+    async fn tick_hold(&mut self, n: u64) {
+        let idx = self.active.as_ref().unwrap().game;
+        let update = self.games[idx].poll().await.ok();
+        if let Some(u) = &update {
+            let watching = u.watching.filter(|k| !(*k == WatchKind::Spectate && self.games[idx].record_spectating()));
+            if let Some(k) = watching {
+                let mut a = self.active.take().unwrap();
+                self.enter_watch(&mut a, k);
+                self.active = Some(a);
+                self.emit_status();
+                return;
+            }
+            if u.playing || u.watching.is_some() {
+                let mut a = self.active.take().unwrap();
+                let waited = a.session.started_at.signed_duration_since(Local::now()).num_seconds().abs();
+                if u.watching.is_some() {
+                    log::info!("spectating a live game: recorded (setting \"Record games you spectate\" is on)");
+                    a.spectating = true;
+                } else {
+                    log::info!("the game confirms a match you play: recording starts now ({waited} s after the game started)");
+                }
+                a.hold = None;
+                self.message = None;
+                self.begin(&mut a).await;
+                self.active = Some(a);
+                self.emit_status();
+                return;
+            }
+        }
+        if n % 2 == 0 || update.is_none() {
+            let running = self.game_running(idx);
+            let a = self.active.as_mut().unwrap();
+            a.missing_checks = if running { 0 } else { a.missing_checks + 1 };
+            if a.missing_checks >= 2 {
+                self.end_session().await;
+                return;
+            }
+        }
+        self.emit_status();
     }
 
     fn push_event(&mut self, ev: GameEvent) {
@@ -894,9 +1081,13 @@ impl Engine {
             self.save_due_event_clips(true).await;
         }
         let Some(mut a) = self.active.take() else { return };
-        if a.rule == ModeRule::Off {
+        if a.rule == ModeRule::Off || a.hold.is_some() {
             self.games[a.game].stop().await;
             self.platform.set_input_enabled(false);
+            if a.hold.is_some() {
+                // Closed before the game said what it was: nothing was recorded.
+                let _ = std::fs::remove_dir_all(&a.dir);
+            }
             log::info!("{} ended (not recorded: {})", a.session.game_name, self.message.clone().unwrap_or_default());
             self.message = None;
             self.emit_status();
@@ -932,9 +1123,17 @@ impl Engine {
                 a.session.key_presses.extend(marks);
             }
         }
+        let over = *a.over_at.get_or_insert_with(Instant::now);
         if a.recording {
             let elapsed = a.rec_started.map(|r| r.elapsed().as_secs_f64());
-            match self.recorder.stop_recording().await {
+            let t_stop = Instant::now();
+            let stopped = self.recorder.stop_recording().await;
+            log::info!(
+                "post-game: recording stopped and made playable in {} ms ({} ms after the match ended)",
+                t_stop.elapsed().as_millis(),
+                over.elapsed().as_millis()
+            );
+            match stopped {
                 Ok(_) if a.rule == ModeRule::ClipsOnly => {
                     log::info!("clips-only game ended: {} clips", a.session.clips.len());
                 }
@@ -980,6 +1179,7 @@ impl Engine {
             if let Err(e) = a.session.save(&a.dir) {
                 self.notice("error", format!("Couldn't save the game: {e:#}"));
             }
+            log::info!("post-game: {sid} saved and in the library {} ms after the match ended", over.elapsed().as_millis());
             self.emit(EngineEvent::GameEnded { session_id: sid.clone() });
             self.spawn_post_process(a.dir.clone(), sid);
         }

@@ -77,6 +77,47 @@ pub fn spawn(app: AppHandle) {
     });
 }
 
+/// Right after a game is saved (v1.7.1): its thumbnail at once, so the game card is complete
+/// within a second, instead of after the auto clips and the maintenance pass. The recording is
+/// already playable (indexed in place when it stopped). Background priority; skipped if a new
+/// game has started; holds the maintenance lock so the two never make the same file.
+pub fn post_game_thumbnail(app: AppHandle, session_id: String) {
+    tauri::async_runtime::spawn(async move {
+        let st = app.state::<Arc<AppState>>().inner().clone();
+        let _one = st.maintenance.running.lock().await;
+        if busy(&st) {
+            return;
+        }
+        let s2 = st.clone();
+        let id = session_id.clone();
+        let made = tauri::async_runtime::spawn_blocking(move || {
+            crate::platform::in_background_mode(|| {
+                let t = std::time::Instant::now();
+                let lib = s2.library.clone();
+                lib.refresh(&s2.save_dir());
+                let g = lib.summary(&id)?;
+                let (Some(video), None) = (&g.video_path, &g.thumb_path) else { return None };
+                let out = lib.thumbs().session(&g.id);
+                let ok = make_thumb(&s2, video, g.thumb_at, &out, s2.ffmpeg.locate().as_deref());
+                if ok {
+                    lib.thumb_ready(&g.id);
+                    lib.save();
+                }
+                Some((ok, t.elapsed().as_millis()))
+            })
+        })
+        .await
+        .ok()
+        .flatten();
+        if let Some((ok, ms)) = made {
+            log::info!("post-game: thumbnail of {session_id} {} in {ms} ms", if ok { "made" } else { "failed" });
+            if ok && st.ui_visible.load(Ordering::SeqCst) {
+                let _ = app.emit("library-changed", ());
+            }
+        }
+    });
+}
+
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct RunReport {
     pub thumbs_made: usize,
@@ -154,6 +195,9 @@ fn run_blocking(st: &Arc<AppState>, forced: bool) -> RunReport {
     if adopted {
         lib.save();
     }
+
+    // Recordings of a replay / spectating that couldn't be deleted right away (file in use).
+    remove_discarded(&root);
 
     // Games interrupted by a crash or power cut: give them back their (partial) video.
     if recover_interrupted(st) > 0 {
@@ -268,6 +312,16 @@ fn run_blocking(st: &Arc<AppState>, forced: bool) -> RunReport {
         log::info!("removed {orphans} unused thumbnails");
     }
     report
+}
+
+fn remove_discarded(root: &Path) {
+    let Ok(rd) = std::fs::read_dir(root) else { return };
+    for d in rd.flatten().map(|e| e.path()).filter(|p| p.join(cv_core::session::DISCARDED_MARK).is_file()) {
+        match std::fs::remove_dir_all(&d) {
+            Ok(()) => log::info!("removed the discarded recording {}", d.display()),
+            Err(e) => log::debug!("discarded recording {}: {e}", d.display()),
+        }
+    }
 }
 
 /// A game whose app was closed hard (crash, power cut, killed) during the recording has a
@@ -467,6 +521,25 @@ fn finalize_video(st: &AppState, video: &Path) -> bool {
     if is_open() {
         return false; // next run
     }
+    let t = std::time::Instant::now();
+    // Recordings since v1.7.1 are indexed in place when they stop (no copy, no extra space);
+    // this resumes one whose in-place index was cut short (power cut). Older recordings, or one
+    // too long for its reserved room (> ~3 h), are copied (below).
+    match remux::index_in_place(video) {
+        Ok(r) => {
+            log::info!(
+                "finalized {} for instant playback in place in {} ms ({:?}, index {} KB, {} fragments)",
+                video.display(),
+                t.elapsed().as_millis(),
+                r.from,
+                r.moov_bytes / 1024,
+                r.fragments
+            );
+            return true;
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::Unsupported => log::debug!("finalize {}: {e}; copying", video.display()),
+        Err(e) => log::warn!("in-place index of {}: {e}; copying", video.display()),
+    }
     let size = std::fs::metadata(video).map(|m| m.len()).unwrap_or(0);
     if let Some(free) = video.parent().and_then(crate::platform::free_space) {
         if free < size + (2 << 30) {
@@ -475,11 +548,10 @@ fn finalize_video(st: &AppState, video: &Path) -> bool {
             return false;
         }
     }
-    let t = std::time::Instant::now();
     match remux::finalize_in_place(video, &|| busy(st) || is_open()) {
         Ok(r) => {
             log::info!(
-                "finalized {} for instant playback: {:?} -> faststart, {} fragments, {} in {:.1} s",
+                "finalized {} for instant playback: {:?} -> faststart by copying, {} fragments, {} in {:.1} s",
                 video.display(),
                 r.from,
                 r.fragments,

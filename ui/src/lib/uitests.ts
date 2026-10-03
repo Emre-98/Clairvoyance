@@ -7,9 +7,15 @@
 //   storage    over the storage limit during a game: nothing is deleted until the game is over
 //   recovered  (after the app was killed mid-recording) the game got its video back
 //   finalized  finished recordings are rewritten for instant playback
+//   postgame   (v1.7.1) a game opened the moment it appears after the match: how long after the
+//              match ended the card is there, the first frame shows, marker jumps work
+//   watch      (v1.7.1) a replay / spectating / a replay found late is never recorded (nothing
+//              left in the recordings folder), a normal match still is
 
 import { api } from "./api";
+import { measureOpen } from "./replaybench";
 import type { LiveStatus, SessionSummary } from "./types";
+import { go } from "./store.svelte";
 
 type Check = { name: string; pass: boolean; details: Record<string, unknown> };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -29,13 +35,13 @@ const sessions = () => api.listSessions();
 const idle = (s: LiveStatus) => s.state === "idle";
 
 /** Plays a simulated game with the given queue; resolves with what the status said during it. */
-async function play(queue: number, length = 120, during?: (s: LiveStatus) => Promise<void>) {
+async function play(queue: number, length = 120, during?: (s: LiveStatus) => Promise<void>, watch: string | null = null) {
   const seen: string[] = [];
   const before = new Set((await sessions()).map((s) => s.id));
   // The previous simulated game may still be closing: retry for a while.
   await until(async () => {
     try {
-      await api.simulateGame(6, length, queue);
+      await api.simulateGame(6, length, queue, watch);
       return true;
     } catch {
       return false;
@@ -179,14 +185,114 @@ async function recovered(): Promise<Check[]> {
   return [{ name: "Killed mid-recording: the game keeps its video up to the crash", pass: !!g && (g.duration ?? 0) > 5, details: { game: g, file: info } }];
 }
 
-const TESTS: Record<string, () => Promise<Check[]>> = { modes, storage, finalized, recovered };
+
+/** Real-time simulated games of `lengths` seconds (the fake game's loading screen is 8 s): the
+ *  game is opened the moment it appears in the library; times are from the end of the match. */
+async function postgame(cfg: { postgame_lengths?: number[] }): Promise<Check[]> {
+  const out: Check[] = [];
+  for (const length of cfg.postgame_lengths ?? [300]) {
+    const before = new Set((await sessions()).map((s) => s.id));
+    let tCall = 0;
+    await until(async () => {
+      try {
+        tCall = Date.now();
+        await api.simulateGame(1, length, 400);
+        return true;
+      } catch {
+        return false;
+      }
+    }, 90000, 1000);
+    // The fake match ends (GameEnd, victory screen) 8 s (loading) + its length after the call.
+    const matchEnd = tCall + 8000 + length * 1000;
+    await api.benchLog(`postgame ${length} s: started; match ends at ${new Date(matchEnd).toISOString()}`).catch(() => {});
+    await sleep(Math.max(0, matchEnd - Date.now() - 1500));
+    // The moment the game is in the library, open it.
+    let card: SessionSummary | null = null;
+    let tCard = 0;
+    const deadline = matchEnd + 180000;
+    while (Date.now() < deadline) {
+      const list = await sessions().catch(() => [] as SessionSummary[]);
+      card = list.find((s) => !before.has(s.id) && !!s.video_path) ?? null;
+      if (card) {
+        tCard = Date.now();
+        break;
+      }
+      await sleep(100);
+    }
+    if (!card) {
+      out.push({ name: `${length} s game: card appeared`, pass: false, details: { length } });
+      continue;
+    }
+    const info = await api.videoInfo(card.video_path!).catch((e) => ({ error: String(e) }) as any);
+    const tOpen = Date.now();
+    const r = await measureOpen(card.id).catch((e) => ({ error: String(e) }) as any);
+    const firstFrameAt = r.firstFrame != null ? tOpen + r.firstFrame : null;
+    // The thumbnail (made right after the game since v1.7.1).
+    let thumbAt: number | null = null;
+    await until(async () => {
+      const s = (await sessions()).find((x) => x.id === card!.id);
+      if (s?.thumb_path) thumbAt = Date.now();
+      return !!s?.thumb_path;
+    }, 60000, 250);
+    const sec = (t: number | null) => (t == null ? null : Math.round((t - matchEnd) / 100) / 10);
+    const details = {
+      length,
+      card_s: sec(tCard),
+      first_frame_s: sec(firstFrameAt),
+      playable_s: r.playable != null ? sec(tOpen + r.playable) : null,
+      open: r,
+      layout_at_card: info?.layout ?? null,
+      fragments_at_card: info?.fragments ?? null,
+      bytes: info?.bytes ?? null,
+      thumb_s: sec(thumbAt),
+    };
+    await api.benchLog(`postgame ${length} s: ${JSON.stringify(details)}`).catch(() => {});
+    out.push({
+      name: `${length} s game: card and video playable < 5 s after the match ended`,
+      pass: (details.card_s ?? 99) < 5 && (details.first_frame_s ?? 99) < 5 && details.layout_at_card === "faststart",
+      details,
+    });
+    go({ page: "home" });
+    await sleep(3000);
+  }
+  return out;
+}
+
+/** Replays and spectating aren't recorded; a normal match still is. */
+async function watch(): Promise<Check[]> {
+  const out: Check[] = [];
+  // (Builds without the command: null, the check is skipped.)
+  const folders = async () => ((await (api as any).benchSaveDir?.().catch(() => null)) as string[] | null) ?? null;
+  for (const [kind, label] of [
+    ["replay", "Replay"],
+    ["spectate", "Spectating"],
+    ["replay-late", "Replay (client can't tell, found by the game a few seconds in)"],
+    ["replay-unsure", "Replay (no game session in the client, the game decides)"],
+  ] as const) {
+    const f0 = await folders();
+    const r = await play(400, 90, undefined, kind);
+    await sleep(1500);
+    const f1 = await folders();
+    const leftover = f0 && f1 ? f1.filter((f) => !f0.includes(f)) : null;
+    out.push({
+      name: `${label}: not recorded, nothing left, status says why`,
+      pass: r.started && r.ended && r.added.length === 0 && (leftover == null || leftover.length === 0) && r.statuses.some((l) => /not recorded/i.test(l)),
+      details: { ...r, leftover },
+    });
+  }
+  const r = await play(400, 90);
+  out.push({ name: "A normal match is still recorded", pass: r.added.length === 1 && !!r.added[0].video_path, details: r });
+  return out;
+}
+
+const TESTS: Record<string, (cfg: any) => Promise<Check[]>> = { modes, storage, finalized, recovered, postgame, watch };
 
 export async function runUiTests(cfg: { tests: string[] }) {
   const results: Check[] = [];
   for (const t of cfg.tests) {
     await api.benchLog(`ui test ${t}: start`).catch(() => {});
     try {
-      const r = await TESTS[t]();
+      const r = await TESTS[t](cfg);
       results.push(...r);
       for (const c of r) await api.benchLog(`ui test ${t}: ${c.pass ? "PASS" : "FAIL"} ${c.name}`).catch(() => {});
     } catch (e) {

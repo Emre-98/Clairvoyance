@@ -26,6 +26,44 @@ pub struct MockOptions {
     pub champion: String,
     /// The queue the fake client reports (`/lol-gameflow/v1/session` → gameData.queue).
     pub queue: Value,
+    /// What runs: a match you play (default) or spectator mode (see [`Watch`]).
+    pub watch: Watch,
+}
+
+/// Spectator modes of the fake game (v1.7.1, "don't record replays"), answering like the real
+/// client and game did in a replay captured on 2026-10-03 (patch 16.19).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Watch {
+    /// A match you play.
+    #[default]
+    None,
+    /// A replay: no gameflow session ("None"), `isPlayingReplay: true`, the in-game API in
+    /// spectator mode.
+    Replay,
+    /// Spectating a live game: no gameflow session of yours, the client's watch state
+    /// "WatchInProgress", the in-game API in spectator mode.
+    Spectate,
+    /// A replay the client doesn't reveal (it reports a match in progress, as if it couldn't
+    /// tell): only the in-game API shows it, a few seconds in (the "found late" path).
+    ReplayLate,
+    /// A replay with no replay flag in the client (no gameflow session, nothing else): the
+    /// app waits for the in-game API.
+    ReplayUnsure,
+}
+
+impl Watch {
+    pub fn parse(s: &str) -> Watch {
+        match s {
+            "replay" => Watch::Replay,
+            "spectate" => Watch::Spectate,
+            "replay-late" => Watch::ReplayLate,
+            "replay-unsure" => Watch::ReplayUnsure,
+            _ => Watch::None,
+        }
+    }
+    fn spectator(self) -> bool {
+        self != Watch::None
+    }
 }
 
 /// An LCU-style queue object for a queue id (a few well-known ones; anything else is a
@@ -58,6 +96,7 @@ impl Default for MockOptions {
             player: "Tester#EUW".into(),
             champion: "Ahri".into(),
             queue: queue_json(400),
+            watch: Watch::None,
         }
     }
 }
@@ -191,8 +230,18 @@ impl Script {
     fn respond(&self, path: &str) -> Option<Value> {
         let path = path.split('?').next().unwrap_or(path);
         // The League client answers from the start (during the loading screen too).
+        let w = self.opts.watch;
+        let has_session = matches!(w, Watch::None | Watch::ReplayLate);
         match path {
+            "/lol-gameflow/v1/session" if !has_session => {
+                return Some(json!({"errorCode":"RPC_ERROR","httpStatus":404,"implementationDetails":{},"message":"No gameflow session exists."}))
+            }
             "/lol-gameflow/v1/session" => return Some(json!({ "phase": "InProgress", "gameData": { "queue": self.opts.queue.clone(), "isCustomGame": self.opts.queue["category"] == "Custom" } })),
+            "/lol-gameflow/v1/gameflow-phase" => return Some(json!(if has_session { "InProgress" } else { "None" })),
+            "/lol-gameflow/v1/watch" => return Some(json!({ "gameId": if w == Watch::Spectate { 7_000_000_001u64 } else { 0 }, "watchPhase": if w == Watch::Spectate { "WatchInProgress" } else { "None" }, "watchErrorMessage": "" })),
+            "/lol-replays/v1/configuration" => {
+                return Some(json!({"gameVersion":"16.19.823.0722","isInTournament":false,"isLoggedIn":true,"isPatching":false,"isPlayingGame": has_session,"isPlayingReplay": w == Watch::Replay,"isReplaysEnabled":true,"isReplaysForEndOfGameEnabled":true,"isReplaysForMatchHistoryEnabled":true,"minServerVersion":"","minutesUntilReplayConsideredLost":30}))
+            }
             "/lol-game-queues/v1/queues" => {
                 let mut list: Vec<Value> = [420, 440, 400, 480, 450, 1700].iter().map(|id| queue_json(*id)).collect();
                 if !list.iter().any(|q| q["id"] == self.opts.queue["id"]) && self.opts.queue["id"].as_i64().unwrap_or(0) > 0 {
@@ -206,8 +255,12 @@ impl Script {
         let game_mode = self.opts.queue["gameMode"].as_str().filter(|m| !m.is_empty()).unwrap_or("CLASSIC").to_string();
         Some(match path.trim_start_matches("/liveclientdata/") {
             "gamestats" => json!({"gameMode": game_mode, "gameTime": t, "mapName": "Map11", "mapNumber": 11, "mapTerrain": "Default"}),
+            "activeplayername" if w.spectator() => json!("Unknown"),
+            "activeplayer" if w.spectator() => {
+                json!({"errorCode":"RPC_ERROR","httpStatus":400,"implementationDetails":{},"message":"Spectator mode doesn't currently support this feature"})
+            }
             "activeplayername" => json!(self.me()),
-            "activeplayer" => json!({"currentGold": 250.0 + t * 1.2, "level": 10, "riotId": self.me(), "summonerName": self.me_short()}),
+            "activeplayer" => json!({"championStats": {}, "currentGold": 250.0 + t * 1.2, "level": 10, "riotId": self.me(), "summonerName": self.me_short()}),
             "playerlist" => self.player_list(t),
             "eventdata" => json!({"Events": self.events(t)}),
             "allgamedata" => json!({"gameData": {"gameTime": t, "gameMode": game_mode}, "events": {"Events": self.events(t)}}),
@@ -236,6 +289,8 @@ fn handle(mut stream: TcpStream, script: &Script) {
             }
         }
         let (status, body) = match script.respond(&path) {
+            Some(v) if v.get("httpStatus").and_then(|c| c.as_u64()) == Some(400) => ("400 Bad Request", v.to_string()),
+            Some(v) if v.get("httpStatus").and_then(|c| c.as_u64()) == Some(404) => ("404 Not Found", v.to_string()),
             Some(v) => ("200 OK", v.to_string()),
             None => ("404 Not Found", r#"{"errorCode":"RESOURCE_NOT_FOUND","httpStatus":404}"#.to_string()),
         };
@@ -270,4 +325,38 @@ pub fn spawn(opts: MockOptions) -> std::io::Result<MockHandle> {
         r.store(false, Ordering::SeqCst);
     })?;
     Ok(MockHandle { running, stop, base_url, port: opts.port })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn opts(watch: Watch) -> MockOptions {
+        MockOptions { loading_secs: 0.0, watch, ..Default::default() }
+    }
+
+    fn get(s: &Script, p: &str) -> Value {
+        s.respond(p).unwrap_or(Value::Null)
+    }
+
+    #[test]
+    fn spectator_modes_answer_like_the_real_game() {
+        let normal = Script { opts: opts(Watch::None), start: Instant::now() };
+        assert_eq!(get(&normal, "/lol-gameflow/v1/gameflow-phase"), json!("InProgress"));
+        assert_eq!(get(&normal, "/lol-replays/v1/configuration")["isPlayingReplay"], json!(false));
+        assert!(get(&normal, "/liveclientdata/activeplayer").get("championStats").is_some());
+        let replay = Script { opts: opts(Watch::Replay), start: Instant::now() };
+        assert_eq!(get(&replay, "/lol-gameflow/v1/gameflow-phase"), json!("None"));
+        assert_eq!(get(&replay, "/lol-gameflow/v1/session")["httpStatus"], json!(404));
+        assert_eq!(get(&replay, "/lol-replays/v1/configuration")["isPlayingReplay"], json!(true));
+        assert_eq!(get(&replay, "/liveclientdata/activeplayername"), json!("Unknown"));
+        assert!(get(&replay, "/liveclientdata/activeplayer")["message"].as_str().unwrap().contains("Spectator mode"));
+        let spect = Script { opts: opts(Watch::Spectate), start: Instant::now() };
+        assert_eq!(get(&spect, "/lol-gameflow/v1/watch")["watchPhase"], json!("WatchInProgress"));
+        assert_eq!(get(&spect, "/lol-replays/v1/configuration")["isPlayingReplay"], json!(false));
+        let late = Script { opts: opts(Watch::ReplayLate), start: Instant::now() };
+        assert_eq!(get(&late, "/lol-gameflow/v1/gameflow-phase"), json!("InProgress"));
+        assert!(get(&late, "/liveclientdata/activeplayer")["message"].as_str().unwrap().contains("Spectator mode"));
+        assert_eq!(Watch::parse("replay-unsure"), Watch::ReplayUnsure);
+    }
 }

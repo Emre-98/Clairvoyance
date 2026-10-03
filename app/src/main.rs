@@ -213,7 +213,9 @@ fn handle_engine_event(app: &AppHandle, tray: &tray::Tray, ev: EngineEvent) {
             }
         }
         EngineEvent::Notice { level, text } => log::info!("notice [{level}] {text}"),
-        // The game is over and its clips are cut: thumbnails + storage clean-up now.
+        // Saved and playable: its thumbnail right away (the game card is complete at once).
+        EngineEvent::GameEnded { session_id } if !bench::maintenance_off() => maintenance::post_game_thumbnail(app.clone(), session_id.clone()),
+        // The game is over and its clips are cut: the rest of the maintenance pass now.
         EngineEvent::PostProcessed { .. } => st.maintenance.kick(),
         // A mode seen for the first time: remember it (with the "unknown / new modes" rule).
         EngineEvent::ModesChanged { game_id, modes } => {
@@ -376,14 +378,16 @@ fn main() {
                 });
             }
             // `--simulate[=seconds]`: play a fake League match right away (testing/demo).
-            if let Some(arg) = std::env::args().find(|a| a.starts_with("--simulate") && !a.starts_with("--simulate-queue")) {
+            if let Some(arg) = std::env::args().find(|a| a.starts_with("--simulate") && !a.starts_with("--simulate-queue") && !a.starts_with("--simulate-watch")) {
                 let length = arg.split_once('=').and_then(|(_, v)| v.parse().ok()).unwrap_or(120.0);
                 // `--simulate-queue=<id>`: the queue the fake League client reports (450 = ARAM...).
                 let queue = std::env::args().find_map(|a| a.strip_prefix("--simulate-queue=").and_then(|v| v.parse().ok()));
+                // `--simulate-watch=replay|spectate|replay-late|replay-unsure`: spectator mode.
+                let watch = std::env::args().find_map(|a| a.strip_prefix("--simulate-watch=").map(str::to_string));
                 let st = handle.state::<Arc<AppState>>().inner().clone();
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(Duration::from_secs(3)).await;
-                    if let Err(e) = commands::start_simulation(st, 1.0, length, queue) {
+                    if let Err(e) = commands::start_simulation(st, 1.0, length, queue, watch.as_deref()) {
                         log::warn!("simulation: {e}");
                     }
                 });

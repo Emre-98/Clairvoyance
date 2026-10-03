@@ -84,6 +84,47 @@ pub struct PlayerStats {
     pub extra: Vec<(String, String)>,
 }
 
+/// Watching instead of playing: never recorded as a game (spectating can be allowed, see
+/// [`GameIntegration::record_spectating`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WatchKind {
+    /// A replay (League: a `.rofl` file, "Watch" in match history).
+    Replay,
+    /// Spectating someone else's live game.
+    Spectate,
+    /// Spectator mode, but which of the two isn't known.
+    Unknown,
+}
+
+impl WatchKind {
+    /// For the tray / status: "Replay: not recorded".
+    pub fn label(self) -> &'static str {
+        match self {
+            WatchKind::Replay => "Replay",
+            WatchKind::Spectate => "Spectating",
+            WatchKind::Unknown => "Replay or spectating",
+        }
+    }
+}
+
+/// What the game module can tell about a game process that just started, before anything is
+/// recorded ([`GameIntegration::session_check`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionCheck {
+    /// A match you play (League: the client has a game session in progress).
+    Playing,
+    /// Watching a replay / spectating: nothing is recorded.
+    Watching(WatchKind),
+    /// Most likely watching (League: the client has no game session at all), but not proven:
+    /// nothing is recorded until the game's own API says one way or the other
+    /// ([`PollUpdate::watching`] / [`PollUpdate::playing`]).
+    Unsure(WatchKind),
+    /// Can't tell (e.g. the League client can't be reached): recorded; the game's API is
+    /// checked once it answers and a replay found then is deleted.
+    Unknown,
+}
+
 /// Result of one poll of the game's API.
 #[derive(Debug, Clone, Default)]
 pub struct PollUpdate {
@@ -95,6 +136,10 @@ pub struct PollUpdate {
     pub player: Option<PlayerInfo>,
     pub stats: Option<PlayerStats>,
     pub result: Option<GameResult>,
+    /// The game's API says this is spectator mode (a replay or spectating), not a match you play.
+    pub watching: Option<WatchKind>,
+    /// The game's API confirms you're playing (League: your champion's data is there).
+    pub playing: bool,
 }
 
 /// A key press seen while the game window is focused.
@@ -322,6 +367,17 @@ pub trait GameIntegration: Send + Sync {
     /// Version of `verify_recording`: recordings checked by an older version are checked again.
     fn verify_version(&self) -> u32 {
         0
+    }
+
+    /// Called once when the game process appears, before anything is recorded: is this a match
+    /// you play, or a replay / spectating? Keep it quick (League: two local requests to the
+    /// League client).
+    async fn session_check(&mut self) -> SessionCheck {
+        SessionCheck::Unknown
+    }
+    /// Record games you spectate (setting); replays are never recorded.
+    fn record_spectating(&self) -> bool {
+        false
     }
 
     /// Groups for Settings > Game modes. Empty = this game has no per-mode recording rules.

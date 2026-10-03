@@ -2,7 +2,15 @@
 //!
 //!   mp4tool info <file.mp4>                      layout, codec, keyframes, fragments (JSON)
 //!   mp4tool finalize <in.mp4> <out.mp4>          fragmented -> faststart (no re-encode)
-//!   mp4tool loop <in.mp4> <out.mp4> <seconds>    repeat/cut a fragmented recording to a length
+//!   mp4tool loop <in.mp4> <out.mp4> <seconds> [--reserve]
+//!                                                 repeat/cut a fragmented recording to a length
+//!                                                 (--reserve: with room for the in-place index,
+//!                                                 like the recorder since v1.7.1)
+//!   mp4tool index <file.mp4>                     in-place index (v1.7.1): faststart without a copy
+//!   mp4tool postgame <fragmented.mp4> <with-reserve.mp4> [ffmpeg.exe]
+//!                                                 times every post-game step the old and the new
+//!                                                 way (copies are made next to the files, then
+//!                                                 deleted; the inputs are modified: use copies)
 //!   mp4tool cut <in.mp4> <out.mp4> <start s> <seconds>   a piece of a recording (no re-encode)
 //!   mp4tool benchsession <src session.json> <dst dir> <video file name> <seconds>
 //!                                                 session.json for a benchmark copy of a game
@@ -37,9 +45,14 @@ fn main() {
         Some("finalize") if a.len() == 4 => remux::finalize(Path::new(&a[2]), Path::new(&a[3]), &|| false)
             .map(|r| serde_json::to_string_pretty(&r).unwrap())
             .map_err(|e| e.to_string()),
-        Some("loop") if a.len() == 5 => remux::loop_recording(Path::new(&a[2]), Path::new(&a[3]), a[4].parse().unwrap_or(60.0))
-            .map(|d| format!("wrote {d:.1} s"))
-            .map_err(|e| e.to_string()),
+        Some("loop") if a.len() >= 5 => {
+            let reserve = if a.iter().any(|x| x == "--reserve") { reserve_bytes(60, 1) } else { 0 };
+            remux::loop_recording_r(Path::new(&a[2]), Path::new(&a[3]), a[4].parse().unwrap_or(60.0), reserve)
+                .map(|d| format!("wrote {d:.1} s"))
+                .map_err(|e| e.to_string())
+        }
+        Some("index") if a.len() == 3 => remux::index_in_place(Path::new(&a[2])).map(|r| serde_json::to_string_pretty(&r).unwrap()).map_err(|e| e.to_string()),
+        Some("postgame") if a.len() >= 4 => postgame(Path::new(&a[2]), Path::new(&a[3]), a.get(4).map(Path::new)),
         Some("cut") if a.len() == 6 => remux::cut(Path::new(&a[2]), Path::new(&a[3]), a[4].parse().unwrap_or(0.0), a[5].parse().unwrap_or(20.0))
             .map(|t| format!("cut from {t:.3} s"))
             .map_err(|e| e.to_string()),
@@ -412,4 +425,76 @@ fn bubbles(dir: &Path, detail: bool) -> Result<String, String> {
         "ms": { "read_input": (read_ms * 10.0).round() / 10.0, "frame_times": (frames_ms * 10.0).round() / 10.0, "bubbles": (compute_ms * 10.0).round() / 10.0 },
     }))
     .unwrap())
+}
+
+/// Post-game steps on a real-size recording, old way (v1.7.0: fragmented until the maintenance
+/// pass copies it) and new way (v1.7.1: indexed in place when the recording stops). `frag` is
+/// a fragmented recording without reserve, `res` the same with the reserve. Both are modified.
+fn postgame(frag: &Path, res: &Path, ffmpeg: Option<&Path>) -> Result<String, String> {
+    use serde_json::json;
+    let ms = |t: Instant| t.elapsed().as_secs_f64() * 1000.0;
+    let e = |e: std::io::Error| e.to_string();
+    let mut out = serde_json::Map::new();
+    let info = remux::info(frag).map_err(e)?;
+    out.insert("duration_s".into(), json!(info.duration_secs));
+    out.insert("bytes".into(), json!(info.bytes));
+    out.insert("fragments".into(), json!(info.fragments));
+    let mid = info.duration_secs * 0.5;
+    #[cfg_attr(not(windows), allow(unused_variables))]
+    let thumb_at = (info.duration_secs * 0.3).min(90.0);
+    let tmpdir = frag.parent().unwrap().join("postgame-tmp");
+    let _ = std::fs::create_dir_all(&tmpdir);
+    // Reading the index of the fragmented file (what every later step pays first).
+    let t = Instant::now();
+    remux::info(frag).map_err(e)?;
+    out.insert("read_index_fragmented_ms".into(), json!(ms(t)));
+    // Old: an auto clip cut from the fragmented file, the thumbnail from it, then the copy.
+    let cut = |src: &Path, name: &str| -> Option<f64> {
+        let ff = ffmpeg?;
+        let o = tmpdir.join(name);
+        let t = Instant::now();
+        let st = std::process::Command::new(ff)
+            .args(["-hide_banner", "-loglevel", "error", "-y", "-ss", &format!("{:.3}", mid), "-i"])
+            .arg(src)
+            .args(["-t", "14.000", "-map", "0", "-c", "copy", "-avoid_negative_ts", "make_zero", "-movflags", "+faststart"])
+            .arg(&o)
+            .status()
+            .ok()?;
+        let r = ms(t);
+        let _ = std::fs::remove_file(&o);
+        st.success().then_some(r)
+    };
+    out.insert("auto_clip_fragmented_ms".into(), json!(cut(frag, "clip-frag.mp4")));
+    #[cfg(windows)]
+    {
+        let t = Instant::now();
+        let ok = cv_capture::win::thumb::video_thumbnail(frag, thumb_at, &tmpdir.join("thumb-frag.jpg"), 480).is_ok();
+        out.insert("thumbnail_fragmented_ms".into(), json!(ok.then(|| ms(t))));
+    }
+    let t = Instant::now();
+    let rep = remux::finalize_in_place(frag, &|| false).map_err(e)?;
+    out.insert("finalize_copy_ms".into(), json!(ms(t)));
+    out.insert("finalize_copy_bytes".into(), json!(rep.bytes_out));
+    // New: the in-place index, then the thumbnail and the auto clip from the indexed file.
+    let t = Instant::now();
+    let r = remux::index_in_place(res).map_err(e)?;
+    out.insert("index_in_place_ms".into(), json!(ms(t)));
+    out.insert("index_bytes".into(), json!(r.moov_bytes));
+    out.insert("reserve_bytes".into(), json!(r.reserve_bytes));
+    out.insert("index_bytes_per_hour".into(), json!(r.moov_bytes as f64 / info.duration_secs * 3600.0));
+    #[cfg(windows)]
+    {
+        let t = Instant::now();
+        let ok = cv_capture::win::thumb::video_thumbnail(res, thumb_at, &tmpdir.join("thumb-new.jpg"), 480).is_ok();
+        out.insert("thumbnail_indexed_ms".into(), json!(ok.then(|| ms(t))));
+    }
+    out.insert("auto_clip_indexed_ms".into(), json!(cut(res, "clip-new.mp4")));
+    let t = Instant::now();
+    remux::info(res).map_err(e)?;
+    out.insert("read_index_indexed_ms".into(), json!(ms(t)));
+    let a = remux::frame_times(frag).map_err(e)?;
+    let b = remux::frame_times(res).map_err(e)?;
+    out.insert("same_frames_as_copy".into(), json!(a == b));
+    let _ = std::fs::remove_dir_all(&tmpdir);
+    Ok(serde_json::to_string_pretty(&serde_json::Value::Object(out)).unwrap())
 }

@@ -95,7 +95,7 @@ export const api = {
   cleanupNow: () => call<CleanupReport>("cleanup_now"),
   setClipKeep: (id: string, file: string, keep: boolean) => call<void>("set_clip_keep", { id, file, keep }),
   finishFirstRun: () => call<void>("finish_first_run"),
-  simulateGame: (speed: number, length: number, queue: number | null = null) => call<void>("simulate_game", { speed, length, queue }),
+  simulateGame: (speed: number, length: number, queue: number | null = null, watch: string | null = null) => call<void>("simulate_game", { speed, length, queue, watch }),
   videoInfo: (path: string) => call<{ layout: string; fragments: number; keyframe_interval_avg: number; keyframe_interval_max: number; duration_secs: number; codec: string | null }>("video_info", { path }),
   videoKeyframes: (path: string) => call<number[]>("video_keyframes", { path }),
   /** Start time of every video frame from the file's index (f64 little-endian, binary). */
@@ -113,6 +113,7 @@ export const api = {
   benchPrepare: (sessions: string[], finalize: boolean) => call<Record<string, any>>("bench_prepare", { sessions, finalize }),
   benchFinish: (result: unknown) => call<void>("bench_finish", { result }),
   benchLog: (line: string) => call<void>("bench_log", { line }),
+  benchSaveDir: () => call<string[]>("bench_save_dir"),
   uiReady: (pageMs: number) => call<{ since_launch_ms: number | null }>("ui_ready", { pageMs }),
   modesGet: () => call<GameModesView[]>("modes_get"),
   modesRefresh: () => call<GameModesView[]>("modes_refresh"),

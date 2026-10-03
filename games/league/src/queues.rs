@@ -235,6 +235,14 @@ impl Lcu {
         Some(Lcu { client, base: format!("{}://127.0.0.1:{}", lock.protocol, lock.port), password: lock.password.clone() })
     }
 
+    /// Status code and JSON body (null if the body isn't JSON), errors included.
+    pub async fn get_raw(&self, path: &str) -> anyhow::Result<(u16, serde_json::Value)> {
+        let r = self.client.get(format!("{}{}", self.base, path)).basic_auth("riot", Some(&self.password)).send().await?;
+        let status = r.status().as_u16();
+        let text = r.text().await.unwrap_or_default();
+        Ok((status, serde_json::from_str(&text).unwrap_or(serde_json::Value::Null)))
+    }
+
     pub async fn get(&self, path: &str) -> anyhow::Result<serde_json::Value> {
         let r = self.client.get(format!("{}{}", self.base, path)).basic_auth("riot", Some(&self.password)).send().await?;
         if !r.status().is_success() {

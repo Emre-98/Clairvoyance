@@ -60,6 +60,7 @@
   }
 
   const phaseLabel: Record<string, string> = { waiting: "In client / loading", loading: "Loading screen", in_progress: "In game", ended: "Game over" };
+  const watchLabel: Record<string, string> = { replay: "replay", spectate: "spectating", unknown: "replay or spectating" };
 </script>
 
 <div class="page" use:keepScroll={"home"}>
@@ -86,7 +87,7 @@
       <div class="hero-left">
         <ChampionIcon id={st.player?.character_id} name={st.player?.character ?? st.game_name} size={64} />
         <div>
-          <div class="state"><span class="dot"></span>{st.state === "recording" ? (st.mode_rule === "clips_only" ? "Clips only" : "Recording") : st.mode_rule === "off" ? "Not recorded (mode off)" : "Game detected, not recording"}</div>
+          <div class="state"><span class="dot"></span>{st.state === "recording" ? (st.mode_rule === "clips_only" ? "Clips only" : "Recording") : st.watching ? `Not recorded (${watchLabel[st.watching]})` : st.mode_rule === "off" ? "Not recorded (mode off)" : "Game detected, not recording"}</div>
           <h2>{st.player?.character ?? st.game_name}</h2>
           <div class="muted">{st.game_name} · {phaseLabel[st.phase] ?? st.phase}{(st.mode_name ?? st.player?.mode) ? ` · ${st.mode_name ?? st.player?.mode}` : ""}{st.mode_rule === "clips_only" ? " · clips only" : ""}</div>
         </div>

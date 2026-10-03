@@ -11,6 +11,9 @@ pub const SESSION_FILE: &str = "session.json";
 /// Thumbnail file older versions kept inside the game folder (now in the thumbnail folder).
 pub const LEGACY_THUMB_FILE: &str = "thumb.jpg";
 pub const CLIPS_DIR: &str = "clips";
+/// In a game folder whose recording turned out to be a replay / spectating but couldn't be
+/// deleted at once (a file still in use): the maintenance pass deletes the folder.
+pub const DISCARDED_MARK: &str = "discarded.txt";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClipInfo {

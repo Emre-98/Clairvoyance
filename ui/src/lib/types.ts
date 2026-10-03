@@ -80,7 +80,11 @@ export interface LiveStatus {
   message?: string | null;
   mode_name?: string | null;
   mode_rule?: ModeRule | null;
+  /** A replay / spectating: not recorded (v1.7.1). */
+  watching?: WatchKind | null;
 }
+
+export type WatchKind = "replay" | "spectate" | "unknown";
 
 export type EngineEvent =
   | ({ type: "status" } & LiveStatus)

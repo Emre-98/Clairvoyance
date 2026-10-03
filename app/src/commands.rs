@@ -272,13 +272,20 @@ pub async fn input_load(st: St<'_>, id: String) -> R<tauri::ipc::Response> {
     .map_err(err)?
 }
 
-/// Start times of every frame of a video (cached per file and size).
+/// Size + modification time of a file: changes when it is finalized (the in-place index keeps
+/// the size).
+fn file_version(path: &Path) -> Option<(u64, u128)> {
+    let m = std::fs::metadata(path).ok()?;
+    let t = m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_nanos()).unwrap_or(0);
+    Some((m.len(), t))
+}
+
+/// Start times of every frame of a video (cached per file, size and modification time).
 fn frame_times_cached(path: &Path) -> Option<Arc<Vec<f64>>> {
     use std::collections::HashMap;
     use std::sync::{Mutex, OnceLock};
-    static CACHE: OnceLock<Mutex<HashMap<(PathBuf, u64), Arc<Vec<f64>>>>> = OnceLock::new();
-    let len = std::fs::metadata(path).ok()?.len();
-    let key = (path.to_path_buf(), len);
+    static CACHE: OnceLock<Mutex<HashMap<(PathBuf, (u64, u128)), Arc<Vec<f64>>>>> = OnceLock::new();
+    let key = (path.to_path_buf(), file_version(path)?);
     if let Some(f) = CACHE.get_or_init(Default::default).lock().unwrap().get(&key) {
         return Some(f.clone());
     }
@@ -371,15 +378,15 @@ pub async fn video_info(path: String) -> R<cv_capture::remux::VideoInfo> {
         .map_err(err)?
 }
 
-/// Keyframe times of a video (cached per file and size): marker jumps land on a keyframe so
-/// the frame shows without decoding the frames before it.
+/// Keyframe times of a video (cached per file, size and modification time): marker jumps land
+/// on a keyframe so the frame shows without decoding the frames before it.
 #[tauri::command]
 pub async fn video_keyframes(path: String) -> R<std::sync::Arc<Vec<f64>>> {
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex, OnceLock};
-    static CACHE: OnceLock<Mutex<HashMap<(String, u64), Arc<Vec<f64>>>>> = OnceLock::new();
-    let len = std::fs::metadata(&path).map_err(err)?.len();
-    let key = (path.clone(), len);
+    static CACHE: OnceLock<Mutex<HashMap<(String, (u64, u128)), Arc<Vec<f64>>>>> = OnceLock::new();
+    let ver = file_version(Path::new(&path)).ok_or_else(|| format!("can't read {path}"))?;
+    let key = (path.clone(), ver);
     if let Some(k) = CACHE.get_or_init(Default::default).lock().unwrap().get(&key) {
         return Ok(k.clone());
     }
@@ -649,13 +656,15 @@ pub async fn finish_first_run(app: AppHandle, st: St<'_>) -> R<()> {
 /// Plays a scripted League match against a fake game API, recording the desktop with the
 /// built-in recorder, so everything can be tested without playing. `speed` = game seconds per second.
 #[tauri::command]
-pub fn simulate_game(st: St, speed: f64, length: f64, queue: Option<i64>) -> R<()> {
-    start_simulation(st.inner().clone(), speed, length, queue)
+pub fn simulate_game(st: St, speed: f64, length: f64, queue: Option<i64>, watch: Option<String>) -> R<()> {
+    start_simulation(st.inner().clone(), speed, length, queue, watch.as_deref())
 }
 
 /// Plays a fake League match (and a fake League client reporting `queue`, default Draft Pick),
 /// so detection, mode rules, recording, events and the timeline can be tried without playing.
-pub fn start_simulation(st: Arc<AppState>, speed: f64, length: f64, queue: Option<i64>) -> R<()> {
+/// `watch`: "replay" / "spectate" / "replay-late" / "replay-unsure" plays spectator mode instead
+/// (v1.7.1: never recorded), see `cv_mock_league::Watch`.
+pub fn start_simulation(st: Arc<AppState>, speed: f64, length: f64, queue: Option<i64>, watch: Option<&str>) -> R<()> {
     // Each simulation has a number: the clean-up of an earlier one (which waits for its game to
     // be saved) must not switch off a newer one that started in the meantime.
     static SIMULATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -673,6 +682,7 @@ pub fn start_simulation(st: Arc<AppState>, speed: f64, length: f64, queue: Optio
         speed: speed.clamp(1.0, 60.0),
         length: length.clamp(60.0, 3600.0),
         queue: cv_mock_league::queue_json(queue.unwrap_or(400)),
+        watch: cv_mock_league::Watch::parse(watch.unwrap_or("")),
         ..Default::default()
     };
     let mock = (2998..3010)
@@ -694,7 +704,7 @@ pub fn start_simulation(st: Arc<AppState>, speed: f64, length: f64, queue: Optio
     sim.video.display_capture = true;
     let _ = st.cmd.send(EngineCommand::ReloadSettings(Box::new(sim)));
     st.platform.set_fake_process(Some(("league of legends.exe".into(), mock.running.clone())));
-    log::info!("simulated game started at {}", mock.base_url);
+    log::info!("simulated game started at {} ({})", mock.base_url, watch.filter(|w| !w.is_empty()).unwrap_or("a match"));
 
     CLOSING.store(true, std::sync::atomic::Ordering::SeqCst);
     let state = st.clone();
@@ -959,5 +969,6 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static 
         crate::bench::bench_prepare,
         crate::bench::bench_finish,
         crate::bench::bench_log,
+        crate::bench::bench_save_dir,
     ]
 }
