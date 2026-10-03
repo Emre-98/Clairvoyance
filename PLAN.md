@@ -1248,6 +1248,13 @@ like a match, so it was recorded as a game.
   2. A short Practice Tool game (Settings > Game modes: Practice Tool on Record), 2-3 min, then
      end it. Expected: the game is in Games ~3 s after the victory screen / closing, plays at
      once (first frame and marker jumps instant), thumbnail within a few seconds.
+  The app logs what the League client said at each game start ("session check: League client
+  phase …, playing replay …, watch …") and the in-game API's verdict; job 83 collects those
+  lines, which fills in the two answers not captured yet: `isPlayingReplay` during a replay
+  (step 1) and the client's spectate state.
+  3. Optional, only if a friend is in a game: spectate them (Friends list > right-click >
+     Spectate), ~1 min, close it. Expected: "Spectating: not recorded" (or "Replay or
+     spectating: not recorded"), nothing in Games. Gives the client's real spectate state.
 - **Owner, Practice Tool test of the ult kinds (v1.6, ~15 min):** see the steps in the v1.6
   test report (also below). Practice Tool with cooldowns ON (not "No Cooldowns"; use the "Reset
   cooldowns" button between ults), Settings > Game modes > Practice Tool on "Record". Level 16+
@@ -1297,3 +1304,9 @@ After each milestone: explain how to test it and how to measure its performance 
 - Only ask the owner when you need him (testing in a real League game, approving installs,
   or a big change to the spec).
 - After each milestone, give brief test steps plus a performance check, then continue.
+- **Never launch anything Riot** (owner's rule, 2026-10-03): don't start the Riot Client or
+  League, don't start or watch replays, and never call a League client (LCU) endpoint that does
+  something (POST / PUT / DELETE). Read-only GETs only while the owner is in the client himself.
+  Anything that needs League running goes into the owner's test list (helper jobs may only read
+  logs and files while he plays). (Job 72 of 2026-10-03 started the Riot Client unattended and
+  job 70 started a replay through the LCU: not again.)
