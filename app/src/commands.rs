@@ -515,7 +515,13 @@ pub fn stop_session(st: St) {
 }
 
 #[tauri::command]
-pub async fn reveal_path(path: String) -> R<()> {
+pub async fn reveal_path(st: St<'_>, path: String) -> R<()> {
+    // Only what the app keeps: recordings, its data (logs, tools) and its settings folder.
+    let config_dir = st.paths.config_file.parent().map(Path::to_path_buf).unwrap_or_default();
+    let save_dir = st.save_dir();
+    if !cv_core::session::path_within(Path::new(&path), &[&save_dir, &st.paths.data_dir, &config_dir]) {
+        return Err("That file isn't one of Clairvoyance's.".into());
+    }
     tauri_plugin_opener::reveal_item_in_dir(Path::new(&path)).map_err(err)
 }
 
@@ -528,7 +534,12 @@ pub async fn open_url(url: String) -> R<()> {
 }
 
 #[tauri::command]
-pub async fn open_path(path: String) -> R<()> {
+pub async fn open_path(st: St<'_>, path: String) -> R<()> {
+    // Opens a recording or clip in the default player: only videos in the recordings folder.
+    let p = Path::new(&path);
+    if !cv_core::session::is_video_file(p) || !cv_core::session::path_within(p, &[&st.save_dir()]) {
+        return Err("Only recordings and clips can be opened.".into());
+    }
     tauri_plugin_opener::open_path(path, None::<&str>).map_err(err)
 }
 
