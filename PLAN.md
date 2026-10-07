@@ -19,10 +19,11 @@
   replays / spectating not recorded. In-game cost measured on the owner's PC: -0.07 % FPS,
   ~0.5 % CPU. Per-release details: docs/DECISIONS.md, "Status log".
 - **Engineering upkeep (2026-10-07, after a full review of the code):** the architecture is
-  sound and the project continues as is (no rewrite). In progress: CI compiles and lints the
-  Windows code (new `windows` job) and checks rustfmt + clippy; engine session states made
-  explicit; `GameIntegration` split into optional capabilities; small security tightening.
-  See "Engineering upkeep" in docs/DECISIONS.md.
+  sound and the project continues as is (no rewrite). Done: CI compiles and lints the Windows
+  code (new `windows` job) and checks rustfmt + clippy; engine session states made explicit
+  (`Stage`); `GameIntegration` split into optional capability traits; open / reveal limited to
+  the app's own files. No behaviour change for the owner. See "Engineering upkeep" in
+  docs/DECISIONS.md.
 - **Waiting for the owner**: the Practice Tool test of the ult kinds (v1.6, see "Next steps"),
   the PC benchmark of the v1.6 player (`--bench-replays` with `"player": true`), and the older
   Practice Tool test of the ability bubbles.

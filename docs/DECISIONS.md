@@ -976,6 +976,36 @@ after the game. Decision: **continue the code as is, no rewrite**; fix the maint
   x86_64-pc-windows-gnu --workspace --all-targets`), which is how Claude checks Windows code.
 - **PLAN.md** (1,310 lines) split: the plan (spec, status, milestones, known issues, next steps)
   stays in PLAN.md; the decision log and the detailed status history moved here verbatim.
+- **Engine session stage:** the active session's `hold` / `watch` / `rule` fields (one state,
+  kept consistent by convention) are one enum, `Stage::Hold(kind)` (probably a replay, waiting
+  for the game's API) / `Ignored(Option<kind>)` (replay, spectating or mode off: nothing
+  recorded) / `Live(rule)` (Record or ClipsOnly). New engine test for clips-only event clips
+  from the replay buffer (it had none).
+- **`GameIntegration` capabilities:** the trait had ~30 methods. The optional, League-shaped
+  ones are four traits behind accessors that return `Some(self)`: `cursor_input()` →
+  `CursorInput`, `recording_check()` → `RecordingCheck`, `watch_detection()` →
+  `WatchDetection`, `mode_rules()` → `ModeRules` (docs/ADDING_A_GAME.md).
+- **Poll vs hotkeys, checked:** the engine awaits the game's poll in its loop, so a key event
+  can wait for it: up to the 1.5 s HTTP timeout, only when the game's API hangs (it answers in
+  milliseconds otherwise). Key events carry their own timestamps, so the ult / input times are
+  exact anyway; the one place that used "now" (a hotkey clip's title and timeline event) now
+  uses the press time. Polling concurrently would need the game module shared between the poll
+  and `on_key` (it is one `&mut` state, e.g. the ult tracker): not worth it.
+- **Blocking file calls in the engine, checked:** a few `std::fs` calls run on the async
+  runtime (creating the session folder, saving `session.json` every 20 s, deleting a discarded
+  folder). They are small and rare; moving them to blocking threads would add code for no
+  measurable gain. Left as is.
+- **Open / reveal:** `open_path` only opens video files inside the recordings folder (it could
+  launch any file before); `reveal_path` only shows files inside the recordings, app-data or
+  settings folders (`cv_core::session::path_within`).
+- **Riot's certificate, checked and not pinned:** the Live Client Data API and League client
+  clients accept any certificate, but only ever connect to 127.0.0.1 (the LCU address is built
+  from the lockfile's port; the game API base is fixed, with a developer override
+  `GR_LEAGUE_API` used by the simulator and tests). Pinning Riot's root certificate would need
+  testing against a real League client (rustls is stricter about the certificate's names than
+  browsers) and League must never be launched for tests (owner's rule), while it protects only
+  against something already running on the PC that has taken the port. Not worth the risk of
+  breaking detection.
 
 ## Status log (detailed, per release)
 The "Current status" of PLAN.md up to v1.7.1, kept in full (measurements and owner tests).
