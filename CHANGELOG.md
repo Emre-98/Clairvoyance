@@ -3,16 +3,6 @@
 Newest first. `scripts/release.ps1` adds a section for each release; the section becomes the
 release notes on GitHub and in the in-app "Update available" card.
 
-## [Unreleased]
-
-- Timeline: towers, inhibitors and objectives now say who got them, which lane and tier, and how much gold you got; kills and objectives show the champions involved
-- New 'Completed <item>' markers with the item's icon, cost and components. Pressing UNDO in the shop doesn't leave a wrong marker, selling an item keeps it
-- New summoner spell markers ('Flash', 'Ignite'...), checked against the recording after the game so presses on cooldown don't count
-- A faint APM chart behind the timeline markers; hover it to see your actions per minute at that moment
-- Items and Summoner spells have their own filter chips; icons show in the event list too
-- Scoreboard of all 10 players (champion, level, KDA, CS, items, summoner spells) under the player, showing the moment you're watching and following along while you scrub. Press O to see it over the video, or hold Tab in fullscreen. Games recorded before this version show your own final numbers
-- Settings > Recording: new Video codec (H.264, HEVC, AV1) and Bitrate (fixed or quality-based) options. HEVC / AV1 make smaller files on GPUs that support them and are only used when this PC can play them; otherwise recordings stay H.264. Defaults are unchanged
-
 ## [1.7.1] - 2026-10-03
 
 - Your game is ready a few seconds after it ends: the recording makes itself instantly playable the moment it stops (no more waiting for it to be prepared), so it opens and jumps to markers at once, also after a long game
