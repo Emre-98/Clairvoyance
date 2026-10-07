@@ -44,8 +44,8 @@ mod win {
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::UI::HiDpi::{SetThreadDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, DPI_AWARENESS_CONTEXT_UNAWARE};
     use windows::Win32::UI::Input::KeyboardAndMouse::{
-        SendInput, INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MOVE, MOUSEEVENTF_RIGHTDOWN,
-        MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_VIRTUALDESK, MOUSEEVENTF_WHEEL, MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP, MOUSEINPUT, MOUSE_EVENT_FLAGS,
+        SendInput, INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MOVE, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_VIRTUALDESK,
+        MOUSEEVENTF_WHEEL, MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP, MOUSEINPUT, MOUSE_EVENT_FLAGS,
     };
     use windows::Win32::UI::WindowsAndMessaging::*;
 
@@ -108,7 +108,9 @@ mod win {
             let ny = (((y - vy) as f64 + 0.5) * 65536.0 / vh as f64) as i32;
             let i = INPUT {
                 r#type: INPUT_MOUSE,
-                Anonymous: INPUT_0 { mi: MOUSEINPUT { dx: nx, dy: ny, mouseData: data as u32, dwFlags: flags | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK | MOUSEEVENTF_MOVE, time: 0, dwExtraInfo: 0 } },
+                Anonymous: INPUT_0 {
+                    mi: MOUSEINPUT { dx: nx, dy: ny, mouseData: data as u32, dwFlags: flags | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK | MOUSEEVENTF_MOVE, time: 0, dwExtraInfo: 0 },
+                },
             };
             SendInput(&[i], std::mem::size_of::<INPUT>() as i32);
         }
@@ -210,7 +212,8 @@ mod win {
             CreateWindowExW(WINDOW_EX_STYLE(0), class, w!(""), WINDOW_STYLE(0), 0, 0, 0, 0, Some(HWND_MESSAGE), None, Some(hinst.into()), None).unwrap()
         };
         let reg = |on: bool| unsafe {
-            let dev = RAWINPUTDEVICE { usUsagePage: 1, usUsage: 2, dwFlags: if on { RIDEV_INPUTSINK } else { windows::Win32::UI::Input::RIDEV_REMOVE }, hwndTarget: if on { hwnd } else { HWND::default() } };
+            let dev =
+                RAWINPUTDEVICE { usUsagePage: 1, usUsage: 2, dwFlags: if on { RIDEV_INPUTSINK } else { windows::Win32::UI::Input::RIDEV_REMOVE }, hwndTarget: if on { hwnd } else { HWND::default() } };
             let _ = RegisterRawInputDevices(&[dev], std::mem::size_of::<RAWINPUTDEVICE>() as u32);
         };
         let hdr = std::mem::size_of::<RAWINPUTHEADER>() as u32;
@@ -226,14 +229,27 @@ mod win {
                 cyc += tsc() - a;
                 n += 1;
             }
-            let line = format!("{name}: {:.2} us per call ({n} calls{})", us(cyc) / n as f64, if msgs > 0 { format!(", {msgs} messages, {:.2} us per message", us(cyc) / msgs as f64) } else { String::new() });
+            let line = format!(
+                "{name}: {:.2} us per call ({n} calls{})",
+                us(cyc) / n as f64,
+                if msgs > 0 { format!(", {msgs} messages, {:.2} us per message", us(cyc) / msgs as f64) } else { String::new() }
+            );
             println!("MICRO {line}");
             report.push(line);
         };
         let mut p = POINT::default();
-        run("GetCursorPos", &mut || unsafe { let _ = GetCursorPos(&mut p); 0 });
-        run("GetPhysicalCursorPos", &mut || unsafe { let _ = GetPhysicalCursorPos(&mut p); 0 });
-        run("GetForegroundWindow", &mut || unsafe { std::hint::black_box(GetForegroundWindow()); 0 });
+        run("GetCursorPos", &mut || unsafe {
+            let _ = GetCursorPos(&mut p);
+            0
+        });
+        run("GetPhysicalCursorPos", &mut || unsafe {
+            let _ = GetPhysicalCursorPos(&mut p);
+            0
+        });
+        run("GetForegroundWindow", &mut || unsafe {
+            std::hint::black_box(GetForegroundWindow());
+            0
+        });
         run("GetAsyncKeyState x5 (L R M X1 X2)", &mut || unsafe {
             for vk in [1, 2, 4, 5, 6] {
                 std::hint::black_box(GetAsyncKeyState(vk));
@@ -265,7 +281,10 @@ mod win {
             }
             total
         });
-        run("GetCursorPos (mouse registered)", &mut || unsafe { let _ = GetCursorPos(&mut p); 0 });
+        run("GetCursorPos (mouse registered)", &mut || unsafe {
+            let _ = GetCursorPos(&mut p);
+            0
+        });
         reg(false);
         stop.store(true, Ordering::Relaxed);
         let _ = drv.join();
@@ -548,7 +567,15 @@ mod win {
         check(
             "cursor samples on the SendInput path",
             !errs.is_empty() && pct(&errs, 0.5) <= 1.5 && pct(&errs, 0.95) <= 3.0,
-            format!("{} samples, error median {:.2} px, p95 {:.2} px, max {:.2} px; sample time - input time median {:.2} ms, p95 {:.2} ms", errs.len(), pct(&errs, 0.5), pct(&errs, 0.95), pct(&errs, 1.0), pct(&lag_ms, 0.5), pct(&lag_ms, 0.95)),
+            format!(
+                "{} samples, error median {:.2} px, p95 {:.2} px, max {:.2} px; sample time - input time median {:.2} ms, p95 {:.2} ms",
+                errs.len(),
+                pct(&errs, 0.5),
+                pct(&errs, 0.95),
+                pct(&errs, 1.0),
+                pct(&lag_ms, 0.5),
+                pct(&lag_ms, 0.95)
+            ),
         );
         // Samples only when the cursor moved: SendInput moves it 500 times a second; 1 s of the
         // test is away from the game.
@@ -573,7 +600,13 @@ mod win {
         check(
             "clicks (left, right, side button) recorded with their time",
             matched == expected.len() && pct(&btn_err, 1.0) <= 1000.0 / 60.0,
-            format!("{matched}/{} matched, time error median {:.2} ms, max {:.2} ms (tick {:.1} ms; target 1 frame = 16.7 ms)", expected.len(), pct(&btn_err, 0.5), pct(&btn_err, 1.0), 1000.0 / rate as f64),
+            format!(
+                "{matched}/{} matched, time error median {:.2} ms, max {:.2} ms (tick {:.1} ms; target 1 frame = 16.7 ms)",
+                expected.len(),
+                pct(&btn_err, 0.5),
+                pct(&btn_err, 1.0),
+                1000.0 / rate as f64
+            ),
         );
         let wheel = f.records.iter().filter(|r| matches!(r, Record::Wheel { delta: -120, .. })).count();
         check("wheel not recorded (no mouse Raw Input, by design)", wheel == 0, format!("{wheel} wheel record(s)"));
@@ -702,15 +735,16 @@ mod win {
                     }
                     let px_per_ms = {
                         // Cursor speed in video px per ms (median), to express pixel errors as time.
-                        let mut sp: Vec<f64> = pts.windows(2).map(|w| ((w[1].1 - w[0].1).powi(2) + (w[1].2 - w[0].2).powi(2)).sqrt() / ((w[1].0 - w[0].0) * 1000.0)).filter(|v| v.is_finite()).collect();
+                        let mut sp: Vec<f64> = pts
+                            .windows(2)
+                            .map(|w| ((w[1].1 - w[0].1).powi(2) + (w[1].2 - w[0].2).powi(2)).sqrt() / ((w[1].0 - w[0].0) * 1000.0))
+                            .filter(|v| v.is_finite())
+                            .collect();
                         sp.sort_by(|a, b| a.partial_cmp(b).unwrap());
                         pct(&sp, 0.5)
                     };
                     let clicks_rec: Vec<f64> = rec_btn.iter().filter(|b| b.2 && b.1 <= 2).map(|b| b.0 as f64 / 1e6).collect();
-                    let mut flash_lag: Vec<f64> = clicks_rec
-                        .iter()
-                        .filter_map(|&c| flashes.iter().find(|&&f| f >= c - 0.05 && f < c + 0.2).map(|f| (f - c) * 1000.0))
-                        .collect();
+                    let mut flash_lag: Vec<f64> = clicks_rec.iter().filter_map(|&c| flashes.iter().find(|&&f| f >= c - 0.05 && f < c + 0.2).map(|f| (f - c) * 1000.0)).collect();
                     flash_lag.sort_by(|a, b| a.partial_cmp(b).unwrap());
                     let frame_ms = 1000.0 / 60.0;
                     check(
@@ -732,7 +766,13 @@ mod win {
                     check(
                         "video alignment: clicks vs the click flash drawn by the window",
                         !flash_lag.is_empty(),
-                        format!("{} flashes; flash appears {:.0} ms (median), {:.0}..{:.0} ms after the recorded click (includes the window's own paint + DWM, ~1-2 frames)", flash_lag.len(), pct(&flash_lag, 0.5), pct(&flash_lag, 0.0), pct(&flash_lag, 1.0)),
+                        format!(
+                            "{} flashes; flash appears {:.0} ms (median), {:.0}..{:.0} ms after the recorded click (includes the window's own paint + DWM, ~1-2 frames)",
+                            flash_lag.len(),
+                            pct(&flash_lag, 0.5),
+                            pct(&flash_lag, 0.0),
+                            pct(&flash_lag, 1.0)
+                        ),
                     );
                     video_report = json!({ "frames": pts.len(), "size": [vw, vh], "error_px_at_0": [pct(&e0, 0.5), pct(&e0, 0.95)], "best_shift_ms": best.1 * 1000.0, "best_px": best.0, "px_per_ms": px_per_ms, "flash_lag_ms": flash_lag });
                 }

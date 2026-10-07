@@ -173,11 +173,8 @@ pub fn parse_actions(text: &str) -> Vec<ActionKey> {
             // the main one (defaults apply to it only).
             for (k, (prefix, def)) in VARIANTS.iter().enumerate() {
                 for (i, suffix) in s.suffixes.iter().enumerate() {
-                    let names: Vec<String> = if k == 0 && !s.use_names.is_empty() {
-                        vec![s.use_names[i.min(s.use_names.len() - 1)].to_string(), format!("{prefix}{suffix}")]
-                    } else {
-                        vec![format!("{prefix}{suffix}")]
-                    };
+                    let names: Vec<String> =
+                        if k == 0 && !s.use_names.is_empty() { vec![s.use_names[i.min(s.use_names.len() - 1)].to_string(), format!("{prefix}{suffix}")] } else { vec![format!("{prefix}{suffix}")] };
                     let mut any = false;
                     for n in &names {
                         if let Some(v) = get(n) {

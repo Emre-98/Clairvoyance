@@ -9,13 +9,27 @@ struct FakeGame {
 
 #[async_trait]
 impl GameIntegration for FakeGame {
-    fn id(&self) -> &'static str { "fake" }
-    fn name(&self) -> &'static str { "Fake Game" }
-    fn short_name(&self) -> &'static str { "Fake" }
-    fn process_names(&self) -> &'static [&'static str] { &["fake.exe"] }
-    fn capture(&self) -> CaptureTarget { CaptureTarget { exe: "fake.exe".into(), display_capture_only: false } }
-    fn supports_events(&self) -> bool { true }
-    fn end_grace(&self) -> Duration { Duration::from_millis(0) }
+    fn id(&self) -> &'static str {
+        "fake"
+    }
+    fn name(&self) -> &'static str {
+        "Fake Game"
+    }
+    fn short_name(&self) -> &'static str {
+        "Fake"
+    }
+    fn process_names(&self) -> &'static [&'static str] {
+        &["fake.exe"]
+    }
+    fn capture(&self) -> CaptureTarget {
+        CaptureTarget { exe: "fake.exe".into(), display_capture_only: false }
+    }
+    fn supports_events(&self) -> bool {
+        true
+    }
+    fn end_grace(&self) -> Duration {
+        Duration::from_millis(0)
+    }
     async fn poll(&mut self) -> anyhow::Result<PollUpdate> {
         self.polls += 1;
         let p = self.polls;
@@ -55,17 +69,25 @@ struct FakeRecorder {
     started: Mutex<bool>,
     game_clock: Arc<Mutex<f64>>,
     stops: Mutex<u32>,
+    /// Saving from the replay buffer works (otherwise it fails); the seconds asked for.
+    replay_ok: bool,
+    replays: Mutex<Vec<Option<u32>>>,
 }
 
 #[async_trait]
 impl Recorder for FakeRecorder {
-    async fn ensure_connected(&self) -> anyhow::Result<()> { Ok(()) }
+    async fn ensure_connected(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
     async fn prepare(&self, _t: &CaptureTarget, o: &RecordOptions) -> anyhow::Result<()> {
         *self.dir.lock().unwrap() = Some(o.output_dir.clone());
         *self.full_video.lock().unwrap() = Some(o.full_video);
         Ok(())
     }
-    async fn start_recording(&self) -> anyhow::Result<()> { *self.started.lock().unwrap() = true; Ok(()) }
+    async fn start_recording(&self) -> anyhow::Result<()> {
+        *self.started.lock().unwrap() = true;
+        Ok(())
+    }
     async fn stop_recording(&self) -> anyhow::Result<PathBuf> {
         *self.stops.lock().unwrap() += 1;
         let p = self.dir.lock().unwrap().clone().unwrap().join("raw.mp4");
@@ -77,10 +99,25 @@ impl Recorder for FakeRecorder {
         let polls = *self.game_clock.lock().unwrap();
         Ok(Some(Duration::from_secs_f64(polls + 25.0)))
     }
-    async fn save_replay(&self, _secs: Option<u32>) -> anyhow::Result<PathBuf> { anyhow::bail!("no") }
-    async fn finish(&self) -> anyhow::Result<()> { Ok(()) }
-    async fn status(&self) -> RecorderStatus { RecorderStatus { connected: true, ..Default::default() } }
-    fn clock_base_hns(&self) -> Option<i64> { Some(0) }
+    async fn save_replay(&self, secs: Option<u32>) -> anyhow::Result<PathBuf> {
+        if !self.replay_ok {
+            anyhow::bail!("no")
+        }
+        let mut replays = self.replays.lock().unwrap();
+        replays.push(secs);
+        let p = self.dir.lock().unwrap().clone().unwrap().join(format!("Replay_{}.mp4", replays.len()));
+        std::fs::write(&p, b"clip")?;
+        Ok(p)
+    }
+    async fn finish(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+    async fn status(&self) -> RecorderStatus {
+        RecorderStatus { connected: true, ..Default::default() }
+    }
+    fn clock_base_hns(&self) -> Option<i64> {
+        Some(0)
+    }
 }
 
 struct FakePlatform {
@@ -88,11 +125,19 @@ struct FakePlatform {
     capture: Mutex<Option<crate::input::CaptureRequest>>,
 }
 impl Platform for FakePlatform {
-    fn running_processes(&self) -> Vec<String> { self.procs.lock().unwrap().clone() }
-    fn foreground_process(&self) -> Option<String> { Some("fake.exe".into()) }
+    fn running_processes(&self) -> Vec<String> {
+        self.procs.lock().unwrap().clone()
+    }
+    fn foreground_process(&self) -> Option<String> {
+        Some("fake.exe".into())
+    }
     fn speak(&self, _t: &str, _v: u8) {}
-    fn perf_sample(&self) -> Option<(f64, f64)> { Some((0.2, 40.0)) }
-    fn start_input_capture(&self, req: crate::input::CaptureRequest) { *self.capture.lock().unwrap() = Some(req); }
+    fn perf_sample(&self) -> Option<(f64, f64)> {
+        Some((0.2, 40.0))
+    }
+    fn start_input_capture(&self, req: crate::input::CaptureRequest) {
+        *self.capture.lock().unwrap() = Some(req);
+    }
     fn stop_input_capture(&self) -> Option<crate::input::CaptureStats> {
         self.capture.lock().unwrap().take().map(|_| crate::input::CaptureStats::default())
     }
@@ -105,13 +150,27 @@ struct ClockGame {
 }
 #[async_trait]
 impl GameIntegration for ClockGame {
-    fn id(&self) -> &'static str { self.inner.id() }
-    fn name(&self) -> &'static str { self.inner.name() }
-    fn short_name(&self) -> &'static str { self.inner.short_name() }
-    fn process_names(&self) -> &'static [&'static str] { self.inner.process_names() }
-    fn capture(&self) -> CaptureTarget { self.inner.capture() }
-    fn supports_events(&self) -> bool { true }
-    fn end_grace(&self) -> Duration { Duration::from_millis(0) }
+    fn id(&self) -> &'static str {
+        self.inner.id()
+    }
+    fn name(&self) -> &'static str {
+        self.inner.name()
+    }
+    fn short_name(&self) -> &'static str {
+        self.inner.short_name()
+    }
+    fn process_names(&self) -> &'static [&'static str] {
+        self.inner.process_names()
+    }
+    fn capture(&self) -> CaptureTarget {
+        self.inner.capture()
+    }
+    fn supports_events(&self) -> bool {
+        true
+    }
+    fn end_grace(&self) -> Duration {
+        Duration::from_millis(0)
+    }
     async fn poll(&mut self) -> anyhow::Result<PollUpdate> {
         let u = self.inner.poll().await?;
         if let Some(gt) = u.game_time {
@@ -119,7 +178,9 @@ impl GameIntegration for ClockGame {
         }
         Ok(u)
     }
-    fn on_key(&mut self, key: &KeyPress, gt: f64) -> Option<GameEvent> { self.inner.on_key(key, gt) }
+    fn on_key(&mut self, key: &KeyPress, gt: f64) -> Option<GameEvent> {
+        self.inner.on_key(key, gt)
+    }
 }
 
 #[tokio::test(start_paused = true)]
@@ -222,14 +283,30 @@ struct MatchGame {
 
 #[async_trait]
 impl GameIntegration for MatchGame {
-    fn id(&self) -> &'static str { "mg" }
-    fn name(&self) -> &'static str { "Match Game" }
-    fn short_name(&self) -> &'static str { "MG" }
-    fn process_names(&self) -> &'static [&'static str] { &["mg.exe"] }
-    fn capture(&self) -> CaptureTarget { CaptureTarget { exe: "mg.exe".into(), display_capture_only: true } }
-    fn supports_events(&self) -> bool { true }
-    fn match_only(&self) -> bool { true }
-    fn end_grace(&self) -> Duration { Duration::from_secs(1) }
+    fn id(&self) -> &'static str {
+        "mg"
+    }
+    fn name(&self) -> &'static str {
+        "Match Game"
+    }
+    fn short_name(&self) -> &'static str {
+        "MG"
+    }
+    fn process_names(&self) -> &'static [&'static str] {
+        &["mg.exe"]
+    }
+    fn capture(&self) -> CaptureTarget {
+        CaptureTarget { exe: "mg.exe".into(), display_capture_only: true }
+    }
+    fn supports_events(&self) -> bool {
+        true
+    }
+    fn match_only(&self) -> bool {
+        true
+    }
+    fn end_grace(&self) -> Duration {
+        Duration::from_secs(1)
+    }
     async fn poll(&mut self) -> anyhow::Result<PollUpdate> {
         let phase = *self.phase.lock().unwrap();
         Ok(PollUpdate { phase, game_time: Some(1.0), events: vec![GameEvent::new("x", EventKind::Kill, 1.0, "Kill")], ..Default::default() })
@@ -289,18 +366,45 @@ struct ModeGame {
 }
 #[async_trait]
 impl GameIntegration for ModeGame {
-    fn id(&self) -> &'static str { self.inner.id() }
-    fn name(&self) -> &'static str { self.inner.name() }
-    fn short_name(&self) -> &'static str { self.inner.short_name() }
-    fn process_names(&self) -> &'static [&'static str] { self.inner.process_names() }
-    fn capture(&self) -> CaptureTarget { self.inner.capture() }
-    fn supports_events(&self) -> bool { true }
-    fn end_grace(&self) -> Duration { Duration::from_millis(0) }
-    async fn poll(&mut self) -> anyhow::Result<PollUpdate> { self.inner.poll().await }
+    fn id(&self) -> &'static str {
+        self.inner.id()
+    }
+    fn name(&self) -> &'static str {
+        self.inner.name()
+    }
+    fn short_name(&self) -> &'static str {
+        self.inner.short_name()
+    }
+    fn process_names(&self) -> &'static [&'static str] {
+        self.inner.process_names()
+    }
+    fn capture(&self) -> CaptureTarget {
+        self.inner.capture()
+    }
+    fn supports_events(&self) -> bool {
+        true
+    }
+    fn end_grace(&self) -> Duration {
+        Duration::from_millis(0)
+    }
+    async fn poll(&mut self) -> anyhow::Result<PollUpdate> {
+        self.inner.poll().await
+    }
+
+    fn mode_rules(&mut self) -> Option<&mut dyn crate::game::ModeRules> {
+        Some(self)
+    }
+}
+
+#[async_trait]
+impl crate::game::ModeRules for ModeGame {
     fn mode_groups(&self) -> Vec<crate::modes::ModeGroupInfo> {
         vec![crate::modes::ModeGroupInfo { id: "aram", label: "ARAM", help: "" }]
     }
-    async fn detect_mode(&mut self) -> Option<crate::modes::MatchMode> { Some(self.mode.clone()) }
+
+    async fn detect_mode(&mut self) -> Option<crate::modes::MatchMode> {
+        Some(self.mode.clone())
+    }
 }
 
 fn mode(key: &str, name: &str) -> crate::modes::MatchMode {
@@ -321,7 +425,18 @@ async fn modes_switched_off_are_never_recorded() {
     let mut settings = Settings::default();
     settings.save_dir = root.to_string_lossy().to_string();
     let mut gm = crate::modes::GameModes::default();
-    gm.merge_catalog(&[crate::modes::CatalogMode { key: "q450".into(), queue_id: Some(450), name: "ARAM".into(), game_mode: Some("ARAM".into()), group: "aram".into(), default_rule: Some(ModeRule::Off), available: Some(true) }], false);
+    gm.merge_catalog(
+        &[crate::modes::CatalogMode {
+            key: "q450".into(),
+            queue_id: Some(450),
+            name: "ARAM".into(),
+            game_mode: Some("ARAM".into()),
+            group: "aram".into(),
+            default_rule: Some(ModeRule::Off),
+            available: Some(true),
+        }],
+        false,
+    );
     settings.modes.insert("fake".into(), gm);
     let engine = Engine::new(vec![Box::new(game)], recorder.clone(), platform.clone(), None, settings, root.clone(), tx);
     let handle = tokio::spawn(engine.run(crx, irx));
@@ -375,6 +490,55 @@ async fn new_modes_are_added_and_follow_the_unknown_rule() {
     std::fs::remove_dir_all(root).ok();
 }
 
+#[tokio::test(start_paused = true)]
+async fn clips_only_saves_event_clips_from_the_replay_buffer() {
+    let root = std::env::temp_dir().join(format!("cv-engine-clips-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    // The kill comes at poll 5 (game time 2 s); the match ends at poll 9, before its clip is due.
+    let game = ModeGame { inner: FakeGame { polls: 0, end_after: 9 }, mode: mode("q31337", "Brand New Mode") };
+    let recorder = Arc::new(FakeRecorder { replay_ok: true, ..Default::default() });
+    let platform = Arc::new(FakePlatform { procs: Mutex::new(vec!["fake.exe".into()]), capture: Mutex::new(None) });
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let (ctx, crx) = tokio::sync::mpsc::unbounded_channel();
+    let (_itx, irx) = tokio::sync::mpsc::unbounded_channel();
+    let mut settings = Settings::default();
+    settings.save_dir = root.to_string_lossy().to_string();
+    settings.events.clip_kinds = vec![EventKind::Kill];
+    settings.events.clip_before_secs = 5.0;
+    settings.events.clip_after_secs = 30.0;
+    settings.modes.insert("fake".into(), crate::modes::GameModes { unknown_rule: ModeRule::ClipsOnly, ..Default::default() });
+    let engine = Engine::new(vec![Box::new(game)], recorder.clone(), platform.clone(), None, settings, root.clone(), tx);
+    let handle = tokio::spawn(engine.run(crx, irx));
+
+    let (mut ended, mut rules) = (None, Vec::new());
+    for _ in 0..60 {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        while let Ok(ev) = rx.try_recv() {
+            match ev {
+                EngineEvent::GameEnded { session_id } => ended = Some(session_id),
+                EngineEvent::Status(s) if s.state == EngineState::Recording => rules.push(s.mode_rule),
+                _ => {}
+            }
+        }
+        if ended.is_some() {
+            break;
+        }
+    }
+    let sid = ended.expect("game ended");
+    assert!(!rules.is_empty() && rules.iter().all(|r| *r == Some(ModeRule::ClipsOnly)), "status while recording: {rules:?}");
+    // Not due yet when the match ended: saved at the end, with 5 s before + 30 s after.
+    assert_eq!(*recorder.replays.lock().unwrap(), vec![Some(35)]);
+    let s = GameSession::load(&root.join(&sid)).unwrap();
+    assert_eq!(s.record_mode.as_deref(), Some("clips_only"));
+    assert_eq!(s.video_file, None, "no full video");
+    assert_eq!(s.clips.len(), 1);
+    assert_eq!((s.clips[0].source.as_str(), s.clips[0].title.as_str()), ("event", "Killed Ahri"));
+    assert!(root.join(&sid).join(CLIPS_DIR).join(&s.clips[0].file).exists());
+    ctx.send(EngineCommand::Shutdown).unwrap();
+    handle.await.unwrap();
+    std::fs::remove_dir_all(root).ok();
+}
+
 /// A cursor-based game with a chat (Enter toggles it) and the ult on mouse button 5.
 struct InputGame {
     inner: ClockGame,
@@ -382,14 +546,30 @@ struct InputGame {
 }
 #[async_trait]
 impl GameIntegration for InputGame {
-    fn id(&self) -> &'static str { self.inner.id() }
-    fn name(&self) -> &'static str { self.inner.name() }
-    fn short_name(&self) -> &'static str { self.inner.short_name() }
-    fn process_names(&self) -> &'static [&'static str] { self.inner.process_names() }
-    fn capture(&self) -> CaptureTarget { self.inner.capture() }
-    fn supports_events(&self) -> bool { true }
-    fn end_grace(&self) -> Duration { Duration::from_millis(0) }
-    async fn poll(&mut self) -> anyhow::Result<PollUpdate> { self.inner.poll().await }
+    fn id(&self) -> &'static str {
+        self.inner.id()
+    }
+    fn name(&self) -> &'static str {
+        self.inner.name()
+    }
+    fn short_name(&self) -> &'static str {
+        self.inner.short_name()
+    }
+    fn process_names(&self) -> &'static [&'static str] {
+        self.inner.process_names()
+    }
+    fn capture(&self) -> CaptureTarget {
+        self.inner.capture()
+    }
+    fn supports_events(&self) -> bool {
+        true
+    }
+    fn end_grace(&self) -> Duration {
+        Duration::from_millis(0)
+    }
+    async fn poll(&mut self) -> anyhow::Result<PollUpdate> {
+        self.inner.poll().await
+    }
     fn on_key(&mut self, key: &KeyPress, gt: f64) -> Option<GameEvent> {
         if key.key == "Enter" {
             self.chat = !self.chat;
@@ -397,8 +577,17 @@ impl GameIntegration for InputGame {
         }
         self.inner.on_key(key, gt)
     }
-    fn input_tracking(&self) -> bool { true }
-    fn chat_open(&self) -> bool { self.chat }
+
+    fn cursor_input(&self) -> Option<&dyn crate::game::CursorInput> {
+        Some(self)
+    }
+}
+
+impl crate::game::CursorInput for InputGame {
+    fn chat_open(&self) -> bool {
+        self.chat
+    }
+
     fn action_keys(&self) -> Vec<crate::input::actions::ActionKey> {
         vec![crate::input::actions::ActionKey {
             id: "spell1".into(),
@@ -411,6 +600,7 @@ impl GameIntegration for InputGame {
             binds: vec![crate::input::actions::ActionBind::key(b'A')],
         }]
     }
+
     fn mouse_marks(&self, presses: &[(f64, u8)]) -> Vec<crate::game::KeyMark> {
         presses
             .iter()
@@ -445,13 +635,7 @@ async fn input_recording_keys_chat_and_mouse_marks() {
     w.push(Record::Focus { t: 30_000_000, focused: true });
     w.push(Record::Cursor { t: 30_000_000, x: 1000, y: 2000 });
     w.push(Record::Button { t: 31_000_000, button: 5, down: true });
-    let key = |name: &str, vk: u16, down: bool, us: i64| InputEvent {
-        key: Some(KeyPress { key: name.into(), ctrl: false, shift: false, alt: false }),
-        vk,
-        down,
-        at: Instant::now(),
-        qpc_hns: us * 10,
-    };
+    let key = |name: &str, vk: u16, down: bool, us: i64| InputEvent { key: Some(KeyPress { key: name.into(), ctrl: false, shift: false, alt: false }), vk, down, at: Instant::now(), qpc_hns: us * 10 };
     for ev in [
         key("Q", 0x51, true, 32_000_000),
         key("Q", 0x51, false, 32_100_000),
@@ -517,15 +701,27 @@ struct WatchGame {
 
 #[async_trait]
 impl GameIntegration for WatchGame {
-    fn id(&self) -> &'static str { "fake" }
-    fn name(&self) -> &'static str { "Fake Game" }
-    fn short_name(&self) -> &'static str { "Fake" }
-    fn process_names(&self) -> &'static [&'static str] { &["fake.exe"] }
-    fn capture(&self) -> CaptureTarget { CaptureTarget { exe: "fake.exe".into(), display_capture_only: false } }
-    fn supports_events(&self) -> bool { true }
-    fn end_grace(&self) -> Duration { Duration::from_millis(0) }
-    async fn session_check(&mut self) -> SessionCheck { self.check }
-    fn record_spectating(&self) -> bool { self.spectate_setting }
+    fn id(&self) -> &'static str {
+        "fake"
+    }
+    fn name(&self) -> &'static str {
+        "Fake Game"
+    }
+    fn short_name(&self) -> &'static str {
+        "Fake"
+    }
+    fn process_names(&self) -> &'static [&'static str] {
+        &["fake.exe"]
+    }
+    fn capture(&self) -> CaptureTarget {
+        CaptureTarget { exe: "fake.exe".into(), display_capture_only: false }
+    }
+    fn supports_events(&self) -> bool {
+        true
+    }
+    fn end_grace(&self) -> Duration {
+        Duration::from_millis(0)
+    }
     async fn poll(&mut self) -> anyhow::Result<PollUpdate> {
         self.polls += 1;
         if self.polls <= 2 {
@@ -537,6 +733,21 @@ impl GameIntegration for WatchGame {
         u.watching = self.api_watching;
         u.playing = self.api_watching.is_none();
         Ok(u)
+    }
+
+    fn watch_detection(&mut self) -> Option<&mut dyn crate::game::WatchDetection> {
+        Some(self)
+    }
+}
+
+#[async_trait]
+impl crate::game::WatchDetection for WatchGame {
+    async fn session_check(&mut self) -> SessionCheck {
+        self.check
+    }
+
+    fn record_spectating(&self) -> bool {
+        self.spectate_setting
     }
 }
 
@@ -697,4 +908,103 @@ async fn leaving_the_game_ends_the_session() {
     r.wait(5).await;
     assert_eq!(r.ended.len(), 1);
     r.finish().await;
+}
+
+/// Writes a small file instead of cutting (records what it was asked for).
+#[derive(Default)]
+struct FakeCutter {
+    cuts: Mutex<Vec<(f64, f64)>>,
+}
+#[async_trait]
+impl ClipCutter for FakeCutter {
+    async fn cut(&self, _video: &Path, start: f64, end: f64, out: &Path, _precise: bool) -> anyhow::Result<()> {
+        self.cuts.lock().unwrap().push((start, end));
+        std::fs::write(out, b"clip")?;
+        Ok(())
+    }
+}
+
+fn ult_session(events: Vec<GameEvent>) -> GameSession {
+    let mut s = GameSession::new("x".into(), "g", "G", Local::now());
+    s.video_offset = 20.0;
+    s.video_duration = Some(900.0);
+    s.events = events;
+    s
+}
+
+#[test]
+fn recut_plan_follows_the_corrected_events() {
+    let ev = crate::settings::EventSettings { clip_kinds: vec![EventKind::Multikill, EventKind::UltUsed, EventKind::UltPressed], clip_before_secs: 10.0, clip_after_secs: 4.0, ..Default::default() };
+    // Live: a multikill and two ult presses; the check finds one press was no cast and puts the
+    // other on its exact cast frame 0.3 s later.
+    let before = ult_session(vec![
+        GameEvent::new("m", EventKind::Multikill, 100.0, "Double kill"),
+        GameEvent::new("u1", EventKind::UltPressed, 300.0, "Ult pressed"),
+        GameEvent::new("u2", EventKind::UltPressed, 500.0, "Ult pressed"),
+    ]);
+    let mut after = ult_session(vec![
+        GameEvent::new("m", EventKind::Multikill, 100.0, "Double kill"),
+        GameEvent::new("u1", EventKind::UltUnconfirmed, 300.0, "Ult pressed, no cast"),
+        GameEvent::new("u2", EventKind::UltUsed, 500.3, "Ult used"),
+    ]);
+    let clip = |file: &str, s: f64, e: f64, source: &str, keep: bool| ClipInfo {
+        file: file.into(),
+        title: String::new(),
+        video_start: Some(s),
+        video_end: Some(e),
+        created_at: Local::now(),
+        source: source.into(),
+        keep,
+    };
+    after.clips = vec![
+        clip("double.mp4", 110.0, 124.0, "event", false),
+        clip("ult1.mp4", 310.0, 324.0, "event", false),
+        clip("hotkey.mp4", 310.0, 324.0, "replay", false),
+        // ult2.mp4 (510-524) was deleted by the user: not cut again either.
+    ];
+    let p = recut_plan(&before, &after, &ev);
+    assert_eq!(p.remove, vec!["ult1.mp4".to_string()], "the no-cast press's clip goes; the multikill and the hotkey clip stay");
+    assert_eq!(p.add.len(), 1);
+    assert!((p.add[0].0 - 510.3).abs() < 1e-9 && (p.add[0].1 - 524.3).abs() < 1e-9 && p.add[0].2 == "Ult used", "{:?}", p.add);
+    // A clip marked "keep" is never removed.
+    after.clips[1].keep = true;
+    assert!(recut_plan(&before, &after, &ev).remove.is_empty());
+    // Ult events not among the auto-clip kinds (the default): nothing changes.
+    let ev = crate::settings::EventSettings::default();
+    assert_eq!(recut_plan(&before, &after, &ev), RecutPlan::default());
+}
+
+#[tokio::test]
+async fn recut_auto_clips_replaces_the_clips_of_corrected_events() {
+    let dir = std::env::temp_dir().join(format!("cv-recut-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join(CLIPS_DIR)).unwrap();
+    std::fs::write(dir.join("game.mp4"), b"video").unwrap();
+    let ev = crate::settings::EventSettings { clip_kinds: vec![EventKind::UltUsed, EventKind::UltPressed], clip_before_secs: 10.0, clip_after_secs: 4.0, ..Default::default() };
+    let before = ult_session(vec![GameEvent::new("u1", EventKind::UltPressed, 300.0, "Ult pressed")]);
+    let mut after = ult_session(vec![GameEvent::new("u1", EventKind::UltUnconfirmed, 300.0, "Ult pressed, no cast"), GameEvent::new("v", EventKind::UltUsed, 600.0, "Ult used")]);
+    after.video_file = Some("game.mp4".into());
+    std::fs::write(dir.join(CLIPS_DIR).join("ult1.mp4"), b"clip").unwrap();
+    after.clips.push(ClipInfo {
+        file: "ult1.mp4".into(),
+        title: "Ult pressed".into(),
+        video_start: Some(310.0),
+        video_end: Some(324.0),
+        created_at: Local::now(),
+        source: "event".into(),
+        keep: false,
+    });
+    after.save(&dir).unwrap();
+    let cutter = FakeCutter::default();
+    assert_eq!(recut_auto_clips(&cutter, &dir, &before, &ev).await.unwrap(), (1, 1));
+    assert_eq!(*cutter.cuts.lock().unwrap(), vec![(610.0, 624.0)]);
+    let s = GameSession::load(&dir).unwrap();
+    assert_eq!(s.clips.len(), 1);
+    assert_eq!(s.clips[0].title, "Ult used");
+    assert!(!dir.join(CLIPS_DIR).join("ult1.mp4").exists(), "the old clip's file is deleted");
+    assert!(dir.join(CLIPS_DIR).join(&s.clips[0].file).exists());
+    // Run again: nothing left to do.
+    let s_before = GameSession::load(&dir).unwrap();
+    assert_eq!(recut_auto_clips(&cutter, &dir, &s_before, &ev).await.unwrap(), (0, 0));
+    std::fs::remove_dir_all(dir).ok();
 }

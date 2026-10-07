@@ -324,14 +324,35 @@ pub trait GameIntegration: Send + Sync {
         Vec::new()
     }
 
-    /// True for games played with the cursor (League): mouse and keyboard input is recorded for
-    /// the replay overlay and the Mechanics stats (Settings > Games: "Record mouse & keyboard
-    /// input"). False (e.g. CS2: mouse-look, no cursor) = never recorded.
-    fn input_tracking(&self) -> bool {
-        false
+    // Optional capabilities. A game that has one returns `Some(self)` and implements its trait;
+    // the defaults (`None`) mean the game doesn't do that (CS2 has none of them).
+
+    /// Mouse and keyboard recording for cursor-based games (League): the replay overlay, ability
+    /// bubbles and Mechanics stats (Settings > Games: "Record mouse & keyboard input"). `None`
+    /// (e.g. CS2: mouse-look, no cursor) = input is never recorded.
+    fn cursor_input(&self) -> Option<&dyn CursorInput> {
+        None
     }
-    /// The game's chat is open right now (from the keys seen by [`Self::on_key`]): no keys are
-    /// recorded meanwhile.
+    /// Checks the live events against the finished recording after the game (League: ult casts
+    /// read from the ability bar).
+    fn recording_check(&self) -> Option<&dyn RecordingCheck> {
+        None
+    }
+    /// Tells a match you play from a replay / spectating before anything is recorded. `None` =
+    /// every game process is recorded.
+    fn watch_detection(&mut self) -> Option<&mut dyn WatchDetection> {
+        None
+    }
+    /// Per-mode recording rules (Settings > Game modes: Record / Clips only / Off per queue).
+    fn mode_rules(&mut self) -> Option<&mut dyn ModeRules> {
+        None
+    }
+}
+
+/// See [`GameIntegration::cursor_input`].
+pub trait CursorInput: Send + Sync {
+    /// The game's chat is open right now (from the keys seen by [`GameIntegration::on_key`]): no
+    /// keys are recorded meanwhile.
     fn chat_open(&self) -> bool {
         false
     }
@@ -346,7 +367,7 @@ pub trait GameIntegration: Send + Sync {
     /// The game's "action keys" for the replay's ability bubbles (League: abilities, summoners,
     /// item slots, ward) with the binds in effect now. Called after `start()` when the input
     /// recording starts; saved with the session (binds can change between games). Empty = this
-    /// game has no action keys (CS2).
+    /// game has no action keys.
     fn action_keys(&self) -> Vec<crate::input::actions::ActionKey> {
         Vec::new()
     }
@@ -363,42 +384,44 @@ pub trait GameIntegration: Send + Sync {
     /// Refines how presses are drawn from what the game knows about this recording (League: the
     /// ult check against the recording: "Ult used" solid, "no cast" faded). Never during a game.
     fn action_press_states(&self, _session: &crate::session::GameSession, _actions: &[crate::input::actions::ActionKey], _presses: &mut [crate::input::actions::ActionPress]) {}
+}
 
+/// See [`GameIntegration::recording_check`].
+pub trait RecordingCheck: Send + Sync {
     /// After the game (maintenance pass, low priority): check the session's live events
-    /// against the recording and correct them. `None` = this game has nothing to check.
-    /// `cancel` turns true when a game starts: stop and return an error.
-    fn verify_recording(&self, _session: &mut crate::session::GameSession, _video: &mut dyn FrameSource, _cancel: &dyn Fn() -> bool) -> Option<anyhow::Result<()>> {
-        None
-    }
-    /// Version of `verify_recording`: recordings checked by an older version are checked again.
-    fn verify_version(&self) -> u32 {
-        0
-    }
+    /// against the recording and correct them. `cancel` turns true when a game starts: stop and
+    /// return an error.
+    fn verify_recording(&self, session: &mut crate::session::GameSession, video: &mut dyn FrameSource, cancel: &dyn Fn() -> bool) -> anyhow::Result<()>;
+    /// Version of `verify_recording` (at least 1): recordings checked by an older version are
+    /// checked again.
+    fn verify_version(&self) -> u32;
+}
 
+/// See [`GameIntegration::watch_detection`].
+#[async_trait]
+pub trait WatchDetection: Send + Sync {
     /// Called once when the game process appears, before anything is recorded: is this a match
     /// you play, or a replay / spectating? Keep it quick (League: two local requests to the
     /// League client).
-    async fn session_check(&mut self) -> SessionCheck {
-        SessionCheck::Unknown
-    }
+    async fn session_check(&mut self) -> SessionCheck;
     /// Record games you spectate (setting); replays are never recorded.
     fn record_spectating(&self) -> bool {
         false
     }
+}
 
-    /// Groups for Settings > Game modes. Empty = this game has no per-mode recording rules.
-    fn mode_groups(&self) -> Vec<crate::modes::ModeGroupInfo> {
-        Vec::new()
-    }
+/// See [`GameIntegration::mode_rules`].
+#[async_trait]
+pub trait ModeRules: Send + Sync {
+    /// Groups for Settings > Game modes (at least one).
+    fn mode_groups(&self) -> Vec<crate::modes::ModeGroupInfo>;
     /// The mode of the match that is starting. Called once, right after `start()` and before
     /// recording starts, so a mode that's switched off is never recorded. Keep it quick.
-    async fn detect_mode(&mut self) -> Option<crate::modes::MatchMode> {
-        None
-    }
+    async fn detect_mode(&mut self) -> Option<crate::modes::MatchMode>;
     /// The modes that exist, for the settings list (from live and cached sources; must work
     /// offline from `cache_dir`). The bool says whether the list is the authoritative set of
     /// modes playable right now (modes missing from it are then shown as unavailable).
-    /// Never called during a game.
+    /// Never called during a game. Default: no list (modes are added as games are played).
     async fn mode_catalog(&mut self, _cache_dir: &std::path::Path) -> (Vec<crate::modes::CatalogMode>, bool) {
         (Vec::new(), false)
     }

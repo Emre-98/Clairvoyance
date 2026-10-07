@@ -118,6 +118,15 @@ const STATES = {
     await page.waitForSelector('[data-testid="input-overlay"]');
     await openMenu(page, '[data-testid="overlay-options"]');
   },
+  // The clip editor under the player: its widest row (name, Exact cut, Input overlay, the long
+  // "Get ffmpeg to export" button the mock shows).
+  "game-clip-editor": async (page) => {
+    await openGame(page);
+    await page.locator("button", { hasText: "Create clip" }).first().click();
+    await page.waitForSelector('[data-testid="export-overlay"]');
+    await page.locator('[data-testid="export-overlay"]').check();
+    await page.waitForTimeout(250);
+  },
   "game-player-settings": async (page) => {
     await openGame(page);
     await openMenu(page, '[data-testid="player-settings"]');

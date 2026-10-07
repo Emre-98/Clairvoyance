@@ -216,11 +216,17 @@ unsafe fn enum_hw(luid: Option<(i64, bool)>, codec: crate::mp4::Codec) -> Result
 
 /// Hardware H.264 encoders that can use the GPU at `gpu_luid`, best match first: same GPU,
 /// then the preferred vendor. Encoders of another GPU are left out: they refuse our device.
+///
+/// # Safety
+/// Media Foundation must be started (`MFStartup`) and COM initialized on this thread.
 pub unsafe fn list_encoders(gpu_luid: i64, gpu_vendor: u32, prefer: &str) -> Result<Vec<(IMFActivate, EncoderDesc)>> {
     unsafe { list_encoders_for(gpu_luid, gpu_vendor, prefer, crate::mp4::Codec::H264) }
 }
 
 /// Hardware encoders of one codec on the recording GPU, best match first.
+///
+/// # Safety
+/// Media Foundation must be started (`MFStartup`) and COM initialized on this thread.
 pub unsafe fn list_encoders_for(gpu_luid: i64, gpu_vendor: u32, prefer: &str, codec: crate::mp4::Codec) -> Result<Vec<(IMFActivate, EncoderDesc)>> {
     let mut found = Vec::new();
     for as_blob in [true, false] {
@@ -257,7 +263,7 @@ pub unsafe fn list_encoders_for(gpu_luid: i64, gpu_vendor: u32, prefer: &str, co
         let vid = u32::from_str_radix(ven.trim_start_matches("VEN_"), 16).unwrap_or(0);
         out.push((act, EncoderDesc { name, vendor: vendor_name(vid).to_string(), codec }, score));
     }
-    out.sort_by(|a, b| b.2.cmp(&a.2));
+    out.sort_by_key(|a| std::cmp::Reverse(a.2));
     Ok(out.into_iter().map(|(a, d, _)| (a, d)).collect())
 }
 
@@ -370,7 +376,16 @@ unsafe fn sequence_header(mft: &IMFTransform) -> Option<Vec<u8>> {
     }
 }
 
-unsafe fn pull_output(mft: &IMFTransform, codec: crate::mp4::Codec, provides: bool, out_size: u32, tx: &Sender<super::mux::MuxMsg>, in_flight: &AtomicUsize, fed: &mut std::collections::VecDeque<i64>, last_key: &mut i64) -> Result<()> {
+unsafe fn pull_output(
+    mft: &IMFTransform,
+    codec: crate::mp4::Codec,
+    provides: bool,
+    out_size: u32,
+    tx: &Sender<super::mux::MuxMsg>,
+    in_flight: &AtomicUsize,
+    fed: &mut std::collections::VecDeque<i64>,
+    last_key: &mut i64,
+) -> Result<()> {
     unsafe {
         let own = if provides {
             None
@@ -517,60 +532,58 @@ pub fn start(gpu: Arc<Gpu>, p: EncodeParams, out: Sender<super::mux::MuxMsg>) ->
     let in_flight = Arc::new(AtomicUsize::new(0));
     let inf = in_flight.clone();
     let fps = p.fps;
-    let thread = std::thread::Builder::new()
-        .name("video-encoder".into())
-        .spawn(move || unsafe {
-            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
-            let _ = MFStartup(MF_VERSION, MFSTARTUP_FULL);
-            // The chosen codec first; H.264 if this GPU has no working encoder for it.
-            let mut order = vec![p.codec];
-            if p.codec != crate::mp4::Codec::H264 {
-                order.push(crate::mp4::Codec::H264);
+    let thread = std::thread::Builder::new().name("video-encoder".into()).spawn(move || unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+        let _ = MFStartup(MF_VERSION, MFSTARTUP_FULL);
+        // The chosen codec first; H.264 if this GPU has no working encoder for it.
+        let mut order = vec![p.codec];
+        if p.codec != crate::mp4::Codec::H264 {
+            order.push(crate::mp4::Codec::H264);
+        }
+        let mut last_err = anyhow!("no hardware H.264 encoder found (update your graphics driver)");
+        for codec in order {
+            let list = match list_encoders_for(gpu.info.luid, gpu.info.vendor_id, &p.prefer, codec) {
+                Ok(l) => l,
+                Err(e) => {
+                    last_err = e;
+                    continue;
+                }
+            };
+            if list.is_empty() && codec != crate::mp4::Codec::H264 {
+                log::warn!("no hardware {} encoder on this GPU: recording in H.264", codec.as_str());
             }
-            let mut last_err = anyhow!("no hardware H.264 encoder found (update your graphics driver)");
-            for codec in order {
-                let list = match list_encoders_for(gpu.info.luid, gpu.info.vendor_id, &p.prefer, codec) {
-                    Ok(l) => l,
+            let mut params = p.clone();
+            params.codec = codec;
+            if codec != p.codec {
+                // The fallback uses H.264's own bitrate for this quality.
+                params.bitrate = p.h264_bitrate;
+            }
+            for (act, desc) in list {
+                let mft: IMFTransform = match act.ActivateObject() {
+                    Ok(m) => m,
                     Err(e) => {
-                        last_err = e;
+                        last_err = anyhow!("{}: {e}", desc.name);
                         continue;
                     }
                 };
-                if list.is_empty() && codec != crate::mp4::Codec::H264 {
-                    log::warn!("no hardware {} encoder on this GPU: recording in H.264", codec.as_str());
-                }
-                let mut params = p.clone();
-                params.codec = codec;
-                if codec != p.codec {
-                    // The fallback uses H.264's own bitrate for this quality.
-                    params.bitrate = p.h264_bitrate;
-                }
-                for (act, desc) in list {
-                    let mft: IMFTransform = match act.ActivateObject() {
-                        Ok(m) => m,
-                        Err(e) => {
-                            last_err = anyhow!("{}: {e}", desc.name);
-                            continue;
-                        }
-                    };
-                    match configure(&mft, &gpu, &params) {
-                        Ok(mgr) => {
-                            log::info!("video encoder: {} ({}, {}, {:?}, {} kbps)", desc.name, desc.vendor, codec.as_str(), params.rate, params.bitrate / 1000);
-                            let _ = ready_tx.send(Ok(desc));
-                            run(mft, mgr, codec, fps, rx, out, inf);
-                            let _ = act.ShutdownObject();
-                            return;
-                        }
-                        Err(e) => {
-                            log::warn!("encoder {} unusable: {e:#}", desc.name);
-                            last_err = e.context(desc.name.clone());
-                            let _ = act.ShutdownObject();
-                        }
+                match configure(&mft, &gpu, &params) {
+                    Ok(mgr) => {
+                        log::info!("video encoder: {} ({}, {}, {:?}, {} kbps)", desc.name, desc.vendor, codec.as_str(), params.rate, params.bitrate / 1000);
+                        let _ = ready_tx.send(Ok(desc));
+                        run(mft, mgr, codec, fps, rx, out, inf);
+                        let _ = act.ShutdownObject();
+                        return;
+                    }
+                    Err(e) => {
+                        log::warn!("encoder {} unusable: {e:#}", desc.name);
+                        last_err = e.context(desc.name.clone());
+                        let _ = act.ShutdownObject();
                     }
                 }
             }
-            let _ = ready_tx.send(Err(last_err));
-        })?;
+        }
+        let _ = ready_tx.send(Err(last_err));
+    })?;
     let desc = ready_rx.recv().map_err(|_| anyhow!("encoder thread died"))??;
     Ok(VideoEncoder { tx, in_flight, desc, thread: Some(thread) })
 }

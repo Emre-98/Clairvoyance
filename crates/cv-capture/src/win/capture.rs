@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{SyncSender, TrySendError};
 use std::sync::{Arc, Mutex};
-use windows::core::{Interface, IInspectable};
+use windows::core::{IInspectable, Interface};
 use windows::Foundation::{TimeSpan, TypedEventHandler};
 use windows::Graphics::Capture::{Direct3D11CaptureFramePool, GraphicsCaptureAccess, GraphicsCaptureAccessKind, GraphicsCaptureItem, GraphicsCaptureSession};
 use windows::Graphics::DirectX::Direct3D11::IDirect3DDevice;
@@ -108,11 +108,7 @@ impl Converter {
 
     unsafe fn convert(&self, out_index: usize) -> Result<()> {
         unsafe {
-            let stream = D3D11_VIDEO_PROCESSOR_STREAM {
-                Enable: true.into(),
-                pInputSurface: std::mem::ManuallyDrop::new(Some(self.in_view.clone())),
-                ..Default::default()
-            };
+            let stream = D3D11_VIDEO_PROCESSOR_STREAM { Enable: true.into(), pInputSurface: std::mem::ManuallyDrop::new(Some(self.in_view.clone())), ..Default::default() };
             let streams = [stream];
             let r = self.vctx.VideoProcessorBlt(&self.vp, &self.out_views[out_index], 0, &streams);
             let [mut s] = streams;

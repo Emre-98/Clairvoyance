@@ -33,7 +33,21 @@ const FPS: i64 = 30;
 /// Encoder output buffers (one per frame) and keyframe flags.
 fn hevc_frames() -> Option<Vec<(Vec<u8>, bool)>> {
     let f = tmp("in.hevc");
-    let ok = ffmpeg(&["-f", "lavfi", "-i", &format!("testsrc2=size=640x360:rate={FPS}"), "-t", &SECS.to_string(), "-c:v", "libx265", "-x265-params", "aud=1:bframes=0:keyint=30:min-keyint=30:repeat-headers=1:log-level=error", "-f", "hevc", f.to_str().unwrap()]);
+    let ok = ffmpeg(&[
+        "-f",
+        "lavfi",
+        "-i",
+        &format!("testsrc2=size=640x360:rate={FPS}"),
+        "-t",
+        &SECS.to_string(),
+        "-c:v",
+        "libx265",
+        "-x265-params",
+        "aud=1:bframes=0:keyint=30:min-keyint=30:repeat-headers=1:log-level=error",
+        "-f",
+        "hevc",
+        f.to_str().unwrap(),
+    ]);
     if !ok {
         return None;
     }
@@ -51,7 +65,25 @@ fn hevc_frames() -> Option<Vec<(Vec<u8>, bool)>> {
 
 fn av1_frames() -> Option<Vec<(Vec<u8>, bool)>> {
     let f = tmp("in.ivf");
-    let ok = ffmpeg(&["-f", "lavfi", "-i", &format!("testsrc2=size=640x360:rate={FPS}"), "-t", &SECS.to_string(), "-c:v", "libsvtav1", "-preset", "12", "-g", "30", "-svtav1-params", "keyint=30:pred-struct=1", "-f", "ivf", f.to_str().unwrap()]);
+    let ok = ffmpeg(&[
+        "-f",
+        "lavfi",
+        "-i",
+        &format!("testsrc2=size=640x360:rate={FPS}"),
+        "-t",
+        &SECS.to_string(),
+        "-c:v",
+        "libsvtav1",
+        "-preset",
+        "12",
+        "-g",
+        "30",
+        "-svtav1-params",
+        "keyint=30:pred-struct=1",
+        "-f",
+        "ivf",
+        f.to_str().unwrap(),
+    ]);
     if !ok {
         return None;
     }
@@ -85,7 +117,9 @@ fn check(codec: Codec, frames: Vec<(Vec<u8>, bool)>, ff_name: &str, entry: &str)
     assert_eq!(keys, (SECS as usize * FPS as usize).div_ceil(30), "{codec:?}: a keyframe every second");
     let vc = params.config(codec, 640, 360, FPS as u32);
     let acfg = vec![AudioConfig::aac_lc(48000, 2, "Game audio")];
-    let audio: Vec<Packet> = (0..(SECS as i64 * 48000 / 1024)).map(|n| Packet { track: 1, pts: n * 1024 * HNS / 48000, data: vec![0x21, 0x10, 0x04, 0x60, 0x8C, 0x1C], key: true }).collect();
+    let audio: Vec<Packet> = (0..(SECS as i64 * 48000 / 1024))
+        .map(|n| Packet { track: 1, pts: n * 1024 * HNS / 48000, data: vec![0x21, 0x10, 0x04, 0x60, 0x8C, 0x1C], key: true })
+        .collect();
     let mut all: Vec<Packet> = video.iter().cloned().chain(audio).collect();
     all.sort_by_key(|p| p.pts);
     let name = codec.as_str();

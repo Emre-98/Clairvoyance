@@ -1,4 +1,6 @@
-# Quick checks on every push to main and on pull requests (Linux: portable crates + UI).
+# Quick checks on every push to main and on pull requests.
+# Linux: portable crates (tests, clippy, rustfmt) + UI. Windows: the whole workspace, including the
+# recorder pipeline and the Tauri app, which otherwise would only be compiled by the release build.
 name: CI
 
 on:
@@ -11,10 +13,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      # Pinned: each Rust release brings new clippy lints and rustfmt changes, which must not turn
+      # CI red on their own. Bump it on purpose (and fix what the new version reports).
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99"
+          components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
+      - name: Rust formatting
+        run: cargo fmt --all --check
       - name: Rust tests (core, games, recorder muxer)
         run: cargo test -p cv-core -p cv-game-league -p cv-game-cs2 -p cv-capture
+      - name: Clippy (portable crates)
+        run: cargo clippy -p cv-core -p cv-game-league -p cv-game-cs2 -p cv-capture -p cv-mock-league --all-targets -- -D warnings
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -27,3 +38,25 @@ jobs:
           npm --prefix ui run build
       - name: UI unit tests (ability bubbles layout + trail timing, timeline zoom / frame stepping, player controls fitting, scoreboard)
         run: node --experimental-strip-types --test ui/tests/bubbles.unit.test.ts ui/tests/timeline.unit.test.ts ui/tests/controlsfit.unit.test.ts ui/tests/scoreboard.unit.test.ts ui/tests/codecs.unit.test.ts
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99" # same as the test job
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      # The Tauri app embeds the built UI, so it must exist before the app compiles.
+      - name: UI build
+        run: |
+          npm ci --prefix ui
+          npm --prefix ui run build
+      - name: Clippy (whole workspace, Windows code included)
+        run: cargo clippy --workspace --all-targets -- -D warnings

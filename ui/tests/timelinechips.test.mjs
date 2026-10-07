@@ -25,7 +25,11 @@ for (const theme of ["dark", "light"]) {
   const page = await ctx.newPage();
   page.on("pageerror", (e) => console.log("pageerror", e.message));
   await page.goto(`${BASE}/`);
-  await page.evaluate(() => localStorage.removeItem("cv.player"));
+  // Only kills / deaths / assists are shown by default: switch on the groups this test hovers.
+  await page.evaluate(() => {
+    localStorage.removeItem("cv.player");
+    localStorage.setItem("cv.timelineFilters", JSON.stringify({ v: 1, shown: ["kills", "deaths", "assists", "structures", "objectives", "items", "summoners", "ult", "markers"] }));
+  });
   await page.reload();
   await page.waitForSelector("button.card.game");
   await page.locator("button.card.game").first().click();

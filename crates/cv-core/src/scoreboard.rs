@@ -190,7 +190,9 @@ mod tests {
     use super::*;
 
     fn players() -> Vec<SbPlayer> {
-        (0..10).map(|i| SbPlayer { name: format!("P{i}"), character: format!("C{i}"), character_id: format!("C{i}"), team: if i < 5 { "ORDER" } else { "CHAOS" }.into(), me: i == 0 }).collect()
+        (0..10)
+            .map(|i| SbPlayer { name: format!("P{i}"), character: format!("C{i}"), character_id: format!("C{i}"), team: if i < 5 { "ORDER" } else { "CHAOS" }.into(), me: i == 0 })
+            .collect()
     }
 
     fn st(level: u32, cs: u32, items: &[u32]) -> PlayerState {

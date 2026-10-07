@@ -318,9 +318,39 @@ let mockUpdate: any = q.get("update") === "1"
   ? { state: "available", current_version: "1.0.0", version: "1.0.1", notes: "- Timeline jumps are faster\n- Light theme polish\n- Fixed: thumbnails for very short games", downloaded: 0, total: null, checked_at: new Date().toISOString() }
   : { state: "up_to_date", current_version: "1.0.0", downloaded: 0, checked_at: new Date().toISOString() };
 
+/** Overlay exports the mock received (UI tests read them: the PNG of every frame). */
+const exports: { job: number; id: string; start: number; end: number; title: string; times: number[]; frames: Uint8Array[]; done: boolean; cancelled: boolean }[] = [];
+(globalThis as any).__cvExports = exports;
+
 export async function invoke(cmd: string, args: any = {}): Promise<any> {
+  // Overlay frames come fast and many: no fake latency.
+  if (cmd === "overlay_export_frame") {
+    const e = exports.find((x) => x.job === Number(args.headers?.["x-job"]));
+    if (!e || e.cancelled) throw new Error("This export was cancelled.");
+    e.frames.push(new Uint8Array(args.body));
+    return null;
+  }
   await new Promise((r) => setTimeout(r, 60));
   switch (cmd) {
+    case "overlay_export_begin": {
+      const fps = 60;
+      const n = Math.max(1, Math.round((args.end - args.start) * fps));
+      const times = Array.from({ length: n }, (_, k) => args.start + k / fps);
+      const job = exports.length + 1;
+      exports.push({ job, id: args.id, start: args.start, end: args.end, title: args.title, times, frames: [], done: false, cancelled: false });
+      return { job, width: 960, height: 540, fps, times };
+    }
+    case "overlay_export_end": {
+      const e = exports.find((x) => x.job === args.job);
+      if (!e || e.cancelled) throw new Error("This export was cancelled.");
+      e.done = true;
+      return `C:\\Users\\you\\Videos\\Clairvoyance\\${args.job}\\clips\\${e.title || "Clip"}.mp4`;
+    }
+    case "overlay_export_cancel": {
+      const e = exports.find((x) => x.job === args.job);
+      if (e) e.cancelled = true;
+      return null;
+    }
     case "get_status":
       return live;
     case "app_info":
@@ -501,7 +531,8 @@ export async function invoke(cmd: string, args: any = {}): Promise<any> {
           }
         : { state: "idle" };
     case "ffmpeg_status":
-      return { available: false };
+      // `?ffmpeg=1`: as if ffmpeg were installed (the clip export tests).
+      return { available: new URLSearchParams(location.search).has("ffmpeg") };
     // Replay benchmark in the browser preview (`?bench=1`), to check the harness itself.
     case "bench_config":
       return q.get("bench") ? { sessions: [sessions[0].id], runs: 2, early_runs: 1, label: "mock" } : null;

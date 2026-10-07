@@ -71,13 +71,9 @@ mod win {
     use windows::core::w;
     use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-    use windows::Win32::UI::Input::{
-        GetRawInputData, RegisterRawInputDevices, HRAWINPUT, RAWINPUT, RAWINPUTDEVICE, RAWINPUTHEADER, RIDEV_INPUTSINK, RIDEV_REMOVE, RID_INPUT,
-        RIM_TYPEKEYBOARD,
-    };
+    use windows::Win32::UI::Input::{GetRawInputData, RegisterRawInputDevices, HRAWINPUT, RAWINPUT, RAWINPUTDEVICE, RAWINPUTHEADER, RIDEV_INPUTSINK, RIDEV_REMOVE, RID_INPUT, RIM_TYPEKEYBOARD};
     use windows::Win32::UI::WindowsAndMessaging::{
-        CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, PostMessageW, RegisterClassW, HWND_MESSAGE, MSG, WINDOW_EX_STYLE,
-        WINDOW_STYLE, WM_APP, WM_INPUT, WNDCLASSW,
+        CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, PostMessageW, RegisterClassW, HWND_MESSAGE, MSG, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_INPUT, WNDCLASSW,
     };
 
     const WM_SET_ENABLED: u32 = WM_APP + 1;
@@ -123,9 +119,7 @@ mod win {
     fn handle_input(lparam: LPARAM) {
         let mut raw = RAWINPUT::default();
         let mut size = std::mem::size_of::<RAWINPUT>() as u32;
-        let n = unsafe {
-            GetRawInputData(HRAWINPUT(lparam.0 as *mut _), RID_INPUT, Some(&mut raw as *mut _ as *mut _), &mut size, std::mem::size_of::<RAWINPUTHEADER>() as u32)
-        };
+        let n = unsafe { GetRawInputData(HRAWINPUT(lparam.0 as *mut _), RID_INPUT, Some(&mut raw as *mut _ as *mut _), &mut size, std::mem::size_of::<RAWINPUTHEADER>() as u32) };
         if n == u32::MAX || n == 0 || raw.header.dwType != RIM_TYPEKEYBOARD.0 {
             return;
         }
@@ -144,7 +138,7 @@ mod win {
             }
             if !is_down {
                 // Only releases of keys seen going down (no stray ups).
-                return s.down.remove(&vk).then(|| InputEvent { key: None, vk, down: false, at, qpc_hns });
+                return s.down.remove(&vk).then_some(InputEvent { key: None, vk, down: false, at, qpc_hns });
             }
             // Ignore auto-repeat while a key is held.
             if !s.down.insert(vk) {

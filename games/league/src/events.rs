@@ -71,7 +71,7 @@ pub struct Ctx {
 impl Ctx {
     pub fn is_me(&self, name: &str) -> bool {
         let n = name.trim().to_lowercase();
-        !n.is_empty() && self.me.iter().any(|m| *m == n)
+        !n.is_empty() && self.me.contains(&n)
     }
 
     pub fn is_me_any(&self, names: &[String]) -> bool {
@@ -315,7 +315,13 @@ fn structure_event(e: &RawEvent, ctx: &Ctx, kind: EventKind, title: String, st: 
 
 fn objective(e: &RawEvent, ctx: &Ctx, kind: EventKind, name: &str, i_killed: bool) -> GameEvent {
     let steal = e.is_stolen();
-    let verb = if steal { "Stole" } else if i_killed { "Took" } else { "Helped take" };
+    let verb = if steal {
+        "Stole"
+    } else if i_killed {
+        "Took"
+    } else {
+        "Helped take"
+    };
     let killer = e.killer_name.as_deref().unwrap_or("");
     GameEvent::new(id(e, ""), kind, e.event_time, format!("{verb} {name}"))
         .with_details(assist_details(e, ctx))
@@ -381,10 +387,7 @@ mod tests {
         let c = ctx();
         let out: Vec<GameEvent> = evs.iter().flat_map(|e| translate(e, &c)).collect();
         let kinds: Vec<_> = out.iter().map(|e| e.kind).collect();
-        assert_eq!(
-            kinds,
-            vec![EventKind::GameStart, EventKind::Kill, EventKind::Death, EventKind::Assist, EventKind::Death, EventKind::Multikill, EventKind::FirstBlood]
-        );
+        assert_eq!(kinds, vec![EventKind::GameStart, EventKind::Kill, EventKind::Death, EventKind::Assist, EventKind::Death, EventKind::Multikill, EventKind::FirstBlood]);
         assert_eq!(out[1].title, "Killed Zed");
         assert_eq!(out[1].details.as_deref(), Some("Assists: Lee Sin"));
         assert_eq!(out[2].title, "Killed by Zed");
@@ -411,10 +414,7 @@ mod tests {
         let c = ctx();
         let out: Vec<GameEvent> = evs.iter().flat_map(|e| translate(e, &c)).collect();
         let titles: Vec<_> = out.iter().map(|e| e.title.as_str()).collect();
-        assert_eq!(
-            titles,
-            vec!["Helped take Infernal Drake", "Stole Baron Nashor", "Destroyed the top outer tower", "Helped destroy the top inhibitor", "Took Voidgrub", "Team ace", "Victory"]
-        );
+        assert_eq!(titles, vec!["Helped take Infernal Drake", "Stole Baron Nashor", "Destroyed the top outer tower", "Helped destroy the top inhibitor", "Took Voidgrub", "Team ace", "Victory"]);
         let f = |i: usize, k: &str| out[i].facts.iter().find(|(l, _)| l == k).map(|(_, v)| v.clone());
         assert_eq!(f(2, "Lane").as_deref(), Some("Top"));
         assert_eq!(f(2, "Tower").as_deref(), Some("Outer turret"));

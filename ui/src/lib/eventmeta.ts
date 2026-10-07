@@ -53,9 +53,12 @@ export const GROUPS: { id: Group; label: string; color: string; icon: string }[]
   { id: "game", label: "Game", color: "var(--ev-neutral)", icon: "flag" },
 ];
 
+/** Shown on the timeline and in the event list by default; every other group starts as a greyed
+ *  chip the user can switch on (remembered, see `lib/timelinefilters.ts`). */
+export const SHOWN_BY_DEFAULT: Group[] = ["kills", "deaths", "assists"];
+export const HIDDEN_BY_DEFAULT: Group[] = GROUPS.map((g) => g.id).filter((g) => !SHOWN_BY_DEFAULT.includes(g));
+
 /** Kinds offered for auto-clips / callouts in Settings. */
-/** Hidden on the timeline and in the event list until the user turns them on. */
-export const HIDDEN_BY_DEFAULT: Group[] = ["game", "unconfirmed", "recasts", "forms"];
 
 export const USER_KINDS: EventKind[] = [
   "kill",

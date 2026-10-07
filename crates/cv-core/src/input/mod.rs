@@ -2,7 +2,7 @@
 //! clicks, keys, heatmap) and the post-game "Mechanics" stats.
 //!
 //! Game-agnostic: a game module only says whether its game is played with the cursor
-//! ([`crate::GameIntegration::input_tracking`]). The Windows capture lives in `cv-capture`
+//! ([`crate::GameIntegration::cursor_input`]). The Windows capture lives in `cv-capture`
 //! (cursor polling + Raw Input, never a hook); keys come through the engine so the game's chat
 //! state can be respected (no keys are recorded while the chat is open, key codes only).
 //!
@@ -95,14 +95,40 @@ pub struct WindowInfo {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Record {
     /// Cursor position (client units, see [`UNIT`]).
-    Cursor { t: i64, x: i32, y: i32 },
-    Key { t: i64, vk: u8, down: bool },
-    Button { t: i64, button: u8, down: bool },
-    Wheel { t: i64, delta: i32 },
-    Window { t: i64, info: WindowInfo },
-    Focus { t: i64, focused: bool },
-    Chat { t: i64, open: bool },
-    End { t: i64 },
+    Cursor {
+        t: i64,
+        x: i32,
+        y: i32,
+    },
+    Key {
+        t: i64,
+        vk: u8,
+        down: bool,
+    },
+    Button {
+        t: i64,
+        button: u8,
+        down: bool,
+    },
+    Wheel {
+        t: i64,
+        delta: i32,
+    },
+    Window {
+        t: i64,
+        info: WindowInfo,
+    },
+    Focus {
+        t: i64,
+        focused: bool,
+    },
+    Chat {
+        t: i64,
+        open: bool,
+    },
+    End {
+        t: i64,
+    },
 }
 
 impl Record {
@@ -283,10 +309,7 @@ fn decode_records(b: &[u8], out: &mut Vec<Record>) -> Option<()> {
                     *x = r.i()? as i32;
                 }
                 let dpi = r.u()? as u32;
-                Record::Window {
-                    t,
-                    info: WindowInfo { client: Rect { x: v[0], y: v[1], w: v[2], h: v[3] }, frame: Rect { x: v[4], y: v[5], w: v[6], h: v[7] }, dpi },
-                }
+                Record::Window { t, info: WindowInfo { client: Rect { x: v[0], y: v[1], w: v[2], h: v[3] }, frame: Rect { x: v[4], y: v[5], w: v[6], h: v[7] }, dpi } }
             }
             T_FOCUS => Record::Focus { t, focused: r.byte()? != 0 },
             T_CHAT => Record::Chat { t, open: r.byte()? != 0 },
@@ -528,7 +551,11 @@ pub struct CaptureStats {
 impl CaptureStats {
     /// Share of one CPU core (percent).
     pub fn core_percent(&self) -> f64 {
-        if self.wall_secs > 0.0 { self.cpu_ms / 10.0 / self.wall_secs } else { 0.0 }
+        if self.wall_secs > 0.0 {
+            self.cpu_ms / 10.0 / self.wall_secs
+        } else {
+            0.0
+        }
     }
 }
 
@@ -609,7 +636,7 @@ pub fn parse(b: &[u8]) -> anyhow::Result<InputFile> {
             K_HEATMAP if payload.len() >= 4 => {
                 let w = u16::from_le_bytes([payload[0], payload[1]]) as u32;
                 let h = u16::from_le_bytes([payload[2], payload[3]]) as u32;
-                let vals: Vec<f32> = payload[4..].chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]]) as f32 / 65535.0).collect();
+                let vals: Vec<f32> = payload[4..].as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c) as f32 / 65535.0).collect();
                 if vals.len() == (w * h) as usize {
                     f.heatmap = Some(Heatmap { w, h, values: vals });
                 }
@@ -634,7 +661,7 @@ pub fn compress_in_place(path: &Path, heatmap: Option<&Heatmap>) -> anyhow::Resu
             enc.push(r);
             n += 1;
             // Keep blocks self-contained (absolute time + position) every ~1M records.
-            if n % 1_000_000 == 0 {
+            if n.is_multiple_of(1_000_000) {
                 raw.push(enc.take());
             }
         }

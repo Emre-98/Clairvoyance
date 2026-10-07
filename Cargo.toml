@@ -27,3 +27,11 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+# Checked in CI (`cargo clippy -- -D warnings`). Style lints that fight the code's deliberate
+# shape (wide signatures for the Win32 / media plumbing, struct-update after Default) are off.
+[workspace.lints.clippy]
+too_many_arguments = "allow"
+type_complexity = "allow"
+field_reassign_with_default = "allow"
+large_enum_variant = "allow"

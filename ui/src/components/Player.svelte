@@ -863,7 +863,7 @@
     <div class="filters">
       {#each GROUPS as g}
         {#if counts[g.id] > 0}
-          <button class="chip" class:off={hidden.has(g.id)} style="--c:{g.color}" onclick={() => toggleGroup(g.id)} aria-pressed={!hidden.has(g.id)}>
+          <button class="chip" class:off={hidden.has(g.id)} style="--c:{g.color}" onclick={() => toggleGroup(g.id)} aria-pressed={!hidden.has(g.id)} title={hidden.has(g.id) ? `Show ${g.label.toLowerCase()} on the timeline` : `Hide ${g.label.toLowerCase()}`}>
             <span class="chip-ic"><Icon name={g.icon} size={11} stroke={2.6} /></span>
             {g.label}
             <span class="count">{counts[g.id]}</span>

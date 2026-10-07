@@ -21,9 +21,9 @@ use crate::mp4::AudioConfig;
 use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
 use capture::{Capture, CaptureParams, Target};
-use d3d::{qpc_hns, Gpu};
 use cv_core::game::CaptureTarget;
 use cv_core::recorder::{RecordOptions, Recorder, RecorderStatus};
+use d3d::{qpc_hns, Gpu};
 use mux::{MuxMsg, MuxParams};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Sender};
@@ -175,7 +175,13 @@ impl NativeRecorder {
         let rate = (h264_rate as f64 * codec_factor(codec)) as u32;
         let rc = if opts.rate_control == "quality" { video_enc::RateControl::Quality(quality_value(&opts.quality)) } else { video_enc::RateControl::Bitrate };
 
-        log::info!("recorder: capturing {} ({src_w}x{src_h}) -> {out_w}x{out_h}@{fps}", match cap_target { Target::Window(_) => "window", Target::Monitor(_) => "monitor" });
+        log::info!(
+            "recorder: capturing {} ({src_w}x{src_h}) -> {out_w}x{out_h}@{fps}",
+            match cap_target {
+                Target::Window(_) => "window",
+                Target::Monitor(_) => "monitor",
+            }
+        );
         let (mux_tx, mux_rx) = channel::<MuxMsg>();
         let encoder = video_enc::start(
             gpu.clone(),
@@ -232,28 +238,22 @@ impl NativeRecorder {
         log::info!("recorder: starting muxer and capture");
         let mux_thread = std::thread::Builder::new().name("mux".into()).spawn(move || mux::run(mp, mux_rx))?;
 
-        let cap = match capture::start(
-            gpu.clone(),
-            CaptureParams { target: cap_target, height: opts.height, fps, rec_start, cursor: true },
-            out_w,
-            out_h,
-            encoder.tx.clone(),
-            encoder.in_flight.clone(),
-        ) {
-            Ok(c) => c,
-            Err(e) => {
-                // Clean up everything already started.
-                encoder.stop();
-                for a in audio_caps {
-                    a.stop();
+        let cap =
+            match capture::start(gpu.clone(), CaptureParams { target: cap_target, height: opts.height, fps, rec_start, cursor: true }, out_w, out_h, encoder.tx.clone(), encoder.in_flight.clone()) {
+                Ok(c) => c,
+                Err(e) => {
+                    // Clean up everything already started.
+                    encoder.stop();
+                    for a in audio_caps {
+                        a.stop();
+                    }
+                    let (tx, rx) = channel();
+                    let _ = mux_tx.send(MuxMsg::Stop { reply: tx });
+                    let _ = rx.recv_timeout(Duration::from_secs(5));
+                    let _ = mux_thread.join();
+                    return Err(e);
                 }
-                let (tx, rx) = channel();
-                let _ = mux_tx.send(MuxMsg::Stop { reply: tx });
-                let _ = rx.recv_timeout(Duration::from_secs(5));
-                let _ = mux_thread.join();
-                return Err(e);
-            }
-        };
+            };
         let capture = Arc::new(Mutex::new(Some(cap)));
 
         // Watchdog: if window capture delivers nothing (some exclusive-fullscreen games),
@@ -286,16 +286,8 @@ impl NativeRecorder {
         }
 
         let desc = encoder.desc.clone();
-        *self.inner.active.lock().unwrap() = Some(Active {
-            rec_start,
-            capture,
-            encoder: Some(encoder),
-            audio: audio_caps,
-            mux_tx,
-            mux_thread: Some(mux_thread),
-            output_dir: opts.output_dir.clone(),
-            watchdog_stop,
-        });
+        *self.inner.active.lock().unwrap() =
+            Some(Active { rec_start, capture, encoder: Some(encoder), audio: audio_caps, mux_tx, mux_thread: Some(mux_thread), output_dir: opts.output_dir.clone(), watchdog_stop });
         let what = match cap_target {
             Target::Window(_) => "game window",
             Target::Monitor(_) => "screen",
@@ -324,11 +316,7 @@ impl NativeRecorder {
         a.watchdog_stop.store(true, std::sync::atomic::Ordering::SeqCst);
         if let Some(c) = a.capture.lock().unwrap().take() {
             let s = &c.stats;
-            log::info!(
-                "captured {} frames, dropped {}",
-                s.frames.load(std::sync::atomic::Ordering::Relaxed),
-                s.dropped.load(std::sync::atomic::Ordering::Relaxed)
-            );
+            log::info!("captured {} frames, dropped {}", s.frames.load(std::sync::atomic::Ordering::Relaxed), s.dropped.load(std::sync::atomic::Ordering::Relaxed));
             c.stop();
         }
         if let Some(e) = a.encoder.take() {
@@ -365,7 +353,6 @@ impl NativeRecorder {
         }
         rx.recv_timeout(Duration::from_secs(30)).map_err(|_| anyhow!("saving the clip timed out"))?
     }
-
 }
 
 #[async_trait]
@@ -484,7 +471,13 @@ pub fn self_test(out_dir: &Path, secs: u64, exe: Option<&str>, mic: bool, video:
     *rec.inner.prepared.lock().unwrap() = Some((target, opts));
     rec.start_blocking()?;
     std::thread::sleep(Duration::from_secs(secs));
-    let frames = rec.inner.active.lock().unwrap().as_ref().and_then(|a| a.capture.lock().unwrap().as_ref().map(|c| (c.stats.frames.load(std::sync::atomic::Ordering::Relaxed), c.stats.dropped.load(std::sync::atomic::Ordering::Relaxed))));
+    let frames = rec.inner.active.lock().unwrap().as_ref().and_then(|a| {
+        a.capture
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|c| (c.stats.frames.load(std::sync::atomic::Ordering::Relaxed), c.stats.dropped.load(std::sync::atomic::Ordering::Relaxed)))
+    });
     let _ = rec.save_replay_blocking(None);
     let path = rec.stop_blocking()?;
     // The same thumbnail path the app uses after a game (decode a frame from the file).

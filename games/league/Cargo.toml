@@ -21,3 +21,6 @@ chrono.workspace = true
 tokio.workspace = true
 cv-mock-league = { path = "../../crates/cv-mock-league" }
 cv-capture = { path = "../../crates/cv-capture" }
+
+[lints]
+workspace = true

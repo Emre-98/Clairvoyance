@@ -115,17 +115,32 @@ pub struct LiveStatus {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EngineEvent {
     Status(LiveStatus),
-    GameEvent { session_id: String, event: GameEvent },
-    GameStarted { game_name: String },
-    GameEnded { session_id: String },
+    GameEvent {
+        session_id: String,
+        event: GameEvent,
+    },
+    GameStarted {
+        game_name: String,
+    },
+    GameEnded {
+        session_id: String,
+    },
     /// Session file changed (saved, clips added).
     LibraryChanged,
     /// A mode seen for the first time was added to the game's mode list (save the settings).
-    ModesChanged { game_id: String, modes: GameModes },
+    ModesChanged {
+        game_id: String,
+        modes: GameModes,
+    },
     /// A finished game's after-work (auto clips) is done: a good moment for thumbnails and the
     /// storage clean-up, which never run while a game is recording.
-    PostProcessed { session_id: String },
-    Notice { level: String, text: String },
+    PostProcessed {
+        session_id: String,
+    },
+    Notice {
+        level: String,
+        text: String,
+    },
 }
 
 struct Active {
@@ -146,22 +161,48 @@ struct Active {
     missing_checks: u32,
     last_perf: Instant,
     last_event: Option<GameEvent>,
-    /// This mode's rule: Off = watch the process only (no recording, no polling, nothing saved).
-    rule: ModeRule,
+    /// Recorded, not recorded, or not decided yet (see [`Stage`]).
+    stage: Stage,
     /// Clips-only mode: event clips waiting for their "seconds after".
     pending_clips: Vec<PendingClip>,
     /// Mouse and keyboard recording (cursor-based games, full recordings only).
     input: Option<Arc<crate::input::InputWriter>>,
-    /// A replay / spectating: nothing recorded, nothing saved, waiting for the game to close.
-    watch: Option<WatchKind>,
-    /// Probably a replay (see `SessionCheck::Unsure`): polling the game's API, nothing recorded
-    /// until it says whether this is a match you play.
-    hold: Option<WatchKind>,
     /// A spectated game recorded because the setting allows it.
     spectating: bool,
     /// When the match was seen ending (victory screen) or the game closing (for the post-game
     /// timings in the log).
     over_at: Option<Instant>,
+}
+
+/// Where a session stands. A game process gets one session: it starts in `Hold` (probably a
+/// replay) or goes straight to `Live` / `Ignored` once the mode's rule is known; `Hold` ends in
+/// `Live` or `Ignored`, and `Live` becomes `Ignored` when a replay is found late.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Stage {
+    /// Probably a replay (see `SessionCheck::Unsure`): polling the game's API, nothing recorded
+    /// until it says whether this is a match you play.
+    Hold(WatchKind),
+    /// Not recorded, nothing saved, waiting for the game to close: a replay / spectating
+    /// (`Some`), or a mode whose rule is Off (`None`). No recorder, no polling.
+    Ignored(Option<WatchKind>),
+    /// Recorded under the mode's rule, `Record` or `ClipsOnly` (never `Off`). Whether the
+    /// recorder really runs is `Active::recording` (auto-record off, or it failed to start).
+    Live(ModeRule),
+}
+
+impl Stage {
+    /// The mode's rule as the status shows it; `None` while it isn't decided yet.
+    fn rule(self) -> Option<ModeRule> {
+        match self {
+            Stage::Hold(_) => None,
+            Stage::Ignored(_) => Some(ModeRule::Off),
+            Stage::Live(r) => Some(r),
+        }
+    }
+
+    fn clips_only(self) -> bool {
+        self == Stage::Live(ModeRule::ClipsOnly)
+    }
 }
 
 /// An automatic event clip in clips-only mode, saved from the replay buffer once `due`.
@@ -270,8 +311,11 @@ impl Engine {
             st.last_event = a.last_event.clone();
             st.video_offset = (!a.offset_samples.is_empty()).then_some(a.session.video_offset);
             st.mode_name = a.session.mode_name.clone();
-            st.mode_rule = if a.hold.is_some() { None } else { Some(a.rule) };
-            st.watching = a.watch;
+            st.mode_rule = a.stage.rule();
+            st.watching = match a.stage {
+                Stage::Ignored(k) => k,
+                _ => None,
+            };
         }
         st
     }
@@ -292,7 +336,7 @@ impl Engine {
                     n += 1;
                     if self.active.is_some() {
                         self.tick_active(n).await;
-                    } else if n % 2 == 0 {
+                    } else if n.is_multiple_of(2) {
                         self.tick_idle().await;
                     }
                 }
@@ -312,7 +356,7 @@ impl Engine {
 
     async fn handle_command(&mut self, cmd: EngineCommand) {
         match cmd {
-            EngineCommand::SaveClip => self.save_clip().await,
+            EngineCommand::SaveClip => self.save_clip(Instant::now()).await,
             EngineCommand::AddMarker => self.add_marker(Instant::now()),
             EngineCommand::ReloadSettings(s) => {
                 self.apply_settings(*s);
@@ -333,13 +377,22 @@ impl Engine {
         }
     }
 
+    /// The game records spectated games (its setting); replays are never recorded.
+    fn records_spectating(&mut self, idx: usize) -> bool {
+        self.games[idx].watch_detection().is_some_and(|w| w.record_spectating())
+    }
+
+    /// The game's chat is open (no keys are recorded meanwhile).
+    fn chat_open(&self, idx: usize) -> bool {
+        self.games[idx].cursor_input().is_some_and(|c| c.chat_open())
+    }
+
     /// Returns the index of a running, enabled game.
     fn detect_game(&self) -> Option<usize> {
         let procs = self.platform.running_processes();
-        self.games.iter().position(|g| {
-            !self.settings.disabled_games.iter().any(|d| d == g.id())
-                && g.process_names().iter().any(|p| procs.iter().any(|r| r.eq_ignore_ascii_case(p)))
-        })
+        self.games
+            .iter()
+            .position(|g| !self.settings.disabled_games.iter().any(|d| d == g.id()) && g.process_names().iter().any(|p| procs.iter().any(|r| r.eq_ignore_ascii_case(p))))
     }
 
     fn game_running(&self, idx: usize) -> bool {
@@ -446,11 +499,10 @@ impl Engine {
             missing_checks: 0,
             last_perf: Instant::now(),
             last_event: None,
-            rule: ModeRule::Record,
+            // Decided by `begin()` before the session is stored.
+            stage: Stage::Live(ModeRule::Record),
             pending_clips: Vec::new(),
             input: None,
-            watch: None,
-            hold: None,
             spectating: false,
             over_at: None,
         };
@@ -458,10 +510,14 @@ impl Engine {
 
         // A replay or spectating? Decided before anything is recorded (v1.7.1).
         let t0 = Instant::now();
-        let check = self.games[idx].session_check().await;
+        let check = match self.games[idx].watch_detection() {
+            Some(w) => w.session_check().await,
+            None => SessionCheck::Unknown,
+        };
+        let record_spectating = self.records_spectating(idx);
         log::info!("session check: {check:?} in {} ms", t0.elapsed().as_millis());
         match check {
-            SessionCheck::Watching(WatchKind::Spectate) if self.games[idx].record_spectating() => {
+            SessionCheck::Watching(WatchKind::Spectate) if record_spectating => {
                 log::info!("spectating a live game: recorded (setting \"Record games you spectate\" is on)");
                 active.spectating = true;
             }
@@ -476,8 +532,14 @@ impl Engine {
             SessionCheck::Unsure(k) => {
                 // Not recorded until the game's API says this is a match you play.
                 log::info!("probably {} (no game session in the client): not recording until the game confirms", k.label().to_lowercase());
-                active.hold = Some(k);
-                self.message = Some("Checking whether this is a replay…".into());
+                active.stage = Stage::Hold(k);
+                self.message = Some(
+                    match k {
+                        WatchKind::Spectate => "Checking whether you're playing or spectating…",
+                        _ => "Checking whether this is a replay…",
+                    }
+                    .into(),
+                );
                 self.platform.set_input_enabled(false);
                 self.active = Some(active);
                 self.emit(EngineEvent::GameStarted { game_name: gname.into() });
@@ -494,9 +556,7 @@ impl Engine {
 
     /// A replay / spectating: nothing recorded or saved; only the tray / Home say why.
     fn enter_watch(&mut self, a: &mut Active, k: WatchKind) {
-        a.watch = Some(k);
-        a.hold = None;
-        a.rule = ModeRule::Off;
+        a.stage = Stage::Ignored(Some(k));
         a.recording = false;
         self.message = Some(format!("{}: not recorded", k.label()));
         log::info!("{}: not recorded", k.label());
@@ -514,9 +574,9 @@ impl Engine {
         // Which mode is this, and is it recorded? Decided once, before recording starts.
         let mut rule = ModeRule::Record;
         let mut reason: Option<String> = None;
-        if !self.games[idx].mode_groups().is_empty() {
+        if let Some(rules) = self.games[idx].mode_rules() {
             let t0 = Instant::now();
-            let mode = self.games[idx].detect_mode().await;
+            let mode = rules.detect_mode().await;
             match &mode {
                 Some(m) => log::info!(
                     "mode: {} (queue {}, key {}, game mode {}) via {} in {} ms",
@@ -550,7 +610,7 @@ impl Engine {
                 None => "Spectating".into(),
             });
         }
-        active.rule = rule;
+        active.stage = if rule == ModeRule::Off { Stage::Ignored(None) } else { Stage::Live(rule) };
         if rule != ModeRule::Off {
             let _ = active.session.save(&dir);
         }
@@ -640,9 +700,7 @@ impl Engine {
     /// at once, so a crash keeps it linked.
     fn start_input(&self, idx: usize, session: &mut GameSession, dir: &Path) -> Option<Arc<crate::input::InputWriter>> {
         let g = &self.games[idx];
-        if !g.input_tracking() {
-            return None;
-        }
+        let cursor = g.cursor_input()?;
         let mut def = crate::input::default_config();
         if let (Some(d), Some(o)) = (def.as_object_mut(), g.default_config().as_object()) {
             for (k, v) in o {
@@ -666,13 +724,11 @@ impl Engine {
                 session.input_file = Some(name);
                 // The binds in effect for this game (read by the module at `start()`), so the
                 // replay's ability bubbles show the right actions even if they change later.
-                let keys = g.action_keys();
+                let keys = cursor.action_keys();
                 session.action_keys = (!keys.is_empty()).then_some(keys);
                 let _ = session.save(dir);
-                self.platform.start_input_capture(crate::input::CaptureRequest {
-                    writer: w.clone(),
-                    process_names: g.process_names().iter().map(|p| p.to_lowercase()).collect(),
-                });
+                self.platform
+                    .start_input_capture(crate::input::CaptureRequest { writer: w.clone(), process_names: g.process_names().iter().map(|p| p.to_lowercase()).collect() });
                 log::info!("input recording on ({rate} Hz cursor)");
                 Some(w)
             }
@@ -696,22 +752,10 @@ impl Engine {
 
     async fn tick_active(&mut self, n: u64) {
         let idx = self.active.as_ref().unwrap().game;
-        if self.active.as_ref().unwrap().hold.is_some() {
-            self.tick_hold(n).await;
-            return;
-        }
-        if self.active.as_ref().unwrap().rule == ModeRule::Off {
-            // Mode switched off: just wait for the game to close (every 2 s).
-            if n % 2 == 0 {
-                let running = self.game_running(idx);
-                let a = self.active.as_mut().unwrap();
-                a.missing_checks = if running { 0 } else { a.missing_checks + 1 };
-                if a.missing_checks >= 2 {
-                    self.wait_for_exit = None;
-                    self.end_session().await;
-                }
-            }
-            return;
+        match self.active.as_ref().unwrap().stage {
+            Stage::Hold(_) => return self.tick_hold(n).await,
+            Stage::Ignored(_) => return self.tick_ignored(n).await,
+            Stage::Live(_) => {}
         }
         let update = match self.games[idx].poll().await {
             Ok(u) => Some(u),
@@ -722,7 +766,7 @@ impl Engine {
         };
         // Spectator mode found by the game's API after recording started: delete it all.
         if let Some(k) = update.as_ref().and_then(|u| u.watching) {
-            let spectating_ok = k == WatchKind::Spectate && self.games[idx].record_spectating();
+            let spectating_ok = k == WatchKind::Spectate && self.records_spectating(idx);
             if !spectating_ok {
                 self.abort_watch(k).await;
                 return;
@@ -731,10 +775,7 @@ impl Engine {
         let recording = self.active.as_ref().unwrap().recording;
         // Ask the recorder for its own elapsed time right after the poll (used for the offset).
         // Only sample while the clock runs (League reports 0:00 during the loading screen).
-        let rec_elapsed = if recording
-            && update.as_ref().is_some_and(|u| u.game_time.is_some_and(|t| t > 0.5))
-            && self.active.as_ref().unwrap().offset_samples.len() < OFFSET_SAMPLES
-        {
+        let rec_elapsed = if recording && update.as_ref().is_some_and(|u| u.game_time.is_some_and(|t| t > 0.5)) && self.active.as_ref().unwrap().offset_samples.len() < OFFSET_SAMPLES {
             match self.recorder.record_elapsed().await {
                 Ok(Some(d)) => Some(d.as_secs_f64()),
                 _ => self.active.as_ref().unwrap().rec_started.map(|r| r.elapsed().as_secs_f64()),
@@ -836,7 +877,7 @@ impl Engine {
         let mut gone = false;
         // The process list every 2 s; every second while the game's API doesn't answer (it
         // stops answering the moment the game closes), so leaving the game is noticed fast.
-        if n % 2 == 0 || update_failed {
+        if n.is_multiple_of(2) || update_failed {
             let running = self.game_running(idx);
             let a = self.active.as_mut().unwrap();
             a.missing_checks = if running { 0 } else { a.missing_checks + 1 };
@@ -864,13 +905,30 @@ impl Engine {
         }
     }
 
+    /// Not recorded (a replay / spectating, or the mode is off): just wait for the game to close
+    /// (every 2 s).
+    async fn tick_ignored(&mut self, n: u64) {
+        if !n.is_multiple_of(2) {
+            return;
+        }
+        let idx = self.active.as_ref().unwrap().game;
+        let running = self.game_running(idx);
+        let a = self.active.as_mut().unwrap();
+        a.missing_checks = if running { 0 } else { a.missing_checks + 1 };
+        if a.missing_checks >= 2 {
+            self.wait_for_exit = None;
+            self.end_session().await;
+        }
+    }
+
     /// Probably a replay (no game session in the client): poll the game's API until it says
     /// whether this is spectator mode (never recorded) or a match you play (recording starts).
     async fn tick_hold(&mut self, n: u64) {
         let idx = self.active.as_ref().unwrap().game;
         let update = self.games[idx].poll().await.ok();
         if let Some(u) = &update {
-            let watching = u.watching.filter(|k| !(*k == WatchKind::Spectate && self.games[idx].record_spectating()));
+            let record_spectating = self.records_spectating(idx);
+            let watching = u.watching.filter(|k| !(*k == WatchKind::Spectate && record_spectating));
             if let Some(k) = watching {
                 let mut a = self.active.take().unwrap();
                 self.enter_watch(&mut a, k);
@@ -887,7 +945,6 @@ impl Engine {
                 } else {
                     log::info!("the game confirms a match you play: recording starts now ({waited} s after the game started)");
                 }
-                a.hold = None;
                 self.message = None;
                 self.begin(&mut a).await;
                 self.active = Some(a);
@@ -895,7 +952,7 @@ impl Engine {
                 return;
             }
         }
-        if n % 2 == 0 || update.is_none() {
+        if n.is_multiple_of(2) || update.is_none() {
             let running = self.game_running(idx);
             let a = self.active.as_mut().unwrap();
             a.missing_checks = if running { 0 } else { a.missing_checks + 1 };
@@ -916,7 +973,7 @@ impl Engine {
         let clip_kind = s.clip_kinds.contains(&ev.kind);
         let (before, after) = (s.clip_before_secs, s.clip_after_secs);
         let a = self.active.as_mut().unwrap();
-        if a.rule == ModeRule::ClipsOnly && a.recording && clip_kind {
+        if a.stage.clips_only() && a.recording && clip_kind {
             // Clips only: save this moment from the replay buffer a few seconds later.
             let due = Instant::now() + Duration::from_secs_f64(after.max(1.0));
             match a.pending_clips.last_mut() {
@@ -941,7 +998,7 @@ impl Engine {
         let Some(a) = &self.active else { return };
         let idx = a.game;
         let writer = a.input.clone();
-        let chat_before = writer.is_some() && self.games[idx].chat_open();
+        let chat_before = writer.is_some() && self.chat_open(idx);
         // Hotkeys, game keys (ult): key-downs with a name, exactly as before input recording.
         if ev.down {
             if let Some(key) = &ev.key {
@@ -951,7 +1008,7 @@ impl Engine {
         // Input recording: every key down/up while the game window is focused, except while
         // the chat is open (key codes only, never text).
         let Some(w) = writer else { return };
-        let chat_after = self.games[idx].chat_open();
+        let chat_after = self.chat_open(idx);
         let t = w.video_us(ev.qpc_hns);
         if chat_after != chat_before {
             w.push(crate::input::Record::Chat { t, open: chat_after });
@@ -964,7 +1021,7 @@ impl Engine {
     async fn handle_key(&mut self, key: KeyPress, at: Instant) {
         let Some(a) = &self.active else { return };
         if self.hk_clip.as_ref().is_some_and(|h| h.matches(&key)) {
-            self.save_clip().await;
+            self.save_clip(at).await;
             return;
         }
         if self.hk_marker.as_ref().is_some_and(|h| h.matches(&key)) {
@@ -1004,7 +1061,10 @@ impl Engine {
         self.emit_status();
     }
 
-    async fn save_clip(&mut self) {
+    /// Saves the replay buffer as a clip. `at` = when it was asked for (the hotkey's press time,
+    /// which can be a moment before the engine gets to it while a poll is answered): the clip's
+    /// title and timeline event use it.
+    async fn save_clip(&mut self, at: Instant) {
         let Some(a) = &self.active else {
             self.notice("warn", "No game is running, so there's nothing to clip.");
             return;
@@ -1013,8 +1073,8 @@ impl Engine {
             self.notice("warn", "Not recording, so the clip couldn't be saved.");
             return;
         }
-        let gt = self.game_time_at(Instant::now());
-        let clips_only = a.rule == ModeRule::ClipsOnly;
+        let gt = self.game_time_at(at);
+        let clips_only = a.stage.clips_only();
         let video_end = match self.recorder.record_elapsed().await {
             Ok(Some(d)) => Some(d.as_secs_f64()),
             _ => a.rec_started.map(|r| r.elapsed().as_secs_f64()),
@@ -1092,14 +1152,14 @@ impl Engine {
     }
 
     async fn end_session(&mut self) {
-        if self.active.as_ref().is_some_and(|a| a.rule == ModeRule::ClipsOnly) {
+        if self.active.as_ref().is_some_and(|a| a.stage.clips_only()) {
             self.save_due_event_clips(true).await;
         }
         let Some(mut a) = self.active.take() else { return };
-        if a.rule == ModeRule::Off || a.hold.is_some() {
+        if let Stage::Hold(_) | Stage::Ignored(_) = a.stage {
             self.games[a.game].stop().await;
             self.platform.set_input_enabled(false);
-            if a.hold.is_some() {
+            if let Stage::Hold(_) = a.stage {
                 // Closed before the game said what it was: nothing was recorded.
                 let _ = std::fs::remove_dir_all(&a.dir);
             }
@@ -1132,7 +1192,7 @@ impl Engine {
             }
             // Mouse buttons bound to a tracked game key (League: ult on a side button).
             let presses: Vec<(f64, u8)> = w.button_downs().into_iter().map(|(t, b)| (t - a.session.video_offset, b)).collect();
-            let marks = self.games[idx].mouse_marks(&presses);
+            let marks = self.games[idx].cursor_input().map(|c| c.mouse_marks(&presses)).unwrap_or_default();
             if !marks.is_empty() {
                 log::info!("{} mouse presses on tracked binds", marks.len());
                 a.session.key_presses.extend(marks);
@@ -1143,13 +1203,9 @@ impl Engine {
             let elapsed = a.rec_started.map(|r| r.elapsed().as_secs_f64());
             let t_stop = Instant::now();
             let stopped = self.recorder.stop_recording().await;
-            log::info!(
-                "post-game: recording stopped and made playable in {} ms ({} ms after the match ended)",
-                t_stop.elapsed().as_millis(),
-                over.elapsed().as_millis()
-            );
+            log::info!("post-game: recording stopped and made playable in {} ms ({} ms after the match ended)", t_stop.elapsed().as_millis(), over.elapsed().as_millis());
             match stopped {
-                Ok(_) if a.rule == ModeRule::ClipsOnly => {
+                Ok(_) if a.stage.clips_only() => {
                     log::info!("clips-only game ended: {} clips", a.session.clips.len());
                 }
                 Ok(path) => {
@@ -1157,13 +1213,8 @@ impl Engine {
                     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("mp4").to_string();
                     let dest = session::unique_path(&a.dir, &a.session.video_name(short, &ext));
                     let final_path = if move_file(&path, &dest).await { dest } else { path };
-                    a.session.video_file = Some(
-                        if final_path.parent() == Some(a.dir.as_path()) {
-                            final_path.file_name().unwrap().to_string_lossy().to_string()
-                        } else {
-                            final_path.to_string_lossy().to_string()
-                        },
-                    );
+                    a.session.video_file =
+                        Some(if final_path.parent() == Some(a.dir.as_path()) { final_path.file_name().unwrap().to_string_lossy().to_string() } else { final_path.to_string_lossy().to_string() });
                 }
                 Err(e) => {
                     let msg = format!("Stopping the recording failed: {e:#}");
@@ -1182,10 +1233,7 @@ impl Engine {
         }
         self.recorder_status = self.recorder.status().await;
 
-        let too_short = !a.reached_in_progress
-            && a.session.events.is_empty()
-            && a.session.clips.is_empty()
-            && a.session.video_duration.unwrap_or(0.0) < 30.0;
+        let too_short = !a.reached_in_progress && a.session.events.is_empty() && a.session.clips.is_empty() && a.session.video_duration.unwrap_or(0.0) < 30.0;
         let sid = a.session.id.clone();
         if too_short {
             log::info!("discarding short session {sid}");
@@ -1232,14 +1280,24 @@ pub async fn auto_clips(cutter: &dyn ClipCutter, dir: &Path, ev: &crate::setting
     if windows.is_empty() {
         return Ok(());
     }
+    let new_clips = cut_windows(cutter, &video, dir, session.video_offset, windows).await?;
+    // Reload in case the UI changed the session meanwhile (e.g. favorite).
+    let mut session = GameSession::load(dir)?;
+    session.clips.extend(new_clips);
+    session.save(dir)?;
+    Ok(())
+}
+
+/// Cuts one automatic event clip per window (stream copy) into the game's clips folder.
+async fn cut_windows(cutter: &dyn ClipCutter, video: &Path, dir: &Path, video_offset: f64, windows: Vec<(f64, f64, String)>) -> anyhow::Result<Vec<ClipInfo>> {
     let clips_dir = dir.join(CLIPS_DIR);
     std::fs::create_dir_all(&clips_dir)?;
     let ext = video.extension().and_then(|e| e.to_str()).unwrap_or("mp4").to_string();
     let mut new_clips = Vec::new();
     for (start, end, title) in windows {
-        let name = format!("{}_{}.{ext}", session::sanitize(&title), fmt_clock(start - session.video_offset).replace(':', "-"));
+        let name = format!("{}_{}.{ext}", session::sanitize(&title), fmt_clock(start - video_offset).replace(':', "-"));
         let out = session::unique_path(&clips_dir, &name);
-        cutter.cut(&video, start, end, &out, false).await?;
+        cutter.cut(video, start, end, &out, false).await?;
         new_clips.push(ClipInfo {
             file: out.file_name().unwrap().to_string_lossy().to_string(),
             title,
@@ -1250,11 +1308,63 @@ pub async fn auto_clips(cutter: &dyn ClipCutter, dir: &Path, ev: &crate::setting
             keep: false,
         });
     }
-    // Reload in case the UI changed the session meanwhile (e.g. favorite).
+    Ok(new_clips)
+}
+
+/// What changes in a game's automatic event clips when its events were corrected after the game
+/// (the check against the recording): the auto clips whose window is gone (file names; clips
+/// marked "keep" stay) and the windows that are new. Windows that didn't change are left alone,
+/// so a clip you deleted isn't cut again.
+#[derive(Debug, Default, PartialEq)]
+pub struct RecutPlan {
+    pub remove: Vec<String>,
+    pub add: Vec<(f64, f64, String)>,
+}
+
+pub fn recut_plan(before: &GameSession, after: &GameSession, ev: &crate::settings::EventSettings) -> RecutPlan {
+    let same = |a: &(f64, f64, String), b: &(f64, f64, String)| (a.0 - b.0).abs() < 0.01 && (a.1 - b.1).abs() < 0.01;
+    let old = clip_windows(before, ev);
+    let new = clip_windows(after, ev);
+    let gone: Vec<&(f64, f64, String)> = old.iter().filter(|o| !new.iter().any(|n| same(o, n))).collect();
+    let remove = after
+        .clips
+        .iter()
+        .filter(|c| c.source == "event" && !c.keep)
+        .filter(|c| match (c.video_start, c.video_end) {
+            (Some(s), Some(e)) => gone.iter().any(|g| same(g, &(s, e, String::new()))),
+            _ => false,
+        })
+        .map(|c| c.file.clone())
+        .collect();
+    let add = new.into_iter().filter(|n| !old.iter().any(|o| same(o, n))).collect();
+    RecutPlan { remove, add }
+}
+
+/// After the game's events were corrected (`before` = the session as it was before): removes the
+/// automatic clips whose window is gone and cuts the new ones. Clips-only games (no full video)
+/// keep theirs: they were saved from the replay buffer and can't be cut again. Returns how many
+/// clips were removed and added.
+pub async fn recut_auto_clips(cutter: &dyn ClipCutter, dir: &Path, before: &GameSession, ev: &crate::settings::EventSettings) -> anyhow::Result<(usize, usize)> {
+    let after = GameSession::load(dir)?;
+    let Some(video) = after.video_file.as_ref().map(|f| dir.join(f)) else { return Ok((0, 0)) };
+    if !video.exists() {
+        return Ok((0, 0));
+    }
+    let plan = recut_plan(before, &after, ev);
+    if plan.remove.is_empty() && plan.add.is_empty() {
+        return Ok((0, 0));
+    }
+    let added = cut_windows(cutter, &video, dir, after.video_offset, plan.add).await?;
+    for f in &plan.remove {
+        let _ = std::fs::remove_file(dir.join(CLIPS_DIR).join(f));
+    }
+    // Reload in case the UI changed the session meanwhile.
     let mut session = GameSession::load(dir)?;
-    session.clips.extend(new_clips);
+    session.clips.retain(|c| !plan.remove.contains(&c.file));
+    let counts = (plan.remove.len(), added.len());
+    session.clips.extend(added);
     session.save(dir)?;
-    Ok(())
+    Ok(counts)
 }
 
 /// (video start, video end, title) for each auto clip, overlapping windows merged.
@@ -1325,7 +1435,11 @@ async fn move_file(from: &Path, to: &Path) -> bool {
 
 fn is_cross_device(e: &std::io::Error) -> bool {
     // ERROR_NOT_SAME_DEVICE on Windows, EXDEV elsewhere.
-    if cfg!(windows) { e.raw_os_error() == Some(17) } else { e.raw_os_error() == Some(18) }
+    if cfg!(windows) {
+        e.raw_os_error() == Some(17)
+    } else {
+        e.raw_os_error() == Some(18)
+    }
 }
 
 #[cfg(test)]

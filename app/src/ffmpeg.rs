@@ -41,6 +41,28 @@ impl Ffmpeg {
         std::env::var_os("PATH").and_then(|paths| std::env::split_paths(&paths).map(|d| d.join(exe)).find(|p| p.is_file()))
     }
 
+    /// Encoder arguments for an export that has to re-encode (the input overlay burned in): the
+    /// GPU's own H.264 encoder, else Windows' Media Foundation one, else x264. Tried once (a tenth
+    /// of a second of black) and remembered while the app runs.
+    pub fn overlay_encoder(&self, exe: &Path) -> Vec<String> {
+        static PICKED: Mutex<Option<Vec<String>>> = Mutex::new(None);
+        if let Some(e) = PICKED.lock().unwrap().clone() {
+            return e;
+        }
+        let gpu_enc = match self.gpu.as_str() {
+            "amd" => "h264_amf",
+            "qsv" => "h264_qsv",
+            _ => "h264_nvenc",
+        };
+        let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<String>>();
+        let candidates = [v(&["-c:v", gpu_enc, "-b:v", "16M"]), v(&["-c:v", "h264_mf", "-b:v", "16M"]), v(&["-c:v", "libx264", "-preset", "veryfast", "-crf", "20"])];
+        let last = candidates[2].clone();
+        let picked = candidates.into_iter().find(|c| cv_capture::overlay_export::encoder_works(exe, c)).unwrap_or(last);
+        log::info!("overlay export encoder: {}", picked.join(" "));
+        *PICKED.lock().unwrap() = Some(picked.clone());
+        picked
+    }
+
     async fn run(&self, exe: &Path, args: &[String]) -> anyhow::Result<()> {
         let mut cmd = tokio::process::Command::new(exe);
         cmd.args(args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::piped());

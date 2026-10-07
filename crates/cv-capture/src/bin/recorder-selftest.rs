@@ -73,7 +73,9 @@ fn main() {
             let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
             say!("Recorded {:.1} s: {} frames ({:.1} fps), {} dropped", t.elapsed().as_secs_f64(), frames, frames as f64 / secs as f64, dropped);
             say!("File: {} ({:.1} MB, {:.1} Mbit/s)", path.display(), size as f64 / 1e6, size as f64 * 8.0 / 1e6 / secs as f64);
-            let clips: Vec<_> = std::fs::read_dir(&out).map(|d| d.flatten().filter(|e| e.file_name().to_string_lossy().starts_with("Replay_")).map(|e| e.path()).collect()).unwrap_or_default();
+            let clips: Vec<_> = std::fs::read_dir(&out)
+                .map(|d| d.flatten().filter(|e| e.file_name().to_string_lossy().starts_with("Replay_")).map(|e| e.path()).collect())
+                .unwrap_or_default();
             say!("Replay clip: {}", clips.first().map(|p| p.display().to_string()).unwrap_or("none".into()));
             say!("Thumbnail: {}", if out.join("selftest.jpg").exists() { "ok" } else { "missing" });
         }
@@ -82,8 +84,14 @@ fn main() {
     if !samples.is_empty() {
         let n = samples.len() as f64;
         let avg = |f: &dyn Fn(&(cv_capture::win::perf::PerfSnapshot, f64)) -> f64| samples.iter().map(f).sum::<f64>() / n;
-        say!("Average over the test: this program {:.2}% CPU, GPU video-encode engine {:.1}%, GPU 3D {:.1}%, this program's GPU use {:.1}%, whole PC CPU {:.1}%",
-            avg(&|s| s.1), avg(&|s| s.0.gpu_encode), avg(&|s| s.0.gpu_3d), avg(&|s| s.0.app_gpu), avg(&|s| s.0.cpu_total));
+        say!(
+            "Average over the test: this program {:.2}% CPU, GPU video-encode engine {:.1}%, GPU 3D {:.1}%, this program's GPU use {:.1}%, whole PC CPU {:.1}%",
+            avg(&|s| s.1),
+            avg(&|s| s.0.gpu_encode),
+            avg(&|s| s.0.gpu_3d),
+            avg(&|s| s.0.app_gpu),
+            avg(&|s| s.0.cpu_total)
+        );
     }
     let _ = d3d::qpc_hns();
     let _ = std::fs::write(out.join("selftest-report.txt"), &report);

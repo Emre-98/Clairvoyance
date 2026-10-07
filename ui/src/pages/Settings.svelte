@@ -490,6 +490,7 @@
               <option value="">A match</option>
               <option value="replay">A replay</option>
               <option value="spectate">Spectating</option>
+              <option value="spectate-live">Spectating a friend</option>
               <option value="replay-late">A replay found late</option>
             </select>
           </label>

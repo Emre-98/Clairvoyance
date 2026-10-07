@@ -1,11 +1,11 @@
 //! Commands the UI can call (`invoke("name", {...})`).
 
 use crate::state::{AppState, GpuInfo};
+use cv_core::engine::ClipCutter;
 use cv_core::engine::{EngineCommand, LiveStatus};
 use cv_core::library::{ClipEntry, SessionSummary};
 use cv_core::session::{ClipInfo, GameSession, CLIPS_DIR};
 use cv_core::Settings;
-use cv_core::engine::ClipCutter;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -18,7 +18,7 @@ fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
 
-fn session_dir(st: &AppState, id: &str) -> R<PathBuf> {
+pub(crate) fn session_dir(st: &AppState, id: &str) -> R<PathBuf> {
     if id.is_empty() || id.contains(['/', '\\']) || id.contains("..") {
         return Err("invalid game id".into());
     }
@@ -281,7 +281,7 @@ fn file_version(path: &Path) -> Option<(u64, u128)> {
 }
 
 /// Start times of every frame of a video (cached per file, size and modification time).
-fn frame_times_cached(path: &Path) -> Option<Arc<Vec<f64>>> {
+pub(crate) fn frame_times_cached(path: &Path) -> Option<Arc<Vec<f64>>> {
     use std::collections::HashMap;
     use std::sync::{Mutex, OnceLock};
     static CACHE: OnceLock<Mutex<HashMap<(PathBuf, (u64, u128)), Arc<Vec<f64>>>>> = OnceLock::new();
@@ -321,16 +321,16 @@ pub async fn input_actions(st: St<'_>, id: String) -> R<ActionsView> {
         let t = std::time::Instant::now();
         let s = GameSession::load(&dir).map_err(err)?;
         let (an, _, rate) = input_cached(&dir)?;
-        let game = crate::games::by_id(&s.game_id);
-        let (keys, saved) = actions::session_actions(s.action_keys.as_deref(), || game.map(|g| g.default_action_keys()).unwrap_or_default());
+        let cursor = crate::games::by_id(&s.game_id).and_then(|g| g.cursor_input());
+        let (keys, saved) = actions::session_actions(s.action_keys.as_deref(), || cursor.map(|c| c.default_action_keys()).unwrap_or_default());
         let frames = s.video_file.as_ref().map(|f| dir.join(f)).and_then(|p| frame_times_cached(&p));
         let mut presses = actions::presses(&an, &keys, rate, frames.as_deref().map(|f| f.as_slice()).unwrap_or(&[]));
-        if let Some(g) = game {
-            g.action_press_states(&s, &keys, &mut presses);
+        if let Some(c) = cursor {
+            c.action_press_states(&s, &keys, &mut presses);
         }
         log::debug!("ability bubbles for {}: {} presses, {} ms", dir.display(), presses.len(), t.elapsed().as_millis());
         Ok(ActionsView {
-            categories: game.map(|g| g.action_categories()).unwrap_or_default(),
+            categories: cursor.map(|c| c.action_categories()).unwrap_or_default(),
             actions: keys,
             saved_binds: saved,
             frame_exact: frames.is_some(),
@@ -373,9 +373,7 @@ pub async fn video_frame_times(path: String) -> R<tauri::ipc::Response> {
 /// Layout, codec and keyframe spacing of a video (Settings > Advanced, test report).
 #[tauri::command]
 pub async fn video_info(path: String) -> R<cv_capture::remux::VideoInfo> {
-    tauri::async_runtime::spawn_blocking(move || cv_capture::remux::info(std::path::Path::new(&path)).map_err(err))
-        .await
-        .map_err(err)?
+    tauri::async_runtime::spawn_blocking(move || cv_capture::remux::info(std::path::Path::new(&path)).map_err(err)).await.map_err(err)?
 }
 
 /// Keyframe times of a video (cached per file, size and modification time): marker jumps land
@@ -423,7 +421,7 @@ pub async fn set_clip_keep(app: AppHandle, st: St<'_>, id: String, file: String,
 }
 
 /// Something on disk changed because of the UI: re-read it on the next request and tell the UI.
-fn changed(app: &AppHandle, st: &AppState) {
+pub(crate) fn changed(app: &AppHandle, st: &AppState) {
     st.library_dirty.store(true, std::sync::atomic::Ordering::SeqCst);
     let _ = app.emit("library-changed", ());
 }
@@ -517,7 +515,13 @@ pub fn stop_session(st: St) {
 }
 
 #[tauri::command]
-pub async fn reveal_path(path: String) -> R<()> {
+pub async fn reveal_path(st: St<'_>, path: String) -> R<()> {
+    // Only what the app keeps: recordings, its data (logs, tools) and its settings folder.
+    let config_dir = st.paths.config_file.parent().map(Path::to_path_buf).unwrap_or_default();
+    let save_dir = st.save_dir();
+    if !cv_core::session::path_within(Path::new(&path), &[&save_dir, &st.paths.data_dir, &config_dir]) {
+        return Err("That file isn't one of Clairvoyance's.".into());
+    }
     tauri_plugin_opener::reveal_item_in_dir(Path::new(&path)).map_err(err)
 }
 
@@ -530,7 +534,12 @@ pub async fn open_url(url: String) -> R<()> {
 }
 
 #[tauri::command]
-pub async fn open_path(path: String) -> R<()> {
+pub async fn open_path(st: St<'_>, path: String) -> R<()> {
+    // Opens a recording or clip in the default player: only videos in the recordings folder.
+    let p = Path::new(&path);
+    if !cv_core::session::is_video_file(p) || !cv_core::session::path_within(p, &[&st.save_dir()]) {
+        return Err("Only recordings and clips can be opened.".into());
+    }
     tauri_plugin_opener::open_path(path, None::<&str>).map_err(err)
 }
 
@@ -607,7 +616,15 @@ pub async fn storage_info(app: AppHandle, st: St<'_>) -> R<StorageInfo> {
         let plan = cv_core::library::plan_cleanup(&games, limit, 0, chrono::Local::now(), protect.as_deref());
         let protected_bytes = games
             .iter()
-            .map(|g| if g.favorite { g.size_bytes } else if g.kept_clips > 0 { g.size_bytes.saturating_sub(g.video_bytes) } else { 0 })
+            .map(|g| {
+                if g.favorite {
+                    g.size_bytes
+                } else if g.kept_clips > 0 {
+                    g.size_bytes.saturating_sub(g.video_bytes)
+                } else {
+                    0
+                }
+            })
             .sum();
         let mut recent = crate::maintenance::read_log(&st.paths.data_dir.join("cleanup-log.json"));
         recent.reverse();
@@ -662,7 +679,7 @@ pub fn simulate_game(st: St, speed: f64, length: f64, queue: Option<i64>, watch:
 
 /// Plays a fake League match (and a fake League client reporting `queue`, default Draft Pick),
 /// so detection, mode rules, recording, events and the timeline can be tried without playing.
-/// `watch`: "replay" / "spectate" / "replay-late" / "replay-unsure" plays spectator mode instead
+/// `watch`: "replay" / "spectate" / "spectate-live" / "replay-late" / "replay-unsure" plays spectator mode instead
 /// (v1.7.1: never recorded), see `cv_mock_league::Watch`.
 pub fn start_simulation(st: Arc<AppState>, speed: f64, length: f64, queue: Option<i64>, watch: Option<&str>) -> R<()> {
     // Each simulation has a number: the clean-up of an earlier one (which waits for its game to
@@ -740,7 +757,7 @@ pub struct EncoderList {
 /// Hardware encoders the built-in recorder can use on this PC.
 #[tauri::command]
 pub async fn builtin_encoders() -> R<EncoderList> {
-    tauri::async_runtime::spawn_blocking(|| cv_capture::NativeRecorder::available_encoders())
+    tauri::async_runtime::spawn_blocking(cv_capture::NativeRecorder::available_encoders)
         .await
         .map_err(err)?
         .map(|(gpu, encoders)| EncoderList { gpu, encoders })
@@ -929,6 +946,10 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static 
         list_clips,
         delete_clip,
         export_clip,
+        crate::export::overlay_export_begin,
+        crate::export::overlay_export_frame,
+        crate::export::overlay_export_end,
+        crate::export::overlay_export_cancel,
         save_clip_now,
         add_marker_now,
         stop_session,

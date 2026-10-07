@@ -138,12 +138,8 @@ const OK_UNLISTED: [&str; 0] = [];
 fn command_annie_one_ult_many_commands() {
     // Tibbers at 100: the R icon shows Tibbers' command icon until he's gone (145), then the
     // cooldown. 10 commands; a press on cooldown; the next ult at 260.
-    let sig = Signals {
-        casts: vec![CastSig { t: 145.0, long: true }, CastSig { t: 260.1, long: false }],
-        alt: vec![(100.1, 145.0), (260.1, 300.0)],
-        ready: vec![80.0, 90.0, 240.0, 250.0],
-        deaths: vec![],
-    };
+    let sig =
+        Signals { casts: vec![CastSig { t: 145.0, long: true }, CastSig { t: 260.1, long: false }], alt: vec![(100.1, 145.0), (260.1, 300.0)], ready: vec![80.0, 90.0, 240.0, 250.0], deaths: vec![] };
     let mut presses = vec![p(99.9)];
     presses.extend((0..10).map(|i| p(102.0 + i as f64 * 2.0)));
     presses.push(p(150.0));
@@ -169,10 +165,7 @@ fn command_ends_when_the_icon_is_ready_again() {
 fn multi_cast_ahri_three_dashes_and_presses_at_the_end() {
     // Each dash shows a short lockout; the long cooldown appears after the last one (210).
     let r = KindRule { ends: vec![End::Cooldown, End::Duration], ..rule(UltKind::MultiCast, 20.0) };
-    let sig = Signals {
-        casts: vec![CastSig { t: 200.2, long: false }, CastSig { t: 202.2, long: false }, CastSig { t: 210.0, long: true }],
-        ..Default::default()
-    };
+    let sig = Signals { casts: vec![CastSig { t: 200.2, long: false }, CastSig { t: 202.2, long: false }, CastSig { t: 210.0, long: true }], ..Default::default() };
     let presses = [p(200.0), p(202.0), p(209.8), p(210.4), p(300.0)];
     let l = label(&r, 1.5, &sig, &presses, &never);
     assert_eq!(count(&l).0, 1);
@@ -303,12 +296,7 @@ fn mashing_r_is_one_recast_per_burst() {
     // change), a burst right after it (nothing), the real recast at 74.86 (its cooldown shows at
     // 74.94), then a burst 202.27..202.97 around another recast whose cooldown shows at 202.93.
     let r = UltRules::builtin().kind_for("Khazix", None);
-    let sig = Signals {
-        casts: vec![CastSig { t: 74.94, long: true }, CastSig { t: 202.93, long: true }],
-        alt: vec![(69.98, 74.94), (198.21, 202.93)],
-        ready: vec![60.0, 190.0],
-        deaths: vec![],
-    };
+    let sig = Signals { casts: vec![CastSig { t: 74.94, long: true }, CastSig { t: 202.93, long: true }], alt: vec![(69.98, 74.94), (198.21, 202.93)], ready: vec![60.0, 190.0], deaths: vec![] };
     let mut presses: Vec<PressIn> = [69.9, 70.24, 70.38, 70.52, 70.66, 70.81, 74.86].iter().map(|&t| p(t)).collect();
     presses.push(p(198.1));
     presses.extend([202.27, 202.41, 202.55, 202.69, 202.83, 202.97].iter().map(|&t| p(t)));

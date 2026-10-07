@@ -8,6 +8,7 @@
 //!   point at the old folder instead, so nothing is ever lost. A custom save folder is kept as is;
 //! - app data (`%LOCALAPPDATA%\GameRecorder`: ffmpeg, PresentMon, logs) is moved or copied;
 //! - "Start with Windows" is re-registered under the new name.
+//!
 //! The old installation itself is left alone; the UI offers to uninstall it (`legacy_install`).
 
 use crate::state::Paths;
@@ -166,11 +167,8 @@ mod tests {
             log_file: root.join("local").join(name).join("logs").join("x.log"),
             default_save_dir: root.join("videos").join(name),
         };
-        let old = OldPaths {
-            config_file: root.join("roaming").join(OLD_NAME).join("settings.json"),
-            data_dir: root.join("local").join(OLD_NAME),
-            default_save_dir: root.join("videos").join(OLD_NAME),
-        };
+        let old =
+            OldPaths { config_file: root.join("roaming").join(OLD_NAME).join("settings.json"), data_dir: root.join("local").join(OLD_NAME), default_save_dir: root.join("videos").join(OLD_NAME) };
         (new, old)
     }
 

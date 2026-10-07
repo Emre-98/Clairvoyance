@@ -24,7 +24,13 @@ async fn main() -> anyhow::Result<()> {
             let client = reqwest::Client::builder().user_agent("Clairvoyance-ultscan").build()?;
             let v = ddragon::version_for(&client, None, None).await.ok_or_else(|| anyhow::anyhow!("no Data Dragon version"))?;
             eprintln!("Data Dragon {v}");
-            client.get(format!("https://ddragon.leagueoflegends.com/cdn/{v}/data/en_US/championFull.json")).send().await?.error_for_status()?.json().await?
+            client
+                .get(format!("https://ddragon.leagueoflegends.com/cdn/{v}/data/en_US/championFull.json"))
+                .send()
+                .await?
+                .error_for_status()?
+                .json()
+                .await?
         }
     };
     let version = full["version"].as_str().unwrap_or("?").to_string();
@@ -39,10 +45,7 @@ async fn main() -> anyhow::Result<()> {
     for name in names {
         let c = &data[name];
         let Some(u) = ddragon::ult_of(c) else { continue };
-        fixture.insert(
-            name.clone(),
-            serde_json::json!({ "name": u.name, "cooldown": u.cooldown, "maxammo": u.max_ammo.map(|a| a.to_string()), "description": u.description, "tooltip": u.tooltip }),
-        );
+        fixture.insert(name.clone(), serde_json::json!({ "name": u.name, "cooldown": u.cooldown, "maxammo": u.max_ammo.map(|a| a.to_string()), "description": u.description, "tooltip": u.tooltip }));
         let (guess, hits) = classify_text(&u.description, &u.tooltip, u.max_ammo, &u.cooldown);
         let listed = rules.kind_rule(name);
         if guess.is_none() && listed.is_none() {

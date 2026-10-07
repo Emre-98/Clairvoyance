@@ -79,10 +79,7 @@ unsafe fn process_loopback_client(pid: u32) -> Result<IAudioClient> {
         let params = AUDIOCLIENT_ACTIVATION_PARAMS {
             ActivationType: AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK,
             Anonymous: AUDIOCLIENT_ACTIVATION_PARAMS_0 {
-                ProcessLoopbackParams: AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS {
-                    TargetProcessId: pid,
-                    ProcessLoopbackMode: PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE,
-                },
+                ProcessLoopbackParams: AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS { TargetProcessId: pid, ProcessLoopbackMode: PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE },
             },
         };
         // The PROPVARIANT only *borrows* `params` (on our stack). It must never be dropped:
@@ -133,6 +130,10 @@ pub struct Aac {
 }
 
 impl Aac {
+    /// An AAC encoder (Media Foundation's MFT) at `bitrate_bytes` per second.
+    ///
+    /// # Safety
+    /// Media Foundation must be started (`MFStartup`) and COM initialized on this thread.
     pub unsafe fn new(bitrate_bytes: u32) -> Result<Aac> {
         unsafe {
             let input = MFT_REGISTER_TYPE_INFO { guidMajorType: MFMediaType_Audio, guidSubtype: MFAudioFormat_PCM };
@@ -181,6 +182,9 @@ impl Aac {
     }
 
     /// Feeds PCM (16-bit stereo) with the time of its first sample; returns encoded frames.
+    ///
+    /// # Safety
+    /// Media Foundation must be started (`MFStartup`) and COM initialized on this thread.
     pub unsafe fn encode(&mut self, pcm: &[u8], pts: i64) -> Result<Vec<(i64, Vec<u8>)>> {
         unsafe {
             let buf = MFCreateMemoryBuffer(pcm.len() as u32)?;
@@ -231,6 +235,10 @@ impl Aac {
         Ok(out)
     }
 
+    /// Drains the encoder's last frames.
+    ///
+    /// # Safety
+    /// Media Foundation must be started (`MFStartup`) and COM initialized on this thread.
     pub unsafe fn flush(&mut self) -> Result<Vec<(i64, Vec<u8>)>> {
         unsafe {
             let _ = self.mft.ProcessMessage(MFT_MESSAGE_NOTIFY_END_OF_STREAM, 0);
@@ -244,8 +252,8 @@ impl Aac {
 
 struct Clock {
     rec_start: i64,
-    t0: i64,       // timeline position of the first sample (100 ns)
-    frames: i64,   // frames sent to the encoder so far
+    t0: i64,         // timeline position of the first sample (100 ns)
+    frames: i64,     // frames sent to the encoder so far
     out_frames: i64, // AAC frames received from the encoder
 }
 
@@ -349,10 +357,7 @@ pub fn start(source: Source, track: usize, rec_start: i64, bitrate_bytes: u32, o
         while !st.load(Ordering::SeqCst) {
             let _ = WaitForSingleObject(ev, 50);
             loop {
-                let n = match cap.GetNextPacketSize() {
-                    Ok(n) => n,
-                    Err(_) => 0,
-                };
+                let n: u32 = cap.GetNextPacketSize().unwrap_or_default();
                 if n == 0 {
                     break;
                 }

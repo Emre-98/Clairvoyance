@@ -1,6 +1,6 @@
 use super::*;
 use crate::input::stats::Analysis;
-use crate::input::{Rect, Record, WindowInfo, UNIT};
+use crate::input::{Record, Rect, WindowInfo, UNIT};
 
 const RATE: u32 = 250;
 const VK_Q: u8 = b'Q';

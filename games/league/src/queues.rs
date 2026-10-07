@@ -8,6 +8,7 @@
 //! - Riot's official **queues.json** (static data) names queues when the client isn't running.
 //! - The **Live Client Data API** only knows the coarse `gameMode` (CLASSIC, ARAM, CHERRY…); it's
 //!   the fallback when the client can't be reached.
+//!
 //! Both lists are cached on disk, so the settings list works offline. Nothing here hardcodes
 //! the list of modes: only a small table of well-known queue ids gives default groups/rules
 //! ([`KNOWN`], easy to extend), everything else is classified from the queue's own data.
@@ -103,20 +104,16 @@ pub fn classify(q: &QueueFacts) -> (String, Option<ModeRule>) {
 
 pub fn catalog_entry(q: &QueueFacts, available: Option<bool>) -> CatalogMode {
     let (group, default_rule) = classify(q);
-    CatalogMode {
-        key: key_for(q.id),
-        queue_id: Some(q.id),
-        name: clean_name(&q.name, q.id),
-        game_mode: (!q.game_mode.is_empty()).then(|| q.game_mode.clone()),
-        group,
-        default_rule,
-        available,
-    }
+    CatalogMode { key: key_for(q.id), queue_id: Some(q.id), name: clean_name(&q.name, q.id), game_mode: (!q.game_mode.is_empty()).then(|| q.game_mode.clone()), group, default_rule, available }
 }
 
 fn clean_name(name: &str, id: i64) -> String {
     let n = name.trim().trim_end_matches(" games").trim_end_matches(" Games").trim();
-    if n.is_empty() { format!("Queue {id}") } else { n.to_string() }
+    if n.is_empty() {
+        format!("Queue {id}")
+    } else {
+        n.to_string()
+    }
 }
 
 /// Riot's official queue list (static data). `notes` mark deprecated queues.
@@ -320,7 +317,15 @@ pub fn catalog_from_lcu(queues: &serde_json::Value) -> Vec<CatalogMode> {
 pub fn fixed_catalog() -> Vec<CatalogMode> {
     vec![
         CatalogMode { key: KEY_CUSTOM.into(), queue_id: None, name: "Custom games".into(), game_mode: None, group: "other".into(), default_rule: Some(ModeRule::Off), available: Some(true) },
-        CatalogMode { key: KEY_PRACTICE.into(), queue_id: None, name: "Practice Tool".into(), game_mode: Some("PRACTICETOOL".into()), group: "other".into(), default_rule: Some(ModeRule::Off), available: Some(true) },
+        CatalogMode {
+            key: KEY_PRACTICE.into(),
+            queue_id: None,
+            name: "Practice Tool".into(),
+            game_mode: Some("PRACTICETOOL".into()),
+            group: "other".into(),
+            default_rule: Some(ModeRule::Off),
+            available: Some(true),
+        },
     ]
 }
 
@@ -393,12 +398,14 @@ mod tests {
 
     #[test]
     fn riot_static_list() {
-        let list = parse_static(r#"[{"queueId":0,"map":"Custom games","description":null,"notes":null},
+        let list = parse_static(
+            r#"[{"queueId":0,"map":"Custom games","description":null,"notes":null},
             {"queueId":420,"map":"Summoner's Rift","description":"5v5 Ranked Solo games","notes":null},
             {"queueId":450,"map":"Howling Abyss","description":"5v5 ARAM games","notes":null},
             {"queueId":65,"map":"Howling Abyss","description":"5v5 ARAM games","notes":"Deprecated in patch 7.19 in favor of queueId 450"},
             {"queueId":1700,"map":"Rings of Wrath","description":"Arena","notes":null},
-            {"queueId":1020,"map":"Summoner's Rift","description":"One for All games","notes":null}]"#);
+            {"queueId":1020,"map":"Summoner's Rift","description":"One for All games","notes":null}]"#,
+        );
         let c = static_catalog(&list);
         let ids: Vec<_> = c.iter().map(|m| (m.queue_id.unwrap(), m.group.as_str(), m.name.as_str())).collect();
         assert_eq!(ids, vec![(420, "ranked", "5v5 Ranked Solo"), (450, "aram", "5v5 ARAM"), (1700, "arena", "Arena"), (1020, "rotating", "One for All")]);

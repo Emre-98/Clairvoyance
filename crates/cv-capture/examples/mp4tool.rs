@@ -42,9 +42,7 @@ fn main() {
     let t = Instant::now();
     let r: Result<String, String> = match a.get(1).map(|s| s.as_str()) {
         Some("info") if a.len() == 3 => remux::info(Path::new(&a[2])).map(|i| serde_json::to_string_pretty(&i).unwrap()).map_err(|e| e.to_string()),
-        Some("finalize") if a.len() == 4 => remux::finalize(Path::new(&a[2]), Path::new(&a[3]), &|| false)
-            .map(|r| serde_json::to_string_pretty(&r).unwrap())
-            .map_err(|e| e.to_string()),
+        Some("finalize") if a.len() == 4 => remux::finalize(Path::new(&a[2]), Path::new(&a[3]), &|| false).map(|r| serde_json::to_string_pretty(&r).unwrap()).map_err(|e| e.to_string()),
         Some("loop") if a.len() >= 5 => {
             let reserve = if a.iter().any(|x| x == "--reserve") { reserve_bytes(60, 1) } else { 0 };
             remux::loop_recording_r(Path::new(&a[2]), Path::new(&a[3]), a[4].parse().unwrap_or(60.0), reserve)
@@ -163,7 +161,7 @@ fn fake_input(dir: &Path, rate: u32) -> Result<String, String> {
     let (mut x, mut y, mut vx, mut vy) = (0.5f64, 0.5f64, 0.0f64, 0.0f64);
     let step = 1_000_000 / rate as i64;
     let n = (dur * rate as f64) as i64;
-    let keys = [b'Q', b'W', b'E', b'R', b'D', b'F', b'1', b'4', b'B'];
+    let keys = *b"QWERDF14B";
     for i in 0..n {
         let t = i * step;
         if rnd() < 0.01 {
@@ -308,7 +306,12 @@ fn ult_check(dir: &Path, write: bool, offset: Option<f64>) -> Result<String, Str
         .collect();
     // v1.6: the R spell's id/name from the Live Client Data API whenever it changed in game.
     let r_states: Vec<serde_json::Value> = s.key_presses.iter().filter(|m| m.action == "r_state").map(|m| serde_json::json!({"game_t": m.game_time, "r": m.key})).collect();
-    let presses: Vec<serde_json::Value> = s.key_presses.iter().filter(|m| m.action == "ult").map(|m| serde_json::json!({"game_t": m.game_time, "key": m.key, "accepted": m.accepted, "reason": m.reason})).collect();
+    let presses: Vec<serde_json::Value> = s
+        .key_presses
+        .iter()
+        .filter(|m| m.action == "ult")
+        .map(|m| serde_json::json!({"game_t": m.game_time, "key": m.key, "accepted": m.accepted, "reason": m.reason}))
+        .collect();
     let report = serde_json::json!({
         "video": video,
         "hardware_decoding": v.hardware,
@@ -363,8 +366,8 @@ fn league_binds(dir: &str) -> Result<String, String> {
 
 /// The ability bubbles of a recorded game, as the overlay gets them (`input_actions`).
 fn bubbles(dir: &Path, detail: bool) -> Result<String, String> {
+    use cv_core::game::CursorInput;
     use cv_core::input::{actions, stats};
-    use cv_core::GameIntegration;
     let s = cv_core::session::GameSession::load(dir).map_err(|e| e.to_string())?;
     let t = Instant::now();
     let f = cv_core::input::read(&dir.join(s.input_file.as_deref().ok_or("no input file")?)).map_err(|e| e.to_string())?;
@@ -395,7 +398,10 @@ fn bubbles(dir: &Path, detail: bool) -> Result<String, String> {
     let r_detail: Vec<serde_json::Value> = if detail {
         let no_cast: Vec<f64> = s.events.iter().filter(|e| e.kind == cv_core::EventKind::UltUnconfirmed).map(|e| e.game_time).collect();
         let used: Vec<f64> = s.events.iter().filter(|e| e.kind == cv_core::EventKind::UltUsed).map(|e| e.game_time + s.video_offset).collect();
-        let mut rows: Vec<(f64, serde_json::Value)> = rs.iter().map(|q| (q.t, serde_json::json!({ "t": (q.t * 1000.0).round() / 1000.0, "bubble": format!("{:?}", q.state), "hint": q.hint }))).collect();
+        let mut rows: Vec<(f64, serde_json::Value)> = rs
+            .iter()
+            .map(|q| (q.t, serde_json::json!({ "t": (q.t * 1000.0).round() / 1000.0, "bubble": format!("{:?}", q.state), "hint": q.hint })))
+            .collect();
         for m in s.key_presses.iter().filter(|m| m.action == "ult") {
             let t = m.game_time + s.video_offset;
             let nc = no_cast.iter().any(|&g| (g - m.game_time).abs() < 0.005);

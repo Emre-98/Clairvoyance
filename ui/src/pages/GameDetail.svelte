@@ -4,7 +4,8 @@
   import { videoUrl } from "../lib/videopool";
   import { app, go, toast, cachedSession, fetchSession } from "../lib/store.svelte";
   import { clock, kda, kdaRatio, num, relativeDate } from "../lib/format";
-  import { HIDDEN_BY_DEFAULT, KIND, type Group } from "../lib/eventmeta";
+  import { KIND, type Group } from "../lib/eventmeta";
+  import { loadHidden, saveHidden } from "../lib/timelinefilters";
   import type { GameEvent, SessionView } from "../lib/types";
   import Player from "../components/Player.svelte";
   import GameIcon from "../components/GameIcon.svelte";
@@ -25,7 +26,8 @@
   let error = $state<string | null>(null);
   let player = $state<ReturnType<typeof Player>>();
   let current = $state(0);
-  let hidden = $state(new Set<Group>(HIDDEN_BY_DEFAULT));
+  let hidden = $state(loadHidden());
+  $effect(() => saveHidden(hidden));
   let range = $state<[number, number] | null>(null);
   let listEl = $state<HTMLDivElement>();
   /** Mechanics range (game seconds): range stats + the overlay's "selected range" heatmap. */
@@ -177,7 +179,18 @@
           sbStats={s?.stats ?? null}
         />
         {#if range && s}
-          <ClipEditor sessionId={s.id} bind:range {current} {offset} duration={videoLen} onclose={() => (range = null)} onpreview={() => player?.seek(range![0], true)} />
+          <ClipEditor
+            sessionId={s.id}
+            bind:range
+            {current}
+            {offset}
+            duration={videoLen}
+            onclose={() => (range = null)}
+            onpreview={() => player?.seek(range![0], true)}
+            inputId={hasInput ? id : null}
+            showUnconfirmed={!hidden.has("unconfirmed")}
+            {heatRange}
+          />
         {/if}
       </div>
 
