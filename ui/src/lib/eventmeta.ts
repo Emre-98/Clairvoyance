@@ -1,6 +1,6 @@
 import type { EventKind } from "./types";
 
-export type Group = "kills" | "deaths" | "assists" | "ult" | "recasts" | "forms" | "unconfirmed" | "structures" | "objectives" | "rounds" | "markers" | "game";
+export type Group = "kills" | "deaths" | "assists" | "ult" | "recasts" | "forms" | "unconfirmed" | "structures" | "objectives" | "items" | "summoners" | "rounds" | "markers" | "game";
 
 export interface KindMeta {
   label: string;
@@ -27,6 +27,8 @@ export const KIND: Record<EventKind, KindMeta> = {
   herald: { label: "Herald", color: "var(--ev-epic)", icon: "eye", group: "objectives" },
   baron: { label: "Baron", color: "var(--ev-epic)", icon: "horns", group: "objectives" },
   objective: { label: "Objective", color: "var(--ev-epic)", icon: "hex", group: "objectives" },
+  item_completed: { label: "Item completed", color: "var(--ev-item)", icon: "bag", group: "items" },
+  summoner_spell: { label: "Summoner spell", color: "var(--ev-summoner)", icon: "spark", group: "summoners" },
   round: { label: "Round", color: "var(--ev-neutral)", icon: "flag", group: "rounds" },
   manual_marker: { label: "Marker", color: "var(--ev-marker)", icon: "bookmark", group: "markers" },
   clip: { label: "Clip", color: "var(--ev-clip)", icon: "film", group: "markers" },
@@ -44,6 +46,8 @@ export const GROUPS: { id: Group; label: string; color: string; icon: string }[]
   { id: "unconfirmed", label: "Unconfirmed presses", color: "var(--muted)", icon: "bolt" },
   { id: "structures", label: "Towers", color: "var(--ev-structure)", icon: "tower" },
   { id: "objectives", label: "Objectives", color: "var(--ev-epic)", icon: "flame" },
+  { id: "items", label: "Items", color: "var(--ev-item)", icon: "bag" },
+  { id: "summoners", label: "Summoner spells", color: "var(--ev-summoner)", icon: "spark" },
   { id: "rounds", label: "Rounds", color: "var(--ev-neutral)", icon: "flag" },
   { id: "markers", label: "Markers & clips", color: "var(--ev-marker)", icon: "bookmark" },
   { id: "game", label: "Game", color: "var(--ev-neutral)", icon: "flag" },
@@ -68,6 +72,8 @@ export const USER_KINDS: EventKind[] = [
   "herald",
   "baron",
   "objective",
+  "item_completed",
+  "summoner_spell",
   "manual_marker",
   "clip",
 ];
@@ -93,6 +99,9 @@ export const ICONS: Record<string, string> = {
   eye: "M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
   horns: "M5 3c0 5 2 8 7 8s7-3 7-8M7 13l-2 8h14l-2-8M9.5 16h.01M14.5 16h.01",
   hex: "M12 2l8.7 5v10L12 22l-8.7-5V7z",
+  // A shop bag (completed item) and a four-point spark (summoner spell).
+  bag: "M5 8h14l-1 13H6zM9 8V6a3 3 0 0 1 6 0v2",
+  spark: "M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z",
   bookmark: "M6 3h12v18l-6-4-6 4z",
   film: "M4 4h16v16H4zM8 4v16M16 4v16M4 9h4M4 15h4M16 9h4M16 15h4",
   play: "M7 4l13 8-13 8z",

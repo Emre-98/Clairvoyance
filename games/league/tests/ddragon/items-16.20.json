@@ -1,0 +1,1094 @@
+{
+"type": "item",
+"version": "16.20.1",
+"data": {
+"3031": {
+"name": "Infinity Edge",
+"from": [
+"1038",
+"1037",
+"1018"
+],
+"gold": {
+"base": 725,
+"purchasable": true,
+"total": 3500,
+"sell": 2450
+},
+"tags": [
+"CriticalStrike",
+"Damage"
+],
+"maps": {
+"11": true,
+"12": true,
+"22": false,
+"30": false,
+"453": true
+},
+"depth": 2
+},
+"1038": {
+"name": "B. F. Sword",
+"into": [
+"3031",
+"3026",
+"3032",
+"3072",
+"3095",
+"4403",
+"6671"
+],
+"gold": {
+"base": 1300,
+"purchasable": true,
+"total": 1300,
+"sell": 910
+},
+"tags": [
+"Damage"
+],
+"maps": {
+"11": true,
+"12": true,
+"22": false,
+"30": false,
+"453": true
+}
+},
+"1037": {
+"name": "Pickaxe",
+"into": [
+"667666",
+"3071",
+"6333",
+"3031",
+"3153",
+"6701",
+"2020",
+"2517",
+"3087",
+"6695",
+"2523",
+"3053",
+"3072",
+"3124",
+"3181",
+"3139",
+"3161",
+"6029",
+"6035",
+"6673",
+"6676",
+"6692"
+],
+"gold": {
+"base": 875,
+"purchasable": true,
+"total": 875,
+"sell": 613
+},
+"tags": [
+"Damage"
+],
+"maps": {
+"11": true,
+"12": true,
+"22": false,
+"30": false,
+"453": true
+}
+},
+"1018": {
+"name": "Cloak of Agility",
+"into": [
+"123430",
+"667666",
+"3031",
+"3086",
+"6670",
+"3033",
+"3039",
+"3508",
+"3095",
+"6676"
+],
+"gold": {
+"base": 600,
+"purchasable": true,
+"total": 600,
+"sell": 420
+},
+"tags": [
+"CriticalStrike"
+],
+"maps": {
+"11": true,
+"12": true,
+"22": false,
+"30": false,
+"453": true
+}
+},
+"3006": {
+"name": "Berserker's Greaves",
+"from": [
+"1001",
+"1042",
+"1042"
+],
+"into": [
+"3172"
+],
+"gold": {
+"base": 300,
+"purchasable": true,
+"total": 1100,
+"sell": 770
+},
+"tags": [
+"AttackSpeed",
+"Boots"
+],
+"maps": {
+"11": true,
+"12": true,
+"22": false,
+"30": false,
+"453": true
+},
+"depth": 2
+},
+"1042": {
+"name": "Dagger",
+"into": [
+"1043",
+"3086",
+"2510",
+"3006",
+"3046",
+"3051",
+"3073",
+"3131",
+"3144",
+"6631",
+"6675",
+"6677"
+],
+"gold": {
+"base": 250,
+"purchasable": true,
+"total": 250,
+"sell": 175
+},
+"tags": [
+"AttackSpeed"
+],
+"maps": {
+"11": true,
+"12": true,
+"22": false,
+"30": false,
+"453": true
+}
+},
+"3172": {
+"name": "Gunmetal Greaves",
+"from": [
+"3006"
+],
+"gold": {
+"base": 0,
+"purchasable": true,
+"total": 1100,
+"sell": 770
+},
+"tags": [
+"AttackSpeed",
+"LifeSteal",
+"NonbootsMovement"
+],
+"maps": {
+"11": true,
+"12": false,
+"22": false,
+"30": false,
+"453": true
+},
+"depth": 3
+},
+"1001": {
+"name": "Boots",
+"into": [
+"3005",
+"3047",
+"3008",
+"3006",
+"3009",
+"3010",
+"3020",
+"3111",
+"3117",
+"3158"
+],
+"gold": {
+"base": 300,
+"purchasable": true,
+"total": 300,
+"sell": 210
+},
+"tags": [
+"Boots"
+],
+"maps": {
+"11": true,
+"12": true,
+"22": false,
+"30": false,
+"453": true
+}
+},
+"3005": {
+"name": "Ghostcrawlers",
+"from": [
+"1001"
+],
+"gold": {
+"base": 700,
+"purchasable": true,
+"total": 1000,
+"sell": 700
+},
+"tags": [
+"Boots"
+],
+"maps": {
+"11": false,
+"12": false,
+"22": false,
+"30": false,
+"453": false
+},
+"depth": 2
+},
+"3047": {
+"name": "Plated Steelcaps",
+"from": [
+"1001",
+"1029"
+],
+"into": [
+"3174"
+],
+"gold": {
+"base": 600,
+"purchasable": true,
+"total": 1200,
+"sell": 840
+},
+"tags": [
+"Armor",
+"Boots"
+],
+"maps": {
+"11": true,
+"12": true,
+"22": false,
+"30": false,
+"453": true
+},
+"depth": 2
+},
+"3008": {
+"name": "Gluttonous Greaves",
+"from": [
+"1001"
+],
+"into": [
+"3168"
+],
+"gold": {
+"base": 700,
+"purchasable": true,
+"total": 1000,
+"sell": 700
+},
+"tags": [
+"LifeSteal",
+"SpellVamp",
+"Boots"
+],
+"maps": {
+"11": true,
+"12": true,
+"22": false,
+"30": false,
+"453": true
+},
+"depth": 2
+},
+"3009": {
+"name": "Boots of Swiftness",
+"from": [
+"1001"
+],
+"into": [
+"3170"
+],
+"gold": {
+"base": 700,
+"purchasable": true,
+"total": 1000,
+"sell": 700
+},
+"tags": [
+"Boots"
+],
+"maps": {
+"11": true,
+"12": true,
+"22": false,
+"30": false,
+"453": true
+},
+"depth": 2
+},
+"3010": {
+"name": "Symbiotic Soles",
+"from": [
+"1001"
+],
+"inStore": false,
+"into": [
+"3013"
+],
+"gold": {
+"base": 600,
+"purchasable": false,
+"total": 900,
+"sell": 630
+},
+"tags": [
+"Boots"
+],
+"maps": {
+"11": true,
+"12": false,
+"22": false,
+"30": false,
+"453": true
+},
+"depth": 2
+},
+"3020": {
+"name": "Sorcerer's Shoes",
+"from": [
+"1001"
+],
+"into": [
+"3175"
+],
+"gold": {
+"base": 800,
+"purchasable": true,
+"total": 1100,
+"sell": 770
+},
+"tags": [
+"Boots",
+"MagicPenetration"
+],
+"maps": {
+"11": true,
+"12": true,
+"22": false,
+"30": false,
+"453": true
+},
+"depth": 2
+},
+"3111": {
+"name": "Mercury's Treads",
+"from": [
+"1001",
+"1033"
+],
+"into": [
+"3173"
+],
+"gold": {
+"base": 550,
+"purchasable": true,
+"total": 1250,
+"sell": 875
+},
+"tags": [
+"Boots",
+"SpellBlock",
+"Tenacity"
+],
+"maps": {
+"11": true,
+"12": true,
+"22": false,
+"30": false,
+"453": true
+},
+"depth": 2
+},
+"3117": {
+"name": "Mobility Boots",
+"from": [
+"1001"
+],
+"inStore": false,
+"gold": {
+"base": 700,
+"purchasable": false,
+"total": 1000,
+"sell": 700
+},
+"tags": [
+"Boots"
+],
+"maps": {
+"11": true,
+"12": true,
+"22": false,
+"30": false,
+"453": true
+},
+"depth": 2
+},
+"3158": {
+"name": "Ionian Boots of Lucidity",
+"from": [
+"1001",
+"2022"
+],
+"into": [
+"3171"
+],
+"gold": {
+"base": 350,
+"purchasable": true,
+"total": 900,
+"sell": 630
+},
+"tags": [
+"Boots",
+"CooldownReduction"
+],
+"maps": {
+"11": true,
+"12": true,
+"22": false,
+"30": false,
+"453": true
+},
+"depth": 2
+},
+"3170": {
+"name": "Swiftmarch",
+"from": [
+"3009"
+],
+"gold": {
+"base": 0,
+"purchasable": true,
+"total": 1000,
+"sell": 700
+},
+"tags": [
+"Boots"
+],
+"maps": {
+"11": true,
+"12": false,
+"22": false,
+"30": false,
+"453": true
+},
+"depth": 3
+},
+"3171": {
+"name": "Crimson Lucidity",
+"from": [
+"3158"
+],
+"gold": {
+"base": 0,
+"purchasable": true,
+"total": 900,
+"sell": 630
+},
+"tags": [
+"CooldownReduction",
+"Boots"
+],
+"maps": {
+"11": true,
+"12": false,
+"22": false,
+"30": false,
+"453": true
+},
+"depth": 3
+},
+"3173": {
+"name": "Chainlaced Crushers",
+"from": [
+"3111"
+],
+"gold": {
+"base": 0,
+"purchasable": true,
+"total": 1250,
+"sell": 875
+},
+"tags": [
+"SpellBlock",
+"Boots",
+"Tenacity",
+"MagicResist"
+],
+"maps": {
+"11": true,
+"12": false,
+"22": false,
+"30": false,
+"453": true
+},
+"depth": 3
+},
+"3174": {
+"name": "Armored Advance",
+"from": [
+"3047"
+],
+"gold": {
+"base": 0,
+"purchasable": true,
+"total": 1200,
+"sell": 840
+},
+"tags": [
+"Armor",
+"Boots"
+],
+"maps": {
+"11": true,
+"12": false,
+"22": false,
+"30": false,
+"453": true
+},
+"depth": 3
+},
+"3175": {
+"name": "Spellslinger's Shoes",
+"from": [
+"3020"
+],
+"gold": {
+"base": 0,
+"purchasable": true,
+"total": 1100,
+"sell": 770
+},
+"tags": [
+"Boots",
+"MagicPenetration"
+],
+"maps": {
+"11": true,
+"12": false,
+"22": false,
+"30": false,
+"453": true
+},
+"depth": 3
+},
+"3176": {
+"name": "Forever Forward",
+"from": [
+"3013"
+],
+"inStore": false,
+"gold": {
+"base": 0,
+"purchasable": false,
+"total": 900,
+"sell": 630
+},
+"tags": [
+"Boots"
+],
+"maps": {
+"11": true,
+"12": false,
+"22": false,
+"30": false,
+"453": true
+},
+"depth": 4
+},
+"1055": {
+"name": "Doran's Blade",
+"gold": {
+"base": 450,
+"purchasable": true,
+"total": 450,
+"sell": 180
+},
+"tags": [
+"Health",
+"Damage",
+"LifeSteal",
+"SpellVamp",
+"Lane"
+],
+"maps": {
+"11": true,
+"12": true,
+"22": false,
+"30": false,
+"453": true
+}
+},
+"2003": {
+"name": "Health Potion",
+"stacks": 5,
+"consumed": true,
+"gold": {
+"base": 50,
+"purchasable": true,
+"total": 50,
+"sell": 20
+},
+"tags": [
+"HealthRegen",
+"Consumable",
+"Lane",
+"Jungle"
+],
+"maps": {
+"11": true,
+"12": true,
+"22": false,
+"30": false,
+"453": true
+}
+},
+"3340": {
+"name": "Stealth Ward",
+"gold": {
+"base": 0,
+"purchasable": true,
+"total": 0,
+"sell": 0
+},
+"tags": [
+"Active",
+"Jungle",
+"Lane",
+"Trinket",
+"Vision"
+],
+"maps": {
+"11": true,
+"12": false,
+"22": false,
+"30": false,
+"453": true
+}
+},
+"3042": {
+"name": "Muramana",
+"specialRecipe": 3004,
+"inStore": false,
+"gold": {
+"base": 2900,
+"purchasable": false,
+"total": 2900,
+"sell": 2030
+},
+"tags": [
+"Damage",
+"Mana",
+"CooldownReduction",
+"OnHit",
+"ArmorPenetration"
+],
+"maps": {
+"11": true,
+"12": true,
+"22": false,
+"30": false,
+"453": true
+}
+},
+"3004": {
+"name": "Manamune",
+"from": [
+"3070",
+"3133",
+"1036"
+],
+"gold": {
+"base": 1100,
+"purchasable": true,
+"total": 2900,
+"sell": 2030
+},
+"tags": [
+"Damage",
+"Mana",
+"CooldownReduction",
+"OnHit",
+"AbilityHaste"
+],
+"maps": {
+"11": true,
+"12": true,
+"22": false,
+"30": false,
+"453": true
+},
+"depth": 3
+},
+"3070": {
+"name": "Tear of the Goddess",
+"into": [
+"3003",
+"3004",
+"2526",
+"3119"
+],
+"gold": {
+"base": 400,
+"purchasable": true,
+"total": 400,
+"sell": 280
+},
+"tags": [
+"Mana",
+"ManaRegen"
+],
+"maps": {
+"11": true,
+"12": true,
+"22": false,
+"30": false,
+"453": true
+}
+},
+"3133": {
+"name": "Caulfield's Warhammer",
+"stacks": 0,
+"from": [
+"1036",
+"2022",
+"1036"
+],
+"into": [
+"6333",
+"126697",
+"6697",
+"4402",
+"3156",
+"2517",
+"323004",
+"6693",
+"3004",
+"3508",
+"3074",
+"3179",
+"6691",
+"6609",
+"6610",
+"6632",
+"6692",
+"6694",
+"6696"
+],
+"gold": {
+"base": 100,
+"purchasable": true,
+"total": 1050,
+"sell": 735
+},
+"tags": [
+"Damage",
+"CooldownReduction",
+"AbilityHaste"
+],
+"maps": {
+"11": true,
+"12": true,
+"22": false,
+"30": false,
+"453": true
+},
+"depth": 2
+},
+"1036": {
+"name": "Long Sword",
+"into": [
+"1053",
+"4003",
+"6701",
+"2015",
+"2019",
+"2021",
+"3077",
+"6670",
+"3133",
+"2517",
+"323004",
+"3142",
+"3004",
+"2523",
+"3032",
+"3035",
+"3044",
+"3051",
+"3155",
+"6690",
+"3123",
+"3134",
+"6699",
+"6671",
+"6692"
+],
+"gold": {
+"base": 350,
+"purchasable": true,
+"total": 350,
+"sell": 245
+},
+"tags": [
+"Damage",
+"Lane"
+],
+"maps": {
+"11": true,
+"12": true,
+"22": false,
+"30": false,
+"453": true
+}
+},
+"6672": {
+"name": "Kraken Slayer",
+"from": [
+"6690",
+"3051",
+"1043"
+],
+"gold": {
+"base": 325,
+"purchasable": true,
+"total": 3000,
+"sell": 2100
+},
+"tags": [
+"Damage",
+"AttackSpeed",
+"OnHit",
+"NonbootsMovement"
+],
+"maps": {
+"11": true,
+"12": true,
+"22": false,
+"30": false,
+"453": true
+},
+"depth": 3
+},
+"3089": {
+"name": "Rabadon's Deathcap",
+"from": [
+"1058",
+"1058"
+],
+"gold": {
+"base": 1100,
+"purchasable": true,
+"total": 3500,
+"sell": 2450
+},
+"tags": [
+"SpellDamage"
+],
+"maps": {
+"11": true,
+"12": true,
+"22": false,
+"30": false,
+"453": true
+},
+"depth": 2
+},
+"1058": {
+"name": "Needlessly Large Rod",
+"into": [
+"3157",
+"4645",
+"3089",
+"3102",
+"3128",
+"4403"
+],
+"gold": {
+"base": 1200,
+"purchasable": true,
+"total": 1200,
+"sell": 840
+},
+"tags": [
+"SpellDamage"
+],
+"maps": {
+"11": true,
+"12": true,
+"22": false,
+"30": false,
+"453": true
+}
+},
+"3157": {
+"name": "Zhonya's Hourglass",
+"from": [
+"1058",
+"2420"
+],
+"gold": {
+"base": 450,
+"purchasable": true,
+"total": 3250,
+"sell": 2275
+},
+"tags": [
+"Armor",
+"SpellDamage",
+"Active"
+],
+"maps": {
+"11": true,
+"12": true,
+"22": false,
+"30": false,
+"453": true
+},
+"depth": 3
+},
+"2420": {
+"name": "Seeker's Armguard",
+"from": [
+"1052",
+"1029",
+"1052"
+],
+"into": [
+"3157"
+],
+"gold": {
+"base": 500,
+"purchasable": true,
+"total": 1600,
+"sell": 640
+},
+"tags": [
+"Armor",
+"SpellDamage",
+"Active"
+],
+"maps": {
+"11": true,
+"12": true,
+"22": false,
+"30": false,
+"453": true
+},
+"depth": 2
+},
+"3153": {
+"name": "Blade of The Ruined King",
+"from": [
+"1053",
+"1043",
+"1037"
+],
+"gold": {
+"base": 725,
+"purchasable": true,
+"total": 3200,
+"sell": 2240
+},
+"tags": [
+"Damage",
+"AttackSpeed",
+"LifeSteal",
+"Slow",
+"OnHit"
+],
+"maps": {
+"11": true,
+"12": true,
+"22": false,
+"30": false,
+"453": true
+},
+"depth": 3
+},
+"3864": {
+"name": "Black Mist Scythe",
+"specialRecipe": 3863,
+"inStore": false,
+"gold": {
+"base": 400,
+"purchasable": false,
+"total": 400,
+"sell": 160
+},
+"tags": [
+"Health",
+"ManaRegen",
+"GoldPer",
+"Lane"
+],
+"maps": {
+"11": false,
+"12": false,
+"22": false,
+"30": false,
+"453": false
+}
+},
+"3865": {
+"name": "World Atlas",
+"gold": {
+"base": 400,
+"purchasable": true,
+"total": 400,
+"sell": 160
+},
+"tags": [
+"Health",
+"ManaRegen",
+"Vision",
+"GoldPer",
+"Lane"
+],
+"maps": {
+"11": true,
+"12": false,
+"22": false,
+"30": false,
+"453": true
+}
+}
+}
+}

@@ -784,6 +784,15 @@ impl Engine {
                     new_events.push(ev);
                 }
             }
+            if !u.removed.is_empty() {
+                log::info!("events withdrawn by the game module: {:?}", u.removed);
+                a.session.events.retain(|e| !u.removed.contains(&e.id));
+            }
+            for ev in u.updated {
+                if let Some(e) = a.session.events.iter_mut().find(|e| e.id == ev.id) {
+                    *e = ev;
+                }
+            }
             if a.phase == MatchPhase::Ended && a.ended_at.is_none() {
                 a.ended_at = Some(tokio::time::Instant::now());
                 a.over_at.get_or_insert_with(Instant::now);

@@ -1,0 +1,846 @@
+{
+"type": "summoner",
+"version": "16.20.1",
+"data": {
+"SummonerBarrier": {
+"id": "SummonerBarrier",
+"name": "Barrier",
+"maxrank": 1,
+"cooldown": [
+180
+],
+"cost": [
+0
+],
+"key": "21",
+"summonerLevel": 4,
+"modes": [
+"ARAM",
+"TUTORIAL",
+"KIWI",
+"ULTBOOK",
+"FIRSTBLOOD",
+"SWIFTPLAY",
+"CLASSIC",
+"PRACTICETOOL",
+"RUBY",
+"RUBY_TRIAL_1",
+"BRAWL",
+"URF",
+"KIWI_JADE",
+"RUBY_TRIAL_3",
+"ONEFORALL",
+"ASSASSINATE",
+"ARSR",
+"NEXUSBLITZ",
+"DOOMBOTSTEEMO",
+"RUBY_TRIAL_2"
+],
+"maxammo": "-1",
+"range": [
+1200
+]
+},
+"SummonerBarrier_Jade": {
+"id": "SummonerBarrier_Jade",
+"name": "Barrier",
+"maxrank": 1,
+"cooldown": [
+210
+],
+"cost": [
+0
+],
+"key": "721",
+"summonerLevel": 1,
+"modes": [
+"JADE"
+],
+"maxammo": "-1",
+"range": [
+1200
+]
+},
+"SummonerBattleCry_Jade": {
+"id": "SummonerBattleCry_Jade",
+"name": "Surge",
+"maxrank": 1,
+"cooldown": [
+180
+],
+"cost": [
+0
+],
+"key": "716",
+"summonerLevel": 1,
+"modes": [
+"JADE"
+],
+"maxammo": "-1",
+"range": [
+200
+]
+},
+"SummonerBoost": {
+"id": "SummonerBoost",
+"name": "Cleanse",
+"maxrank": 1,
+"cooldown": [
+240
+],
+"cost": [
+0
+],
+"key": "1",
+"summonerLevel": 9,
+"modes": [
+"ARAM",
+"TUTORIAL",
+"KIWI",
+"ULTBOOK",
+"FIRSTBLOOD",
+"SWIFTPLAY",
+"CLASSIC",
+"PRACTICETOOL",
+"RUBY",
+"RUBY_TRIAL_1",
+"BRAWL",
+"URF",
+"KIWI_JADE",
+"RUBY_TRIAL_3",
+"ONEFORALL",
+"ARSR",
+"NEXUSBLITZ",
+"DOOMBOTSTEEMO",
+"RUBY_TRIAL_2"
+],
+"maxammo": "-1",
+"range": [
+200
+]
+},
+"SummonerBoost_Jade": {
+"id": "SummonerBoost_Jade",
+"name": "Cleanse",
+"maxrank": 1,
+"cooldown": [
+210
+],
+"cost": [
+0
+],
+"key": "71",
+"summonerLevel": 1,
+"modes": [
+"JADE"
+],
+"maxammo": "-1",
+"range": [
+200
+]
+},
+"SummonerCherryFlash": {
+"id": "SummonerCherryFlash",
+"name": "Flash",
+"maxrank": 1,
+"cooldown": [
+0.25
+],
+"cost": [
+0
+],
+"key": "2202",
+"summonerLevel": 1,
+"modes": [
+"CHERRY"
+],
+"maxammo": "-1",
+"range": [
+425
+]
+},
+"SummonerCherryHold": {
+"id": "SummonerCherryHold",
+"name": "Flee",
+"maxrank": 1,
+"cooldown": [
+45
+],
+"cost": [
+0
+],
+"key": "2201",
+"summonerLevel": 1,
+"modes": [
+"CHERRY"
+],
+"maxammo": "-1",
+"range": [
+25000
+]
+},
+"SummonerClairvoyance_Jade": {
+"id": "SummonerClairvoyance_Jade",
+"name": "Clairvoyance",
+"maxrank": 1,
+"cooldown": [
+60
+],
+"cost": [
+0
+],
+"key": "75",
+"summonerLevel": 1,
+"modes": [
+"JADE"
+],
+"maxammo": "-1",
+"range": [
+25000
+]
+},
+"SummonerDot": {
+"id": "SummonerDot",
+"name": "Ignite",
+"maxrank": 1,
+"cooldown": [
+180
+],
+"cost": [
+0
+],
+"key": "14",
+"summonerLevel": 9,
+"modes": [
+"ARAM",
+"TUTORIAL",
+"KIWI",
+"ULTBOOK",
+"FIRSTBLOOD",
+"SWIFTPLAY",
+"CLASSIC",
+"PRACTICETOOL",
+"RUBY",
+"RUBY_TRIAL_1",
+"BRAWL",
+"URF",
+"KIWI_JADE",
+"RUBY_TRIAL_3",
+"ONEFORALL",
+"ASSASSINATE",
+"ARSR",
+"NEXUSBLITZ",
+"DOOMBOTSTEEMO",
+"RUBY_TRIAL_2"
+],
+"maxammo": "-1",
+"range": [
+600
+]
+},
+"SummonerDot_Jade": {
+"id": "SummonerDot_Jade",
+"name": "Ignite",
+"maxrank": 1,
+"cooldown": [
+210
+],
+"cost": [
+0
+],
+"key": "714",
+"summonerLevel": 1,
+"modes": [
+"JADE"
+],
+"maxammo": "-1",
+"range": [
+600
+]
+},
+"SummonerExhaust": {
+"id": "SummonerExhaust",
+"name": "Exhaust",
+"maxrank": 1,
+"cooldown": [
+240
+],
+"cost": [
+0
+],
+"key": "3",
+"summonerLevel": 4,
+"modes": [
+"URF",
+"PRACTICETOOL",
+"CLASSIC",
+"ULTBOOK",
+"DOOMBOTSTEEMO",
+"ARAM",
+"RUBY_TRIAL_3",
+"NEXUSBLITZ",
+"SWIFTPLAY",
+"ONEFORALL",
+"TUTORIAL",
+"RUBY",
+"WIPMODEWIP",
+"RUBY_TRIAL_2",
+"WIPMODEWIP3",
+"RUBY_TRIAL_1",
+"ARSR"
+],
+"maxammo": "-1",
+"range": [
+650
+]
+},
+"SummonerExhaust_Jade": {
+"id": "SummonerExhaust_Jade",
+"name": "Exhaust",
+"maxrank": 1,
+"cooldown": [
+210
+],
+"cost": [
+0
+],
+"key": "73",
+"summonerLevel": 1,
+"modes": [
+"JADE"
+],
+"maxammo": "-1",
+"range": [
+550
+]
+},
+"SummonerFlash": {
+"id": "SummonerFlash",
+"name": "Flash",
+"maxrank": 1,
+"cooldown": [
+300
+],
+"cost": [
+0
+],
+"key": "4",
+"summonerLevel": 7,
+"modes": [
+"ARAM",
+"TUTORIAL",
+"KIWI",
+"ULTBOOK",
+"FIRSTBLOOD",
+"SWIFTPLAY",
+"CLASSIC",
+"PRACTICETOOL",
+"RUBY",
+"RUBY_TRIAL_1",
+"BRAWL",
+"WIPMODEWIP4",
+"URF",
+"SNOWURF",
+"KIWI_JADE",
+"RUBY_TRIAL_3",
+"ONEFORALL",
+"ARSR",
+"NEXUSBLITZ",
+"DOOMBOTSTEEMO",
+"RUBY_TRIAL_2"
+],
+"maxammo": "-1",
+"range": [
+425
+]
+},
+"SummonerFlash_Jade": {
+"id": "SummonerFlash_Jade",
+"name": "Flash",
+"maxrank": 1,
+"cooldown": [
+300
+],
+"cost": [
+0
+],
+"key": "74",
+"summonerLevel": 1,
+"modes": [
+"JADE"
+],
+"maxammo": "-1",
+"range": [
+425
+]
+},
+"SummonerFortify_Jade": {
+"id": "SummonerFortify_Jade",
+"name": "Fortify",
+"maxrank": 1,
+"cooldown": [
+180
+],
+"cost": [
+0
+],
+"key": "705",
+"summonerLevel": 1,
+"modes": [
+"JADE"
+],
+"maxammo": "-1",
+"range": [
+25000
+]
+},
+"SummonerHaste": {
+"id": "SummonerHaste",
+"name": "Ghost",
+"maxrank": 1,
+"cooldown": [
+240
+],
+"cost": [
+0
+],
+"key": "6",
+"summonerLevel": 1,
+"modes": [
+"ARAM",
+"TUTORIAL_MODULE_1",
+"TUTORIAL",
+"KIWI",
+"ULTBOOK",
+"FIRSTBLOOD",
+"SWIFTPLAY",
+"CLASSIC",
+"PRACTICETOOL",
+"RUBY",
+"RUBY_TRIAL_1",
+"BRAWL",
+"URF",
+"KIWI_JADE",
+"RUBY_TRIAL_3",
+"TUTORIAL_MODULE_2",
+"ONEFORALL",
+"ASSASSINATE",
+"ARSR",
+"NEXUSBLITZ",
+"DOOMBOTSTEEMO",
+"RUBY_TRIAL_2"
+],
+"maxammo": "-1",
+"range": [
+200
+]
+},
+"SummonerHaste_Jade": {
+"id": "SummonerHaste_Jade",
+"name": "Ghost",
+"maxrank": 1,
+"cooldown": [
+240
+],
+"cost": [
+0
+],
+"key": "76",
+"summonerLevel": 1,
+"modes": [
+"JADE"
+],
+"maxammo": "-1",
+"range": [
+200
+]
+},
+"SummonerHeal": {
+"id": "SummonerHeal",
+"name": "Heal",
+"maxrank": 1,
+"cooldown": [
+240
+],
+"cost": [
+0
+],
+"key": "7",
+"summonerLevel": 1,
+"modes": [
+"ARAM",
+"TUTORIAL_MODULE_1",
+"TUTORIAL",
+"KIWI",
+"ULTBOOK",
+"SWIFTPLAY",
+"CLASSIC",
+"PRACTICETOOL",
+"RUBY",
+"RUBY_TRIAL_1",
+"BRAWL",
+"URF",
+"KIWI_JADE",
+"RUBY_TRIAL_3",
+"TUTORIAL_MODULE_2",
+"ONEFORALL",
+"ASSASSINATE",
+"ARSR",
+"NEXUSBLITZ",
+"DOOMBOTSTEEMO",
+"RUBY_TRIAL_2"
+],
+"maxammo": "-1",
+"range": [
+875
+]
+},
+"SummonerHeal_Jade": {
+"id": "SummonerHeal_Jade",
+"name": "Heal",
+"maxrank": 1,
+"cooldown": [
+300
+],
+"cost": [
+0
+],
+"key": "77",
+"summonerLevel": 1,
+"modes": [
+"JADE"
+],
+"maxammo": "-1",
+"range": [
+600
+]
+},
+"SummonerMana": {
+"id": "SummonerMana",
+"name": "Clarity",
+"maxrank": 1,
+"cooldown": [
+240
+],
+"cost": [
+0
+],
+"key": "13",
+"summonerLevel": 6,
+"modes": [
+"KIWI",
+"FIRSTBLOOD",
+"ARAM",
+"KIWI_JADE"
+],
+"maxammo": "-1",
+"range": [
+600
+]
+},
+"SummonerMana_Jade": {
+"id": "SummonerMana_Jade",
+"name": "Clarity",
+"maxrank": 1,
+"cooldown": [
+135
+],
+"cost": [
+0
+],
+"key": "713",
+"summonerLevel": 1,
+"modes": [
+"JADE"
+],
+"maxammo": "-1",
+"range": [
+600
+]
+},
+"SummonerPoroRecall": {
+"id": "SummonerPoroRecall",
+"name": "To the King!",
+"maxrank": 1,
+"cooldown": [
+10
+],
+"cost": [
+0
+],
+"key": "30",
+"summonerLevel": 1,
+"modes": [
+"KINGPORO"
+],
+"maxammo": "-1",
+"range": [
+200
+]
+},
+"SummonerPoroThrow": {
+"id": "SummonerPoroThrow",
+"name": "Poro Toss",
+"maxrank": 1,
+"cooldown": [
+20
+],
+"cost": [
+0
+],
+"key": "31",
+"summonerLevel": 1,
+"modes": [
+"KINGPORO"
+],
+"maxammo": "-1",
+"range": [
+2500
+]
+},
+"SummonerRally_Jade": {
+"id": "SummonerRally_Jade",
+"name": "Rally",
+"maxrank": 1,
+"cooldown": [
+270
+],
+"cost": [
+0
+],
+"key": "709",
+"summonerLevel": 1,
+"modes": [
+"JADE"
+],
+"maxammo": "-1",
+"range": [
+25000
+]
+},
+"SummonerRevive_Jade": {
+"id": "SummonerRevive_Jade",
+"name": "Revive",
+"maxrank": 1,
+"cooldown": [
+510
+],
+"cost": [
+0
+],
+"key": "777",
+"summonerLevel": 1,
+"modes": [
+"JADE"
+],
+"maxammo": "-1",
+"range": [
+200
+]
+},
+"SummonerSmite": {
+"id": "SummonerSmite",
+"name": "Smite",
+"maxrank": 1,
+"cooldown": [
+15
+],
+"cost": [
+0
+],
+"key": "11",
+"summonerLevel": 3,
+"modes": [
+"DOOMBOTSTEEMO",
+"PRACTICETOOL",
+"CLASSIC",
+"SWIFTPLAY",
+"URF",
+"NEXUSBLITZ",
+"ONEFORALL",
+"TUTORIAL",
+"ARSR"
+],
+"maxammo": "2",
+"range": [
+500
+]
+},
+"SummonerSmite_Jade": {
+"id": "SummonerSmite_Jade",
+"name": "Smite",
+"maxrank": 1,
+"cooldown": [
+70
+],
+"cost": [
+0
+],
+"key": "711",
+"summonerLevel": 1,
+"modes": [
+"JADE"
+],
+"maxammo": "-1",
+"range": [
+760
+]
+},
+"SummonerSnowURFSnowball_Mark": {
+"id": "SummonerSnowURFSnowball_Mark",
+"name": "Mark",
+"maxrank": 1,
+"cooldown": [
+80
+],
+"cost": [
+0
+],
+"key": "39",
+"summonerLevel": 6,
+"modes": [
+"SNOWURF"
+],
+"maxammo": "-1",
+"range": [
+8000
+]
+},
+"SummonerSnowball": {
+"id": "SummonerSnowball",
+"name": "Mark",
+"maxrank": 1,
+"cooldown": [
+80
+],
+"cost": [
+0
+],
+"key": "32",
+"summonerLevel": 6,
+"modes": [
+"KIWI",
+"KIWI_JADE",
+"ARAM",
+"FIRSTBLOOD"
+],
+"maxammo": "-1",
+"range": [
+1600
+]
+},
+"SummonerSpell_Promote_Jade": {
+"id": "SummonerSpell_Promote_Jade",
+"name": "Promote",
+"maxrank": 1,
+"cooldown": [
+270
+],
+"cost": [
+0
+],
+"key": "720",
+"summonerLevel": 1,
+"modes": [
+"JADE"
+],
+"maxammo": "-1",
+"range": [
+4294967295
+]
+},
+"SummonerTeleport": {
+"id": "SummonerTeleport",
+"name": "Teleport",
+"maxrank": 1,
+"cooldown": [
+300
+],
+"cost": [
+0
+],
+"key": "12",
+"summonerLevel": 7,
+"modes": [
+"CLASSIC",
+"SWIFTPLAY",
+"ULTBOOK",
+"WIPMODEWIP4",
+"DOOMBOTSTEEMO",
+"PRACTICETOOL",
+"ONEFORALL",
+"RUBY",
+"ARSR",
+"RUBY_TRIAL_2",
+"TUTORIAL",
+"ASSASSINATE",
+"RUBY_TRIAL_3",
+"RUBY_TRIAL_1"
+],
+"maxammo": "-1",
+"range": [
+25000
+]
+},
+"SummonerTeleport_Jade": {
+"id": "SummonerTeleport_Jade",
+"name": "Teleport",
+"maxrank": 1,
+"cooldown": [
+300
+],
+"cost": [
+0
+],
+"key": "712",
+"summonerLevel": 1,
+"modes": [
+"JADE"
+],
+"maxammo": "-1",
+"range": [
+25000
+]
+},
+"Summoner_UltBookPlaceholder": {
+"id": "Summoner_UltBookPlaceholder",
+"name": "Placeholder",
+"maxrank": 1,
+"cooldown": [
+0
+],
+"cost": [
+0
+],
+"key": "54",
+"summonerLevel": 1,
+"modes": [
+"ULTBOOK"
+],
+"maxammo": "-1",
+"range": [
+400
+]
+},
+"Summoner_UltBookSmitePlaceholder": {
+"id": "Summoner_UltBookSmitePlaceholder",
+"name": "Placeholder and Attack-Smite",
+"maxrank": 1,
+"cooldown": [
+0
+],
+"cost": [
+0
+],
+"key": "55",
+"summonerLevel": 1,
+"modes": [
+"ULTBOOK"
+],
+"maxammo": "-1",
+"range": [
+400
+]
+}
+}
+}

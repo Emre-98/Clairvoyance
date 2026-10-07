@@ -18,6 +18,8 @@ export type EventKind =
   | "herald"
   | "baron"
   | "objective"
+  | "item_completed"
+  | "summoner_spell"
   | "round"
   | "manual_marker"
   | "clip"
@@ -31,6 +33,19 @@ export interface GameEvent {
   title: string;
   details?: string;
   steal?: boolean;
+  /** Picture for the hover card (League: item / summoner spell from Data Dragon). */
+  icon?: EventIcon | null;
+  /** Labelled details, e.g. ["Lane", "Mid"]. */
+  facts?: [string, string][];
+  /** Characters involved (League: champion ids), the main one first. */
+  who?: string[];
+}
+
+export interface EventIcon {
+  kind: "item" | "spell" | "champion" | string;
+  id: string;
+  /** Data version (League: Data Dragon "16.20.1"); missing = the newest. */
+  version?: string;
 }
 
 export interface PlayerInfo {
@@ -205,6 +220,8 @@ export interface Mechanics {
   key_presses: number;
   apm: number;
   apm_per_min: (number | null)[];
+  /** APM per 10 s of video time from 0 (whole game only; stats version 2+). */
+  apm_bins?: (number | null)[];
   right_click_hz: number;
   cursor_distance: number;
   path_efficiency?: number | null;

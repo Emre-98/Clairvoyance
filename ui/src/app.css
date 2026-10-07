@@ -65,6 +65,9 @@
   --ev-marker: light-dark(#5b6275, #d5d9e6);
   --ev-clip: light-dark(#0f9f8a, #2ee6c5);
   --ev-neutral: light-dark(#7a8297, #8a91a8);
+  --ev-item: light-dark(#8a6d3b, #d6b37a);
+  --ev-summoner: light-dark(#c2337f, #ff6fb5);
+  --apm: light-dark(#2f7fe0, #4da3ff);
   --on-ev: light-dark(#ffffff, #0b0d14);
 
   /* Video and thumbnails are dark in both themes; text drawn on them stays light. */

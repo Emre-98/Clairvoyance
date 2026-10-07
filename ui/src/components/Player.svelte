@@ -31,6 +31,7 @@
     inputId = null,
     bubbleCats = [],
     heatRange = null,
+    apm = null,
   }: {
     src: string | null;
     /** The video file (so the app doesn't replace it while it's open). */
@@ -53,6 +54,8 @@
     bubbleCats?: { id: string; label: string }[];
     /** Range (video seconds) for the "selected range" heatmap. */
     heatRange?: [number, number] | null;
+    /** APM per 10 s of video (the chart behind the timeline). */
+    apm?: (number | null)[] | null;
   } = $props();
 
   // Input overlay: always off when a replay opens; the recording is only loaded the first time
@@ -826,7 +829,7 @@
     </div>
 
     <div class="tlwrap">
-      <Timeline bind:this={timeline} events={visible} {offset} duration={dur} {current} {clips} {frames} compact={isFs} playing={!paused} bind:range bind:level={zoomLevel} bind:zoomed onseek={(t) => seek(t)} onmarker={(e) => jumpTo(e)} />
+      <Timeline bind:this={timeline} events={visible} {apm} {offset} duration={dur} {current} {clips} {frames} compact={isFs} playing={!paused} bind:range bind:level={zoomLevel} bind:zoomed onseek={(t) => seek(t)} onmarker={(e) => jumpTo(e)} />
     </div>
 
     <div class="filters">

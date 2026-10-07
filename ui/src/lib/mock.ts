@@ -47,7 +47,26 @@ const detailEvents: GameEvent[] = [
   ev("4", "death", 31, "Killed by Vi", "Assists: Zed"),
   ev("5", "dragon", 44, "Helped take Infernal Drake", "Assists: Ahri"),
   ev("6", "assist", 52, "Assist on Caitlyn", "Killed by Jinx"),
-  ev("7", "tower", 61, "Destroyed a tower"),
+  {
+    ...ev("7", "tower", 61, "Destroyed the mid outer tower"),
+    facts: [["Lane", "Mid"], ["Side", "Red side"], ["Last hit", "You"], ["Tower", "Outer turret"], ["Your gold", "≈ +250"]],
+    who: ["Ahri", "LeeSin"],
+  },
+  {
+    ...ev("i1", "item_completed", 40.2, "Completed Luden's Echo"),
+    icon: { kind: "item", id: "6655", version: "16.20.1" },
+    facts: [["Cost", "2750 gold"], ["Item", "1st finished item"], ["Built from", "Lost Chapter, Blasting Wand"]],
+  },
+  {
+    ...ev("s1", "summoner_spell", 30.4, "Flash", "Confirmed from the recording (the spell went on cooldown)."),
+    icon: { kind: "spell", id: "SummonerFlash", version: "16.20.1" },
+    facts: [["Slot", "D"], ["Key", "D"]],
+  },
+  {
+    ...ev("s2", "summoner_spell", 79.4, "Ignite", "Confirmed from the recording (the spell went on cooldown)."),
+    icon: { kind: "spell", id: "SummonerDot", version: "16.20.1" },
+    facts: [["Slot", "F"], ["Key", "F"]],
+  },
   ev("8", "herald", 68, "Stole Rift Herald", "", true),
   ev("u2", "ult_pressed", 77, "Ult pressed", "Key press. The game can't confirm the ult was cast."),
   ev("u4", "ult_recast", 78.6, "Ult recast", "R pressed again during the same ult (command, second part or early end): not a new ult."),
@@ -63,6 +82,9 @@ const detailEvents: GameEvent[] = [
   ev("16", "ace", 122, "Team ace", "Final kill by Garen"),
   ev("17", "game_end", 130, "Victory"),
 ];
+
+/** APM per 10 s of the mock video (loading screen unfocused, a fight around 1:20). */
+export const MOCK_APM: (number | null)[] = [null, null, 96, 142, 168, 150, 131, 205, 262, 188, 140, 176, 159, 120, 84];
 
 // ?markers=600 adds that many extra events spread over the video (timeline speed tests).
 const manyEvents: GameEvent[] | null = q.get("markers")
@@ -186,7 +208,7 @@ function session(id: string): GameSession {
     warnings: [],
     input_file: s.input_bytes ? `${s.id}.input` : null,
     mechanics: s.input_bytes
-      ? { version: 1, from: 20, to: 150, focused_secs: 128, clicks: 260, right_clicks: 212, key_presses: 141, apm: 188, apm_per_min: [151, 204, 176], right_click_hz: 1.66, cursor_distance: 214, path_efficiency: 0.83, idle_secs: 9.4, cursor_samples: 31000 }
+      ? { version: 1, from: 20, to: 150, focused_secs: 128, clicks: 260, right_clicks: 212, key_presses: 141, apm: 188, apm_per_min: [151, 204, 176], right_click_hz: 1.66, cursor_distance: 214, path_efficiency: 0.83, idle_secs: 9.4, cursor_samples: 31000, apm_bins: MOCK_APM }
       : null,
   };
 }

@@ -28,6 +28,14 @@ impl GameIntegration for FakeGame {
         if p >= 5 {
             u.events.push(GameEvent::new("7", EventKind::Kill, 2.0, "Killed Ahri"));
         }
+        // An item bought and undone (withdrawn), and the kill's gold known one poll later.
+        if p == 6 {
+            u.events.push(GameEvent::new("item-1", EventKind::ItemCompleted, 3.0, "Completed Infinity Edge"));
+            u.updated.push(GameEvent::new("7", EventKind::Kill, 2.0, "Killed Ahri").fact("Gold", "≈ +300"));
+        }
+        if p == 8 {
+            u.removed.push("item-1".into());
+        }
         u.player = Some(PlayerInfo { name: "Me".into(), character: Some("Ahri".into()), ..Default::default() });
         if p >= self.end_after {
             u.phase = MatchPhase::Ended;
@@ -176,6 +184,8 @@ async fn full_session_lifecycle() {
     assert_eq!(s.video_file.as_deref(), Some(format!("{}_Fake_Ahri_Win.mp4", s.started_at.format("%Y-%m-%d")).as_str()));
     assert!(root.join(&sid).join(s.video_file.unwrap()).exists());
     assert!(s.events.iter().any(|e| e.kind == EventKind::UltPressed));
+    assert!(!s.events.iter().any(|e| e.id == "item-1"), "the undone item is withdrawn");
+    assert_eq!(s.events.iter().find(|e| e.id == "7").unwrap().facts, vec![("Gold".to_string(), "≈ +300".to_string())], "updated in place");
     ctx.send(EngineCommand::Shutdown).unwrap();
     handle.await.unwrap();
     std::fs::remove_dir_all(root).ok();

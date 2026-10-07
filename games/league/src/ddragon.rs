@@ -103,6 +103,114 @@ pub async fn ult_info(cache_dir: Option<&Path>, patch: Option<&str>, champ: &str
     Some(info)
 }
 
+/// One item of Data Dragon's `item.json`, reduced to what the timeline needs.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ItemData {
+    pub name: String,
+    /// Total cost (with its components).
+    pub total: u32,
+    /// A finished item: built from components, upgrades into nothing (or, for tier-2 boots,
+    /// only into their own tier-3 upgrade), not a consumable or trinket, buyable in the shop.
+    pub finished: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub from: Vec<u32>,
+}
+
+/// One summoner spell of `summoner.json`.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SpellData {
+    /// "SummonerFlash" (also the icon's file name).
+    pub id: String,
+    pub name: String,
+    /// Base cooldown in seconds.
+    pub cooldown: f64,
+}
+
+/// Items and summoner spells of one Data Dragon version.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StaticData {
+    pub version: String,
+    pub items: std::collections::HashMap<u32, ItemData>,
+    pub spells: Vec<SpellData>,
+}
+
+impl StaticData {
+    pub fn item(&self, id: u32) -> Option<&ItemData> {
+        self.items.get(&id)
+    }
+    pub fn spell(&self, id: &str) -> Option<&SpellData> {
+        self.spells.iter().find(|s| s.id.eq_ignore_ascii_case(id))
+    }
+}
+
+/// Parses `item.json` (see [`ItemData::finished`] for what counts as finished).
+pub fn parse_items(json: &str) -> std::collections::HashMap<u32, ItemData> {
+    let mut out = std::collections::HashMap::new();
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(json) else { return out };
+    let Some(data) = v["data"].as_object() else { return out };
+    let ids = |x: &serde_json::Value| -> Vec<u32> { x.as_array().map(|a| a.iter().filter_map(|i| i.as_str()?.parse().ok()).collect()).unwrap_or_default() };
+    let tags = |x: &serde_json::Value| -> Vec<String> { x["tags"].as_array().map(|a| a.iter().filter_map(|t| t.as_str().map(str::to_string)).collect()).unwrap_or_default() };
+    // An in-place upgrade of `of`: built from it alone (tier-3 boots from tier-2 boots).
+    let upgrade_of = |id: &u32, of: u32| data.get(&id.to_string()).is_some_and(|x| ids(&x["from"]) == vec![of]);
+    for (k, x) in data {
+        let Ok(id) = k.parse::<u32>() else { continue };
+        let into = ids(&x["into"]);
+        let from = ids(&x["from"]);
+        let t = tags(x);
+        let boots = t.iter().any(|t| t == "Boots");
+        let end_of_tree = into.is_empty() || (boots && into.iter().all(|i| upgrade_of(i, id)));
+        let finished = end_of_tree
+            && !from.is_empty()
+            && !x["consumed"].as_bool().unwrap_or(false)
+            && !t.iter().any(|t| t == "Trinket" || t == "Consumable")
+            && x["gold"]["purchasable"].as_bool().unwrap_or(true)
+            && x["requiredAlly"].as_str().is_none_or(|s| s.is_empty());
+        let total = x["gold"]["total"].as_u64().unwrap_or(0) as u32;
+        out.insert(id, ItemData { name: x["name"].as_str().unwrap_or("").to_string(), total, finished, from });
+    }
+    out
+}
+
+/// Parses `summoner.json`.
+pub fn parse_spells(json: &str) -> Vec<SpellData> {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(json) else { return Vec::new() };
+    let Some(data) = v["data"].as_object() else { return Vec::new() };
+    data.iter()
+        .map(|(k, x)| SpellData {
+            id: x["id"].as_str().unwrap_or(k).to_string(),
+            name: x["name"].as_str().unwrap_or(k).to_string(),
+            cooldown: x["cooldown"].get(0).and_then(|c| c.as_f64()).unwrap_or(0.0),
+        })
+        .collect()
+}
+
+/// Items and summoner spells for `patch`, from the disk cache or Data Dragon (two files, ~0.7 MB,
+/// once per patch; kept as a small summary).
+pub async fn static_data(cache_dir: Option<&Path>, patch: Option<&str>) -> Option<StaticData> {
+    let client = reqwest::Client::builder().timeout(Duration::from_secs(15)).user_agent("Clairvoyance").build().ok()?;
+    let version = version_for(&client, cache_dir, patch).await?;
+    let file = cache_dir.map(|d| d.join("ddragon").join(&version).join("static-v1.json"));
+    if let Some(s) = file.as_ref().and_then(|f| std::fs::read_to_string(f).ok()).and_then(|t| serde_json::from_str::<StaticData>(&t).ok()) {
+        return Some(s);
+    }
+    let get = |what: &str| {
+        let url = format!("https://ddragon.leagueoflegends.com/cdn/{version}/data/en_US/{what}.json");
+        let c = client.clone();
+        async move { c.get(&url).send().await.ok()?.error_for_status().ok()?.text().await.ok() }
+    };
+    let (items, spells) = tokio::join!(get("item"), get("summoner"));
+    let s = StaticData { version: version.clone(), items: parse_items(&items?), spells: spells.map(|t| parse_spells(&t)).unwrap_or_default() };
+    if s.items.is_empty() {
+        return None;
+    }
+    if let Some(f) = file {
+        let _ = std::fs::create_dir_all(f.parent().unwrap());
+        let _ = std::fs::write(f, serde_json::to_string(&s).unwrap_or_default());
+    }
+    log::info!("Data Dragon {version}: {} items ({} finished), {} summoner spells", s.items.len(), s.items.values().filter(|i| i.finished).count(), s.spells.len());
+    Some(s)
+}
+
 /// Base cooldowns of `champ`'s ult for `patch` (see [`ult_info`]).
 pub async fn ult_cooldown(cache_dir: Option<&Path>, patch: Option<&str>, champ: &str) -> Option<Vec<f64>> {
     ult_info(cache_dir, patch, champ).await.map(|i| i.cooldown)
@@ -157,6 +265,28 @@ mod tests {
         let i: UltInfo = u.into();
         assert_eq!(i.cooldown, vec![130.0, 115.0, 100.0]);
         assert_eq!(i.kind_guess, Some(crate::ultkind::UltKind::MultiCast), "a recast; 'orders' isn't the command keyword");
+    }
+
+    /// The real 16.20.1 files, trimmed to a few items / spells (`tests/ddragon/items-16.20.json`).
+    #[test]
+    fn finished_items() {
+        let items = parse_items(include_str!("../tests/ddragon/items-16.20.json"));
+        let fin = |id: u32| items.get(&id).map(|i| i.finished);
+        assert_eq!(fin(3031), Some(true), "Infinity Edge");
+        assert_eq!(items[&3031].total, 3500);
+        assert_eq!(items[&3031].from, vec![1038, 1037, 1018]);
+        assert_eq!(fin(3006), Some(true), "Berserker's Greaves: only upgrades into tier-3 boots");
+        assert_eq!(fin(3172), Some(true), "tier-3 boots");
+        assert_eq!(fin(1001), Some(false), "Boots (tier 1) upgrade into many items");
+        assert_eq!(fin(1055), Some(false), "Doran's Blade: a starter, not built from components");
+        assert_eq!(fin(1038), Some(false), "B. F. Sword: a component");
+        assert_eq!(fin(2003), Some(false), "Health Potion: consumable");
+        assert_eq!(fin(3340), Some(false), "Stealth Ward: trinket");
+        assert_eq!(fin(3042), Some(false), "Muramana: not bought (transforms from Manamune)");
+        assert_eq!(fin(3004), Some(true), "Manamune");
+        let spells = parse_spells(include_str!("../tests/ddragon/summoner-16.20.json"));
+        let flash = spells.iter().find(|s| s.id == "SummonerFlash").unwrap();
+        assert_eq!((flash.name.as_str(), flash.cooldown), ("Flash", 300.0));
     }
 
     #[test]

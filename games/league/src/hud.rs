@@ -21,6 +21,10 @@ pub const ICON: f64 = 38.0;
 pub const PITCH: f64 = 44.0;
 pub const R_LEFT: f64 = -20.0;
 pub const TOP: f64 = 87.0;
+/// Summoner spells D and F: right of R on the same top line, 30 px squares, left edges 29 and
+/// 62 px right of the centre (measured on the same recordings).
+pub const SUMM_LEFT: [f64; 2] = [29.0, 62.0];
+pub const SUMM_ICON: f64 = 30.0;
 /// HUD scale factors searched (bigger HUD scale settings make it larger).
 pub const G_MIN: f64 = 0.8;
 pub const G_MAX: f64 = 2.6;
@@ -74,6 +78,24 @@ impl HudFit {
         let x0 = (x - m).floor().max(0.0) as u32;
         let y0 = (y - m).floor().max(0.0) as u32;
         let x1 = ((x + s + m).ceil() as u32).min(frame_w);
+        let y1 = ((y + s + m).ceil() as u32).min(frame_h);
+        Region { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+    }
+    /// Box of summoner slot `i` (0 = D, 1 = F) in video pixels: (x, y, size).
+    pub fn summoner(&self, i: usize) -> (f64, f64, f64) {
+        let s = self.s();
+        let x = self.content.cx() + SUMM_LEFT[i] * s + self.dx;
+        let y = self.content.bottom as f64 - TOP * s + self.dy;
+        (x, y, SUMM_ICON * s)
+    }
+    /// R, D and F in one crop region (one decode per frame for all three).
+    pub fn bar_region(&self, frame_w: u32, frame_h: u32) -> Region {
+        let (x, y, s) = self.icon(3);
+        let (fx, _, fs) = self.summoner(1);
+        let m = 2.0;
+        let x0 = (x - m).floor().max(0.0) as u32;
+        let y0 = (y - m).floor().max(0.0) as u32;
+        let x1 = ((fx + fs + m).ceil() as u32).min(frame_w);
         let y1 = ((y + s + m).ceil() as u32).min(frame_h);
         Region { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
     }
@@ -311,7 +333,18 @@ impl RLook {
 
 /// Measures the R icon in `crop` (any size, taken at `origin`); `fit` tells where the icon is.
 pub fn look(crop: &Rgb, origin: (u32, u32), fit: &HudFit) -> RLook {
-    let (x, y, s) = fit.icon(3);
+    look_box(crop, origin, fit.icon(3))
+}
+
+/// Measures summoner slot `i` (0 = D, 1 = F) the same way: the same blue overlay and white
+/// countdown as the ability icons.
+pub fn look_summoner(crop: &Rgb, origin: (u32, u32), fit: &HudFit, i: usize) -> RLook {
+    look_box(crop, origin, fit.summoner(i))
+}
+
+/// Measures the icon in the box `(x, y, size)` (video pixels) of `crop` (taken at `origin`).
+pub fn look_box(crop: &Rgb, origin: (u32, u32), b: (f64, f64, f64)) -> RLook {
+    let (x, y, s) = b;
     // Sample the icon on a 38×38 grid (its native size at the reference scale).
     let n = 38;
     let at = |i: usize, j: usize| -> [u8; 3] {
@@ -479,6 +512,46 @@ mod tests {
             assert!((x - 940.0).abs() <= 1.5 && (y - 993.0).abs() <= 1.5 && (s - 38.0).abs() <= 1.0, "{champ}: {fit:?}");
             assert!(fit.confidence > 0.5, "{champ}: {fit:?}");
         }
+    }
+
+    /// D and F from the same bands: cooldown (blue overlay + countdown) or ready, checked by
+    /// eye on each crop; and the D cast between two Twitch frames (Ghost ready → 44 s).
+    #[test]
+    fn summoner_slots_from_real_frames() {
+        use RState::{Cooldown as C, Ready as R};
+        let truth = [
+            ("band-caitlyn-200-3.ppm", [C, R]),
+            ("band-caitlyn-544-1.ppm", [R, C]),
+            ("band-caitlyn-544-8.ppm", [R, C]),
+            ("band-twitch-1016-12.5.ppm", [C, R]),
+            ("band-twitch-425-2.ppm", [R, R]),
+            ("band-twitch-425-9.ppm", [C, R]),
+            ("band-yunara-300-4.ppm", [R, R]),
+            ("band-yunara-826-2.ppm", [R, R]),
+            ("band-yunara-826-9.ppm", [R, R]),
+        ];
+        for (name, want) in truth {
+            let champ = name.split('-').take(2).collect::<Vec<_>>().join("-");
+            let fit = located(&champ);
+            let f = fixture(name);
+            for i in 0..2 {
+                let l = look_summoner(&f, BAND, &fit, i);
+                assert_eq!(l.state(), want[i], "{name} slot {}: {l:?}", ["D", "F"][i]);
+                assert!(!dimmed(&l), "{name}: {l:?}");
+            }
+        }
+        let fit = located("band-twitch");
+        let before = look_summoner(&fixture("band-twitch-425-2.ppm"), BAND, &fit, 0);
+        let after = look_summoner(&fixture("band-twitch-425-9.ppm"), BAND, &fit, 0);
+        assert!(is_cast(&before, &after), "{before:?} -> {after:?}");
+        assert!(!is_cast(&after, &after));
+        let f_before = look_summoner(&fixture("band-twitch-425-2.ppm"), BAND, &fit, 1);
+        let f_after = look_summoner(&fixture("band-twitch-425-9.ppm"), BAND, &fit, 1);
+        assert!(!is_cast(&f_before, &f_after), "F stayed ready");
+        // The crop for R + D + F holds all three boxes.
+        let r = fit.bar_region(1920, 1080);
+        let (fx, fy, fs) = fit.summoner(1);
+        assert!(r.x as f64 <= fit.icon(3).0 && (r.x + r.w) as f64 >= fx + fs && (r.y + r.h) as f64 >= fy + fs, "{r:?}");
     }
 
     #[test]

@@ -7,6 +7,7 @@
   import { HIDDEN_BY_DEFAULT, KIND, type Group } from "../lib/eventmeta";
   import type { GameEvent, SessionView } from "../lib/types";
   import Player from "../components/Player.svelte";
+  import GameIcon from "../components/GameIcon.svelte";
   import ClipEditor from "../components/ClipEditor.svelte";
   import LineChart from "../components/LineChart.svelte";
   import Mechanics from "../components/Mechanics.svelte";
@@ -55,6 +56,12 @@
   const bubbleCats = $derived(app.info?.games.find((g) => g.id === (s?.game_id ?? sum?.game_id))?.action_categories ?? []);
   const heatRange = $derived<[number, number] | null>(mechRange ? [mechRange[0] + offset, mechRange[1] + offset] : range);
   const events = $derived([...(s?.events ?? [])].sort((a, b) => a.game_time - b.game_time));
+  /** Full text of an event row (its lines are cut to one line each). */
+  function rowTip(e: GameEvent): string | undefined {
+    const facts = (e.facts ?? []).filter(([k]) => k !== "Slot").map(([k, v]) => `${k}: ${v}`);
+    const lines = [...(facts.length ? [facts.join(" · ")] : []), ...(e.details ? [e.details] : [])];
+    return lines.length ? `${e.title}\n${lines.join("\n")}` : undefined;
+  }
   const listEvents = $derived(events.filter((e) => !hidden.has((KIND[e.kind] ?? KIND.manual_marker).group)));
   const gameLen = $derived(s?.game_duration ?? (s?.video_duration ? s.video_duration - offset : 0));
   const videoLen = $derived(s?.video_duration ?? (s ? gameLen + offset : (sum?.duration ?? 0)));
@@ -163,6 +170,7 @@
           inputId={hasInput ? id : null}
           {bubbleCats}
           {heatRange}
+          apm={s?.mechanics?.apm_bins ?? null}
         />
         {#if range && s}
           <ClipEditor sessionId={s.id} bind:range {current} {offset} duration={videoLen} onclose={() => (range = null)} onpreview={() => player?.seek(range![0], true)} />
@@ -190,10 +198,15 @@
           {/if}
           {#each listEvents as e (e.id)}
             {@const m = KIND[e.kind] ?? KIND.manual_marker}
-            <button class="ev" class:active={e.id === activeId} data-id={e.id} onclick={() => player?.jumpTo(e)} title={e.details ? `${e.title}: ${e.details}` : undefined}>
-              <span class="ev-ic" style="background:{m.color}"><Icon name={m.icon} size={12} stroke={2.4} /></span>
+            <button class="ev" class:active={e.id === activeId} data-id={e.id} onclick={() => player?.jumpTo(e)} title={rowTip(e)}>
+              {#if e.icon}
+                <GameIcon icon={e.icon} size={22} title={e.title} fallback={m} />
+              {:else}
+                <span class="ev-ic" style="background:{m.color}"><Icon name={m.icon} size={12} stroke={2.4} /></span>
+              {/if}
               <span class="ev-txt">
                 <span class="ev-title">{e.title}{#if e.steal}<span class="steal">STEAL</span>{/if}</span>
+                {#if e.facts?.length}<span class="ev-det">{e.facts.filter(([k]) => k !== "Slot").map(([k, v]) => `${k}: ${v}`).join(" · ")}</span>{/if}
                 {#if e.details}<span class="ev-det">{e.details}</span>{/if}
               </span>
               <span class="ev-time">{clock(e.game_time)}</span>

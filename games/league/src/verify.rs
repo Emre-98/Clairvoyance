@@ -25,7 +25,8 @@ use std::time::Instant;
 /// Bump when the checking logic improves: older results are redone by the maintenance pass.
 /// 3-4 (v1.6): ult kinds — recasts / commands of one ult, form swaps, charges; one recast per
 /// burst of mashed presses (4; the v1.6 test builds wrote 3).
-pub const VERSION: u32 = 4;
+/// 5: summoner spells (D / F slot cooldowns) checked too.
+pub const VERSION: u32 = 5;
 /// Below this the ability bar isn't trusted.
 pub const MIN_CONFIDENCE: f64 = 0.35;
 const CALIBRATION_FRAMES: usize = 24;
@@ -180,6 +181,92 @@ fn keep_live_with(s: &mut GameSession, status: &str, reason: String, confidence:
     });
 }
 
+/// The spell in summoner slot `slot` at video time `t`, from the session's summoner chips (the
+/// live ones carry the name and icon from the player list); later spell changes (Smite,
+/// Teleport upgrades) are picked up by the nearest earlier chip.
+fn spell_at(chips: &[GameEvent], slot: usize, t: f64) -> (crate::summoners::Spell, String) {
+    let slot_name = ["D", "F"][slot];
+    let mine: Vec<&GameEvent> = chips.iter().filter(|e| e.facts.iter().any(|(k, v)| k == "Slot" && v == slot_name) && e.icon.is_some()).collect();
+    let pick = mine.iter().rev().find(|e| e.game_time <= t + 1.0).or(mine.first());
+    match pick {
+        Some(e) => {
+            let ic = e.icon.as_ref().unwrap();
+            (crate::summoners::Spell { id: ic.id.clone(), name: e.title.clone() }, ic.version.clone())
+        }
+        None => (crate::summoners::Spell::default(), String::new()),
+    }
+}
+
+/// Summoner spells: a cast = the D / F slot's cooldown overlay appearing between two keyframes
+/// (summoner cooldowns are minutes long, so 1 s keyframes see every one), refined to the exact
+/// frame. Presses name the key; presses without a cast are dropped; casts without a press
+/// (mouse click on the icon, unfocused window) still get their chip.
+fn summoner_pass(
+    s: &mut GameSession,
+    series: &[Vec<(f64, RLook)>; 2],
+    v: &mut dyn FrameSource,
+    fit: &HudFit,
+    (w, h): (u32, u32),
+    stop: &dyn Fn() -> anyhow::Result<()>,
+) -> anyhow::Result<serde_json::Value> {
+    let offset = s.video_offset;
+    let game_end = s.events.iter().filter(|e| e.kind == EventKind::GameEnd).map(|e| e.game_time + offset).fold(f64::INFINITY, f64::min);
+    let live: Vec<GameEvent> = s.events.iter().filter(|e| e.kind == EventKind::SummonerSpell).cloned().collect();
+    let marks: Vec<KeyMark> = s.key_presses.iter().filter(|m| crate::summoners::SLOTS.contains(&m.action.as_str())).cloned().collect();
+    let mut out = Vec::new();
+    let mut counts = [0usize; 2];
+    let mut matched = 0;
+    for slot in 0..2 {
+        let (x, y, size) = fit.summoner(slot);
+        let reg = Region { x: (x - 2.0).max(0.0) as u32, y: (y - 2.0).max(0.0) as u32, w: ((size + 4.0).ceil() as u32).min(w), h: ((size + 4.0).ceil() as u32).min(h) };
+        let at = (reg.x, reg.y);
+        let ser = &series[slot];
+        let mut last_clear: Option<usize> = None;
+        for k in 0..ser.len() {
+            let (t1, b) = ser[k];
+            if hud::dimmed(&b) {
+                continue;
+            }
+            let Some(pk) = last_clear.replace(k) else { continue };
+            let (t0, a) = ser[pk];
+            if !hud::is_cast(&a, &b) || t1 >= game_end - 0.5 {
+                continue;
+            }
+            let mut tr = CastTracker::seeded(a);
+            let mut exact = None;
+            stop()?;
+            v.frames(t0, t1, reg, &mut |pt, f| {
+                if pt <= t0 {
+                    return true;
+                }
+                if tr.push(hud::look_summoner(f, at, fit, slot)) {
+                    exact = Some(pt);
+                    return false;
+                }
+                true
+            })?;
+            let cast = exact.unwrap_or(t1);
+            let gt = cast - offset;
+            // The press of this slot just before the cast (the cooldown shows within ~0.3 s;
+            // channelled spells like Teleport show it when the channel starts).
+            let press = marks.iter().filter(|m| m.action == crate::summoners::SLOTS[slot] && m.game_time <= gt + 0.25 && m.game_time >= gt - 1.5).last();
+            let (spell, version) = spell_at(&live, slot, gt);
+            let mut e = crate::summoners::event(slot, &spell, gt, &version, press.map(|m| m.key.as_str()).unwrap_or(""), true);
+            if press.is_some() {
+                matched += 1;
+            } else {
+                e.details = Some("Seen in the recording (the spell went on cooldown); no key press was logged (clicked, another bind, or the game wasn't in focus).".into());
+            }
+            counts[slot] += 1;
+            out.push(e);
+        }
+    }
+    s.events.retain(|e| e.kind != EventKind::SummonerSpell);
+    s.events.extend(out);
+    s.events.sort_by(|a, b| a.game_time.partial_cmp(&b.game_time).unwrap_or(std::cmp::Ordering::Equal));
+    Ok(serde_json::json!({ "casts_d": counts[0], "casts_f": counts[1], "matched_presses": matched, "presses": marks.iter().filter(|m| m.accepted).count(), "live_chips": live.len() }))
+}
+
 /// The keyframes to scan: the game itself (after the loading screen).
 fn game_keyframes(v: &dyn FrameSource, offset: f64) -> Vec<f64> {
     v.keyframes().iter().copied().filter(|t| *t >= offset.max(0.0) - 0.5).collect()
@@ -236,19 +323,25 @@ pub fn verify(s: &mut GameSession, v: &mut dyn FrameSource, rules: &UltRules, ca
     let details_v = details(Some(&fit));
     drop(bands);
 
-    // 2. Full scan: R on every keyframe.
+    // 2. Full scan: R (and the summoner slots D / F, same crop) on every keyframe.
     let rreg = fit.r_region(w, h);
     let at = (rreg.x, rreg.y);
+    let breg = fit.bar_region(w, h);
+    let bat = (breg.x, breg.y);
     let mut series: Vec<(f64, RLook)> = Vec::with_capacity(kfs.len());
+    let mut summ: [Vec<(f64, RLook)>; 2] = [Vec::with_capacity(kfs.len()), Vec::with_capacity(kfs.len())];
     // The icon's picture (only needed for champions with recast / command states).
     let mut sigs: Vec<IconSig> = Vec::new();
     let want_sig = kind.kind.has_episodes();
     for &t in &kfs {
         stop()?;
-        if let Some((pt, f)) = v.frame_at(t, rreg)? {
-            series.push((pt, hud::look(&f, at, &fit)));
+        if let Some((pt, f)) = v.frame_at(t, breg)? {
+            series.push((pt, hud::look(&f, bat, &fit)));
+            for (i, sv) in summ.iter_mut().enumerate() {
+                sv.push((pt, hud::look_summoner(&f, bat, &fit, i)));
+            }
             if want_sig {
-                sigs.push(hud::signature(&f, at, &fit));
+                sigs.push(hud::signature(&f, bat, &fit));
             }
         }
     }
@@ -489,6 +582,7 @@ pub fn verify(s: &mut GameSession, v: &mut dyn FrameSource, rules: &UltRules, ca
             "long_casts": sig.casts.iter().filter(|c| c.long).count(),
         });
     }
+    let summoner_details = summoner_pass(s, &summ, v, &fit, (w, h), &stop)?;
     for m in outside.iter().filter(|m| m.accepted) {
         s.events.push(
             GameEvent::new(format!("ult-{:.2}", m.game_time), EventKind::UltPressed, m.game_time, "Ult pressed (unverified)")
@@ -501,6 +595,7 @@ pub fn verify(s: &mut GameSession, v: &mut dyn FrameSource, rules: &UltRules, ca
     details["keyframes"] = serde_json::json!(series.len());
     details["casts_from_scan"] = serde_json::json!(casts.iter().filter(|c| c.from_scan).count());
     details["ult_kind"] = kind_details;
+    details["summoners"] = summoner_details;
     s.verification = Some(Verification {
         version: VERSION,
         at: chrono::Local::now(),
@@ -603,6 +698,9 @@ mod tests {
         band: Rgb,
         icons: Vec<Rgb>,
         state: Box<dyn Fn(f64) -> usize>,
+        /// The D slot on cooldown (pixels from another real frame) while this says so.
+        d_cooldown: Box<dyn Fn(f64) -> bool>,
+        d_band: Rgb,
     }
     fn ppm(n: &str) -> Rgb {
         let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/hud").join(n);
@@ -610,15 +708,26 @@ mod tests {
     }
     impl Synth {
         fn new(dur: f64, icons: &[&str], state: impl Fn(f64) -> usize + 'static) -> Synth {
-            Synth { dur, kfs: (0..dur as usize).map(|s| s as f64).collect(), band: ppm("band-caitlyn-544-1.ppm"), icons: icons.iter().map(|n| ppm(n)).collect(), state: Box::new(state) }
+            Synth {
+                dur,
+                kfs: (0..dur as usize).map(|s| s as f64).collect(),
+                band: ppm("band-caitlyn-544-1.ppm"),
+                icons: icons.iter().map(|n| ppm(n)).collect(),
+                state: Box::new(state),
+                d_cooldown: Box::new(|_| false),
+                d_band: ppm("band-caitlyn-200-3.ppm"),
+            }
         }
         fn render(&self, t: f64, r: Region) -> Rgb {
             let icon = &self.icons[(self.state)(t)];
             let mut data = Vec::with_capacity((r.w * r.h * 3) as usize);
             for y in r.y..r.y + r.h {
                 for x in r.x..r.x + r.w {
+                    let d_cd = (self.d_cooldown)(t);
                     let p = if (934..984).contains(&x) && (987..1037).contains(&y) {
                         icon.px(x - 934, y - 987)
+                    } else if d_cd && (986..1022).contains(&x) && (990..1026).contains(&y) {
+                        self.d_band.px(x - 780, y - 980)
                     } else if (780..1140).contains(&x) && (980..1080).contains(&y) {
                         self.band.px(x - 780, y - 980)
                     } else {
@@ -716,6 +825,40 @@ mod tests {
         let mut s = session("Jayce", &[(29.95, None), (59.95, None), (89.95, None), (92.0, None)]);
         verify(&mut s, &mut v, &UltRules::builtin(), &|| false).unwrap();
         assert_eq!(kinds(&s), (0, 0, 3, 1));
+    }
+
+    #[test]
+    fn summoner_casts_from_the_recording() {
+        // Flash on D: casts at 40.5 and 200.25 (cooldown 300 s, cut short here), a D press on
+        // cooldown at 60 (no cast), a cast at 150.1 without a press (clicked). F (Ignite) stays
+        // on cooldown the whole time: no casts. Plus the victory screen: nothing after the end.
+        let icons = ["r-caitlyn-ready.ppm"];
+        let mut v = Synth::new(260.0, &icons, |_| 0);
+        v.d_cooldown = Box::new(|t| (40.5..120.0).contains(&t) || (150.1..180.0).contains(&t) || (200.25..240.0).contains(&t) || t >= 251.0);
+        let mut s = session("Caitlyn", &[]);
+        s.events.push(GameEvent::new("end", EventKind::GameEnd, 250.0, "Victory"));
+        let flash = crate::summoners::Spell { id: "SummonerFlash".into(), name: "Flash".into() };
+        for (t, ok) in [(40.4, true), (60.0, false), (200.2, true)] {
+            s.key_presses.push(KeyMark { game_time: t, action: "summoner1".into(), key: "D".into(), accepted: ok, reason: (!ok).then(|| "cooldown".into()) });
+            if ok {
+                s.events.push(crate::summoners::event(0, &flash, t, "16.20.1", "D", false));
+            }
+        }
+        verify(&mut s, &mut v, &UltRules::builtin(), &|| false).unwrap();
+        let chips: Vec<&GameEvent> = s.events.iter().filter(|e| e.kind == EventKind::SummonerSpell).collect();
+        let times: Vec<f64> = chips.iter().map(|e| e.game_time).collect();
+        assert_eq!(chips.len(), 3, "{times:?}");
+        for (got, want) in times.iter().zip([40.5, 150.1, 200.25]) {
+            assert!((got - want).abs() < 0.04, "the exact frame: {times:?}");
+        }
+        assert!(chips.iter().all(|e| e.title == "Flash" && e.icon.as_ref().is_some_and(|i| i.id == "SummonerFlash")), "named from the live chips");
+        assert!(chips[0].details.as_deref().unwrap().starts_with("Confirmed"));
+        assert!(chips[1].details.as_deref().unwrap().contains("no key press"), "clicked: still a chip");
+        assert_eq!(chips[1].facts.iter().find(|(k, _)| k == "Key").map(|(_, v)| v.as_str()), None);
+        let d = &s.verification.as_ref().unwrap().details["summoners"];
+        assert_eq!((d["casts_d"].as_u64(), d["casts_f"].as_u64(), d["matched_presses"].as_u64()), (Some(3), Some(0), Some(2)));
+        // The ult result is untouched by the summoner pass.
+        assert_eq!(kinds(&s), (0, 0, 0, 0));
     }
 
     #[test]

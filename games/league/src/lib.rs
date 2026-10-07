@@ -13,7 +13,10 @@ pub mod actions;
 pub mod events;
 pub mod queues;
 pub mod ddragon;
+pub mod gold;
 pub mod hud;
+pub mod items;
+pub mod summoners;
 pub mod ult;
 pub mod ultkind;
 pub mod verify;
@@ -56,6 +59,30 @@ struct Scores {
 struct Item {
     price: u32,
     count: u32,
+    #[serde(rename = "itemID")]
+    item_id: u32,
+    slot: u32,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(rename_all = "camelCase", default)]
+struct SummonerSpellInfo {
+    display_name: String,
+    raw_description: String,
+}
+
+impl SummonerSpellInfo {
+    fn spell(&self) -> Option<summoners::Spell> {
+        let id = summoners::spell_id(&self.raw_description, &self.display_name);
+        (!id.is_empty()).then(|| summoners::Spell { id, name: self.display_name.clone() })
+    }
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(rename_all = "camelCase", default)]
+struct SummonerSpells {
+    summoner_spell_one: SummonerSpellInfo,
+    summoner_spell_two: SummonerSpellInfo,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -72,6 +99,7 @@ struct Player {
     #[serde(deserialize_with = "seq_or_map")]
     items: Vec<Item>,
     is_dead: bool,
+    summoner_spells: SummonerSpells,
 }
 
 /// Riot's `items` has been a list, but some client versions send an object keyed by slot.
@@ -174,6 +202,20 @@ pub struct LeagueIntegration {
     /// The in-game API has said whether this is spectator mode (checked once per match).
     live_decided: bool,
     live_checks: u32,
+    /// Items and summoner spells from Data Dragon (filled in the background once per match).
+    static_data: std::sync::Arc<std::sync::Mutex<Option<std::sync::Arc<ddragon::StaticData>>>>,
+    static_started: bool,
+    /// Completed-item chips (inventory compared between player-list reads).
+    items: items::ItemTracker,
+    /// The own gold every poll: purchases, and the gold events gave.
+    gold: gold::GoldLog,
+    /// Summoner spell chips (live layer).
+    summ: summoners::SummonerTracker,
+    /// Chips found in a player-list read, handed out with the next poll.
+    new_items: Vec<GameEvent>,
+    withdrawn: Vec<String>,
+    /// Game time of the last inventory read.
+    items_read: Option<f64>,
 }
 
 impl Default for LeagueIntegration {
@@ -221,6 +263,14 @@ impl LeagueIntegration {
             watch_hint: None,
             live_decided: false,
             live_checks: 0,
+            static_data: Default::default(),
+            static_started: false,
+            items: items::ItemTracker::new(),
+            gold: gold::GoldLog::new(),
+            summ: summoners::SummonerTracker::new(),
+            new_items: Vec::new(),
+            withdrawn: Vec::new(),
+            items_read: None,
         }
     }
 
@@ -262,6 +312,35 @@ impl LeagueIntegration {
         self.watch_hint = None;
         self.live_decided = false;
         self.live_checks = 0;
+        self.static_data = Default::default();
+        self.static_started = false;
+        self.items = items::ItemTracker::new();
+        self.gold = gold::GoldLog::new();
+        self.summ = summoners::SummonerTracker::new();
+        self.new_items.clear();
+        self.withdrawn.clear();
+        self.items_read = None;
+    }
+
+    fn static_data(&self) -> Option<std::sync::Arc<ddragon::StaticData>> {
+        self.static_data.lock().unwrap().clone()
+    }
+
+    /// Items and summoner spells of this patch, fetched once in the background (cached on disk).
+    fn load_static_data(&mut self) {
+        if self.static_started {
+            return;
+        }
+        self.static_started = true;
+        let slot = self.static_data.clone();
+        let patch = self.patch.clone();
+        tokio::spawn(async move {
+            let d = ddragon::static_data(data_dir(), patch.as_deref()).await;
+            if d.is_none() {
+                log::info!("Data Dragon items / summoner spells not available: no item chips this game");
+            }
+            *slot.lock().unwrap() = d.map(std::sync::Arc::new);
+        });
     }
 
     /// League's own key binds and patch, read at the start of each match (cheap file reads).
@@ -285,11 +364,14 @@ impl LeagueIntegration {
 
     /// Facts the live ult filter needs: R rank and ability haste (every poll, small request),
     /// whether we're dead (only polled while dead), and the base cooldowns (once, background).
-    async fn update_ult_state(&mut self, game_mode: &str, new_events: &[GameEvent], game_time: f64) {
+    /// Returns the current gold (read with the same request).
+    async fn update_ult_state(&mut self, game_mode: &str, new_events: &[GameEvent], game_time: f64) -> Option<f64> {
+        let mut gold = None;
         if self.ult.game_mode.is_none() && !game_mode.is_empty() {
             self.ult.game_mode = Some(game_mode.to_string());
         }
         if let Ok(a) = self.get::<ActivePlayer>("activeplayer").await {
+            gold = Some(a.current_gold);
             let r = a.abilities.get("R").and_then(|r| r.ability_level);
             self.ult.update_active(r, a.champion_stats.ability_haste);
             // The R spell's id + name: logged when it changes (a recast state), used to keep
@@ -338,10 +420,11 @@ impl LeagueIntegration {
                 }
             }
         }
+        gold
     }
 
     /// Reads who we are and the scoreboard (every ~10 s, or until we've found ourselves).
-    async fn refresh_players(&mut self) {
+    async fn refresh_players(&mut self, game_time: f64) {
         let active_name: Option<String> = self.get::<String>("activeplayername").await.ok();
         let players: Vec<Player> = match self.get("playerlist").await {
             Ok(p) => p,
@@ -365,9 +448,14 @@ impl LeagueIntegration {
             me.push(l);
         }
         let mut champions = HashMap::new();
+        let mut ids = HashMap::new();
         for p in &players {
+            let id = p.raw_champion_name.rsplit('_').next().filter(|s| !s.is_empty()).map(str::to_string);
             for n in p.names() {
-                champions.insert(n, p.champion_name.clone());
+                champions.insert(n.clone(), p.champion_name.clone());
+                if let Some(id) = &id {
+                    ids.insert(n, id.clone());
+                }
             }
         }
         let mine = players.iter().find(|p| p.names().iter().any(|n| me.contains(n)));
@@ -399,9 +487,20 @@ impl LeagueIntegration {
             });
             self.ctx.team = Some(p.team.clone());
             self.me_found = true;
+            self.summ.spells = [p.summoner_spells.summoner_spell_one.spell(), p.summoner_spells.summoner_spell_two.spell()];
+            // Completed items: this read's inventory against the last one.
+            if let Some(data) = self.static_data() {
+                let inv = items::inventory(p.items.iter().map(|i| i.item_id));
+                let c = self.items.observe(game_time, &inv, gold, self.gold.spent_at, &data);
+                self.new_items.extend(c.new);
+                self.new_items.retain(|e| !c.withdrawn.contains(&e.id));
+                self.withdrawn.extend(c.withdrawn);
+                self.items_read = Some(game_time);
+            }
         }
         self.ctx.me = me;
         self.ctx.champions = champions;
+        self.ctx.ids = ids;
     }
 }
 
@@ -721,7 +820,10 @@ impl GameIntegration for LeagueIntegration {
             Some(t) => !self.me_found || t.elapsed() >= Duration::from_secs(10),
         };
         if refresh {
-            self.refresh_players().await;
+            self.refresh_players(stats.game_time).await;
+        }
+        if u.phase == MatchPhase::InProgress {
+            self.load_static_data();
         }
 
         // Handle events only once we know who we are (or tried to), so no kill gets lost.
@@ -739,15 +841,28 @@ impl GameIntegration for LeagueIntegration {
                             _ => self.result,
                         };
                         // Final scoreboard.
-                        self.refresh_players().await;
+                        self.refresh_players(stats.game_time).await;
                     }
                     u.events.extend(translate(raw, &self.ctx));
                 }
             }
         }
-        if u.phase == MatchPhase::InProgress && self.result.is_none() {
-            self.update_ult_state(&stats.game_mode, &u.events, stats.game_time).await;
+        for e in &u.events {
+            self.gold.watch(e);
         }
+        if u.phase == MatchPhase::InProgress && self.result.is_none() {
+            let gold = self.update_ult_state(&stats.game_mode, &u.events, stats.game_time).await;
+            // The shop was used (gold dropped / jumped): read the inventory now; and every 2 s
+            // while an item waits for its confirmation.
+            let jumped = gold.is_some_and(|g| self.gold.push(stats.game_time, g));
+            let confirm_due = self.items.waiting() && self.items_read.is_none_or(|t| stats.game_time - t >= 1.8);
+            if (jumped || confirm_due) && self.me_found && !refresh {
+                self.refresh_players(stats.game_time).await;
+            }
+            u.updated.extend(self.gold.settled());
+        }
+        u.events.append(&mut self.new_items);
+        u.removed.append(&mut self.withdrawn);
         if self.result.is_some() {
             u.phase = MatchPhase::Ended;
         }
@@ -763,7 +878,11 @@ impl GameIntegration for LeagueIntegration {
     fn on_key(&mut self, key: &KeyPress, game_time: f64) -> Option<GameEvent> {
         use ultkind::LivePress;
         let (kind, title, details) = match self.ult.press_live(key, game_time) {
-            LivePress::None => return None,
+            LivePress::None => {
+                let actions = self.action_keys();
+                let data = self.static_data();
+                return self.summ.press(&actions, key, game_time, self.ult.chat_open, self.ult.dead, data.as_deref());
+            }
             LivePress::Used => (EventKind::UltPressed, "Ult pressed", "Ult key pressed. Checked against the recording after the game."),
             LivePress::Recast => (EventKind::UltRecast, "Ult recast", "The same ult pressed again (command, second part or early end). Checked after the game."),
             LivePress::FormSwap => (EventKind::FormSwap, "Form swap", "Form / stance swap. Checked against the recording after the game."),
@@ -773,6 +892,7 @@ impl GameIntegration for LeagueIntegration {
 
     fn take_key_marks(&mut self) -> Vec<cv_core::game::KeyMark> {
         let mut m = self.ult.take_marks();
+        m.extend(self.summ.take_marks());
         if let Some(g) = self.ult_kind_mark.take() {
             m.push(cv_core::game::KeyMark { game_time: 0.0, action: "ult_kind".into(), key: g.as_str().into(), accepted: false, reason: Some("ddragon".into()) });
         }

@@ -184,6 +184,34 @@ fn per_minute_with_negative_offset() {
     assert_eq!(m.apm_per_min.len(), 3);
     assert_eq!(m.apm_per_min[1], Some(60.0));
     assert!((m.apm - 60.0).abs() < 0.6);
+    // 10 s bins of video time: one press a second = 60 APM in each of the 12.
+    assert_eq!(m.apm_bins.len(), 12);
+    assert!(m.apm_bins.iter().all(|b| *b == Some(60)), "{:?}", m.apm_bins);
+}
+
+#[test]
+fn apm_bins_need_focus_and_count_clicks_and_keys() {
+    // 0-10 s: 5 keys + 5 clicks focused (60 APM); 10-20 s: unfocused (null); 20-25 s: focused,
+    // 10 keys in 5 s (120 APM, a half bin: still more than a third focused).
+    let mut r = vec![Record::Focus { t: 0, focused: true }];
+    for i in 0..5 {
+        r.push(Record::Key { t: i * 2_000_000, vk: b'Q', down: true });
+        r.push(Record::Key { t: i * 2_000_000 + 50_000, vk: b'Q', down: false });
+        r.push(Record::Button { t: i * 2_000_000 + 100_000, button: 2, down: true });
+    }
+    r.push(Record::Focus { t: 10_000_000, focused: false });
+    r.push(Record::Key { t: 15_000_000, vk: b'Q', down: true });
+    r.push(Record::Focus { t: 20_000_000, focused: true });
+    for i in 0..10 {
+        r.push(Record::Key { t: 20_000_000 + i * 500_000, vk: b'W', down: true });
+    }
+    r.push(Record::End { t: 25_000_000 });
+    let an = Analysis::from_records(&r);
+    let m = mechanics_whole(&an, 0.0);
+    assert_eq!(m.apm_bins, vec![Some(60), None, Some(120)]);
+    assert_eq!(m.version, STATS_VERSION);
+    // Ranges don't carry bins (the chart uses the whole game's).
+    assert!(mechanics(&an, 0.0, 10.0, 0.0).apm_bins.is_empty());
 }
 
 #[test]

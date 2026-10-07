@@ -128,6 +128,49 @@ struct Script {
     start: Instant,
 }
 
+/// The own player's shop script (absolute game seconds, so a slowed-down test can watch every
+/// step): (time, items bought / taken out, gold change). Starts with Doran's Ring + a potion
+/// and 10 000 gold (like the Practice Tool), then: a component, a finished item bought and
+/// undone 3 s later, bought again, a second finished item undone after it was confirmed, and
+/// the first one sold.
+pub const SHOP: [(f64, &[u32], &[u32], f64); 7] = [
+    (10.0, &[1058], &[], -1200.0),          // Needlessly Large Rod (component: no chip)
+    (20.0, &[3089], &[1058], -2300.0),      // Rabadon's Deathcap from the rod
+    (23.0, &[1058], &[3089], 2300.0),       // UNDO
+    (30.0, &[3089], &[1058], -2300.0),      // bought again: one chip
+    (40.0, &[3031], &[], -3500.0),          // Infinity Edge
+    (52.0, &[], &[3031], 3500.0),           // UNDO after its chip was confirmed: withdrawn
+    (64.0, &[], &[3089], 2450.0),           // Rabadon's sold (70 %): its chip stays
+];
+const START_GOLD: f64 = 10_000.0;
+
+/// The own inventory and gold at game time `t` (passive income 2 gold/s).
+pub fn shop_at(t: f64) -> (Vec<u32>, f64) {
+    let mut inv = vec![1056u32, 2003];
+    let mut gold = START_GOLD + 2.0 * t;
+    for (at, add, take, g) in SHOP.iter() {
+        if *at > t {
+            break;
+        }
+        for x in take.iter() {
+            if let Some(i) = inv.iter().position(|y| y == x) {
+                inv.remove(i);
+            }
+        }
+        inv.extend(add.iter().copied());
+        gold += g;
+    }
+    (inv, gold)
+}
+
+fn item_json(id: u32, slot: usize) -> Value {
+    json!({"itemID": id, "slot": slot, "count": 1, "price": 0, "displayName": format!("Item {id}"), "canUse": false, "consumable": id == 2003})
+}
+
+fn spell_json(id: &str, name: &str) -> Value {
+    json!({"displayName": name, "rawDescription": format!("GeneratedTip_SummonerSpell_{id}_Description"), "rawDisplayName": format!("GeneratedTip_SummonerSpell_{id}_DisplayName")})
+}
+
 const ALLIES: [(&str, &str, &str); 4] = [("Mate1#EUW", "Lee Sin", "LeeSin"), ("Mate2#EUW", "Jinx", "Jinx"), ("Mate3#EUW", "Thresh", "Thresh"), ("Mate4#EUW", "Garen", "Garen")];
 const ENEMIES: [(&str, &str, &str); 5] =
     [("Enemy1#NA1", "Zed", "Zed"), ("Enemy2#NA1", "Vi", "Vi"), ("Enemy3#NA1", "Caitlyn", "Caitlyn"), ("Enemy4#NA1", "Lux", "Lux"), ("Enemy5#NA1", "Darius", "Darius")];
@@ -213,14 +256,16 @@ impl Script {
             "championName": self.opts.champion, "rawChampionName": format!("game_character_displayname_{}", self.opts.champion.replace(' ', "")),
             "team": "ORDER", "level": (1.0 + t / 90.0).min(18.0) as u32, "isBot": false,
             "scores": {"kills": k, "deaths": d, "assists": a, "creepScore": cs, "wardScore": t / 60.0 * 0.9},
-            "items": [{"price": 1100, "count": 1}, {"price": 300, "count": 1}]
+            "items": shop_at(t).0.iter().enumerate().map(|(i, id)| item_json(*id, i)).collect::<Vec<_>>(),
+            "summonerSpells": {"summonerSpellOne": spell_json("SummonerFlash", "Flash"), "summonerSpellTwo": spell_json("SummonerDot", "Ignite")}
         })];
         for (team, players) in [("ORDER", &ALLIES[..]), ("CHAOS", &ENEMIES[..])] {
             for (riot, champ, raw) in players {
                 list.push(json!({
                     "riotId": riot, "riotIdGameName": riot.split('#').next().unwrap(), "summonerName": riot.split('#').next().unwrap(),
                     "championName": champ, "rawChampionName": format!("game_character_displayname_{raw}"), "team": team, "level": 6,
-                    "scores": {"kills": 1, "deaths": 1, "assists": 1, "creepScore": 50, "wardScore": 3.0}, "items": []
+                    "scores": {"kills": 1, "deaths": 1, "assists": 1, "creepScore": 50, "wardScore": 3.0}, "items": [],
+                    "summonerSpells": {"summonerSpellOne": spell_json("SummonerFlash", "Flash"), "summonerSpellTwo": spell_json("SummonerTeleport", "Teleport")}
                 }));
             }
         }
@@ -260,7 +305,7 @@ impl Script {
                 json!({"errorCode":"RPC_ERROR","httpStatus":400,"implementationDetails":{},"message":"Spectator mode doesn't currently support this feature"})
             }
             "activeplayername" => json!(self.me()),
-            "activeplayer" => json!({"championStats": {}, "currentGold": 250.0 + t * 1.2, "level": 10, "riotId": self.me(), "summonerName": self.me_short()}),
+            "activeplayer" => json!({"championStats": {}, "currentGold": shop_at(t).1, "level": 10, "riotId": self.me(), "summonerName": self.me_short()}),
             "playerlist" => self.player_list(t),
             "eventdata" => json!({"Events": self.events(t)}),
             "allgamedata" => json!({"gameData": {"gameTime": t, "gameMode": game_mode}, "events": {"Events": self.events(t)}}),

@@ -32,6 +32,10 @@ pub enum EventKind {
     Baron,
     /// Any other objective the game reports (e.g. Voidgrubs, Atakhan, bomb plant in CS2).
     Objective,
+    /// A finished item bought (League: compared between player-list reads, undo-safe).
+    ItemCompleted,
+    /// A summoner spell cast (League: D / F press checked against the slot's cooldown).
+    SummonerSpell,
     /// Round/phase boundaries for games that have them (CS2 rounds).
     Round,
     ManualMarker,
@@ -41,7 +45,7 @@ pub enum EventKind {
 }
 
 impl EventKind {
-    pub const ALL: [EventKind; 22] = [
+    pub const ALL: [EventKind; 24] = [
         EventKind::Kill,
         EventKind::Death,
         EventKind::Assist,
@@ -59,6 +63,8 @@ impl EventKind {
         EventKind::Herald,
         EventKind::Baron,
         EventKind::Objective,
+        EventKind::ItemCompleted,
+        EventKind::SummonerSpell,
         EventKind::Round,
         EventKind::ManualMarker,
         EventKind::Clip,
@@ -85,6 +91,8 @@ impl EventKind {
             EventKind::Herald => "herald",
             EventKind::Baron => "baron",
             EventKind::Objective => "objective",
+            EventKind::ItemCompleted => "item_completed",
+            EventKind::SummonerSpell => "summoner_spell",
             EventKind::Round => "round",
             EventKind::ManualMarker => "manual_marker",
             EventKind::Clip => "clip",
@@ -113,6 +121,8 @@ impl EventKind {
             EventKind::Herald => "Herald",
             EventKind::Baron => "Baron",
             EventKind::Objective => "Objective",
+            EventKind::ItemCompleted => "Item",
+            EventKind::SummonerSpell => "Summoner",
             EventKind::Round => "Round",
             EventKind::ManualMarker => "Marked",
             EventKind::Clip => "Clip saved",
@@ -139,11 +149,46 @@ pub struct GameEvent {
     /// True if an objective was stolen.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub steal: bool,
+    /// A picture for the hover card (League: the item / summoner spell from Data Dragon).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<EventIcon>,
+    /// Labelled details for the hover card, e.g. ("Lane", "Mid"), ("Gold", "≈ +250").
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub facts: Vec<(String, String)>,
+    /// Characters involved, first the main one (League: champion ids, for portraits).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub who: Vec<String>,
+}
+
+/// An image the UI can show for an event: `kind` "item" / "spell" / "champion", `id` the game's
+/// id ("3031", "SummonerFlash", "Ahri"), `version` the data version it belongs to (League: Data
+/// Dragon "16.19.1"; empty = the newest).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EventIcon {
+    pub kind: String,
+    pub id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub version: String,
 }
 
 impl GameEvent {
     pub fn new(id: impl Into<String>, kind: EventKind, game_time: f64, title: impl Into<String>) -> Self {
-        Self { id: id.into(), kind, game_time, title: title.into(), details: None, steal: false }
+        Self { id: id.into(), kind, game_time, title: title.into(), details: None, steal: false, icon: None, facts: Vec::new(), who: Vec::new() }
+    }
+    pub fn with_icon(mut self, kind: &str, id: impl Into<String>, version: impl Into<String>) -> Self {
+        self.icon = Some(EventIcon { kind: kind.into(), id: id.into(), version: version.into() });
+        self
+    }
+    pub fn fact(mut self, label: impl Into<String>, value: impl Into<String>) -> Self {
+        let v = value.into();
+        if !v.is_empty() {
+            self.facts.push((label.into(), v));
+        }
+        self
+    }
+    pub fn with_who(mut self, who: Vec<String>) -> Self {
+        self.who = who;
+        self
     }
     pub fn with_details(mut self, d: impl Into<String>) -> Self {
         let d = d.into();

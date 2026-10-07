@@ -133,6 +133,10 @@ pub struct PollUpdate {
     pub game_time: Option<f64>,
     /// Only events not returned before.
     pub events: Vec<GameEvent>,
+    /// Ids of events returned before that turned out wrong (League: an item bought and undone).
+    pub removed: Vec<String>,
+    /// Events returned before, with more detail now (same id; e.g. the gold it gave).
+    pub updated: Vec<GameEvent>,
     pub player: Option<PlayerInfo>,
     pub stats: Option<PlayerStats>,
     pub result: Option<GameResult>,

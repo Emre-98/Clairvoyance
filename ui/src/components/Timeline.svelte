@@ -12,6 +12,8 @@
   import { ICONS, KIND } from "../lib/eventmeta";
   import { clock } from "../lib/format";
   import Icon from "./Icon.svelte";
+  import GameIcon from "./GameIcon.svelte";
+  import { apmAt, apmScale } from "../lib/apmchart";
   import { clampView, follow, frameIndexAt, fullView, isZoomed, lanes as layoutLanes, minSpan, pan, preciseClock, ruler, spanAt, tToX, xToT, zoomAround, zoomLevel, type View } from "../lib/timelineview";
 
   let {
@@ -26,6 +28,8 @@
     playing = false,
     level = $bindable(0),
     zoomed = $bindable(false),
+    apm = null,
+    apmBin = 10,
     onseek,
     onmarker,
   }: {
@@ -43,6 +47,10 @@
     /** Zoom slider position 0 (whole game) .. 1 (a few frames). */
     level?: number;
     zoomed?: boolean;
+    /** Actions per minute in bins of `apmBin` video seconds from 0 (drawn faintly behind the
+     * markers; hovering shows the value). Null = no input recording. */
+    apm?: (number | null)[] | null;
+    apmBin?: number;
     onseek: (t: number) => void;
     onmarker: (e: GameEvent, pos: number) => void;
   } = $props();
@@ -194,6 +202,8 @@
     void offset;
     void fullLanes;
     void hover;
+    void apm;
+    void hoverBin;
     schedule();
   });
   $effect(() => () => cancelAnimationFrame(raf));
@@ -318,6 +328,7 @@
     const g = mkcv.getContext("2d")!;
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.clearRect(0, 0, pw, ph);
+    drawApm(g, w, ch, dpr);
     const hv = hover?.i ?? -1;
     for (let i = 0; i < xs.length; i++) {
       const l = lane[i];
@@ -335,6 +346,75 @@
       const cy = ch - lane[hv] * LANE_H - MARK / 2;
       g.drawImage(sp, Math.round((cx - sp.width / dpr / 2) * dpr), Math.round((cy - sp.height / dpr / 2) * dpr));
     }
+  }
+
+  // ---------- APM chart behind the markers ----------
+  const apmMax = $derived(apm ? apmScale(apm) : 0);
+  /** The APM bin under the pointer (the canvas redraws only when it changes). */
+  const hoverBin = $derived(apm && hoverX != null && hover == null ? Math.floor(xToT(hoverX, view, width) / apmBin) : -1);
+  /** A faint area chart over the marker rows (the canvas ignores the pointer). */
+  function drawApm(g: CanvasRenderingContext2D, w: number, ch: number, dpr: number) {
+    // For the UI tests: how many APM bins were drawn.
+    root.dataset.apmBins = "0";
+    if (!apm || !apm.length || apmMax <= 0) return;
+    const v = view;
+    const top = 6;
+    const base = ch - 1;
+    const yOf = (a: number) => base - (Math.min(a, apmMax) / apmMax) * (base - top);
+    const first = Math.max(0, Math.floor(v.start / apmBin) - 1);
+    const last = Math.min(apm.length - 1, Math.ceil((v.start + v.span) / apmBin) + 1);
+    const c = color("var(--apm)");
+    g.save();
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.translate(12, 0);
+    const runs: [number, number][][] = [];
+    let run: [number, number][] = [];
+    for (let i = first; i <= last; i++) {
+      const a = apm[i];
+      if (a == null) {
+        if (run.length) runs.push(run);
+        run = [];
+        continue;
+      }
+      run.push([tToX((i + 0.5) * apmBin, v, w), yOf(a)]);
+    }
+    if (run.length) runs.push(run);
+    root.dataset.apmBins = String(runs.reduce((n, r) => n + r.length, 0));
+    g.lineJoin = "round";
+    for (const r of runs) {
+      const x0 = r.length === 1 ? r[0][0] - 3 : r[0][0];
+      const x1 = r.length === 1 ? r[0][0] + 3 : r[r.length - 1][0];
+      g.beginPath();
+      g.moveTo(x0, base);
+      if (r.length === 1) {
+        g.lineTo(x0, r[0][1]);
+        g.lineTo(x1, r[0][1]);
+      } else for (const [x, y] of r) g.lineTo(x, y);
+      g.lineTo(x1, base);
+      g.closePath();
+      g.globalAlpha = 0.1;
+      g.fillStyle = c;
+      g.fill();
+      g.beginPath();
+      if (r.length === 1) {
+        g.moveTo(x0, r[0][1]);
+        g.lineTo(x1, r[0][1]);
+      } else r.forEach(([x, y], k) => (k ? g.lineTo(x, y) : g.moveTo(x, y)));
+      g.globalAlpha = 0.32;
+      g.strokeStyle = c;
+      g.lineWidth = 1.25;
+      g.stroke();
+    }
+    // Hover: the bin's dot on the line.
+    const a = hoverBin >= 0 ? apm[hoverBin] : null;
+    if (a != null) {
+      g.globalAlpha = 0.9;
+      g.fillStyle = c;
+      g.beginPath();
+      g.arc(tToX((hoverBin + 0.5) * apmBin, v, w), yOf(a), 2.5, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.restore();
   }
 
   const trackH = $derived(zoomed ? (compact ? 28 : 34) : compact ? 16 : 22);
@@ -482,11 +562,13 @@
   }
 
   const hoverTime = $derived(hoverX != null && width ? xToT(hoverX, view, width) : null);
+  const hoverApm = $derived(apm && hoverTime != null ? apmAt(apm, apmBin, hoverTime) : null);
   const hoverLabel = $derived.by(() => {
     if (hoverTime == null) return "";
-    if (!zoomed) return clock(hoverTime - offset);
+    const a = hoverApm != null ? ` · ${hoverApm} APM` : "";
+    if (!zoomed) return clock(hoverTime - offset) + a;
     const f = frames && frames.length ? ` · f${frameIndexAt(frames, hoverTime)}` : "";
-    return preciseClock(hoverTime - offset) + f;
+    return preciseClock(hoverTime - offset) + f + a;
   });
   const clampX = (px: number) => Math.min(width + 2, Math.max(-2, px));
   const head = $derived(x(current));
@@ -494,7 +576,7 @@
 
 <div class="timeline" class:compact class:zoomed use:wheelAction data-testid="timeline" bind:this={root}>
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="markers" style="height:{markersH}px" onpointerdown={panDown} onpointermove={move} onpointerup={up} class:panning={dragging === "pan"}>
+  <div class="markers" style="height:{markersH}px" onpointerdown={panDown} onpointermove={move} onpointerup={up} onpointerleave={() => { if (!dragging) hoverX = null; }} class:panning={dragging === "pan"} data-apm={apm ? "1" : undefined}>
     <canvas class="mkcv" bind:this={mkcv} style="height:{markersH + 8}px" aria-hidden="true"></canvas>
     <div class="mklayer" bind:this={layer}>
       {#each list as p, i (p.e.id)}
@@ -515,11 +597,25 @@
       {@const m = KIND[he.kind] ?? KIND.manual_marker}
       <div class="tip" style="left:clamp(120px, {hover.x}px, calc(100% - 120px));bottom:{hover.lane * LANE_H + MARK + 8}px">
         <div class="tip-head">
-          <span class="tip-ic" style="background:{m.color}"><Icon name={m.icon} size={12} stroke={2.4} /></span>
+          {#if he.icon}
+            <GameIcon icon={he.icon} size={30} title={he.title} fallback={m} />
+          {:else}
+            <span class="tip-ic" style="background:{m.color}"><Icon name={m.icon} size={12} stroke={2.4} /></span>
+          {/if}
           <strong>{he.title}</strong>
           {#if he.steal}<span class="stealbadge">STEAL</span>{/if}
         </div>
         <div class="tip-sub">{m.label} · {clock(he.game_time)} game time</div>
+        {#if he.facts?.length}
+          <dl class="tip-facts" data-testid="tip-facts">
+            {#each he.facts as [k, v]}<dt>{k}</dt><dd>{v}</dd>{/each}
+          </dl>
+        {/if}
+        {#if he.who?.length}
+          <div class="tip-who">
+            {#each he.who.slice(0, 5) as c}<GameIcon icon={{ kind: "champion", id: c }} size={20} round title={c} />{/each}
+          </div>
+        {/if}
         {#if he.details}<div class="tip-det">{he.details}</div>{/if}
         <div class="tip-hint">Click to jump to 5 s before</div>
       </div>
@@ -564,8 +660,8 @@
     {#if head >= -2 && head <= width + 2}
       <div class="head" style="left:{head}px" data-testid="playhead"></div>
     {/if}
-    {#if hoverTime != null && !dragging}
-      <div class="hovertime" style="left:{hoverX}px">{hoverLabel}</div>
+    {#if hoverTime != null && !dragging && hover == null}
+      <div class="hovertime" style="left:{clampX(hoverX ?? 0)}px" data-testid="hovertime">{hoverLabel}</div>
     {/if}
   </div>
   {#if zoomed}
@@ -675,6 +771,25 @@
   .tip-sub {
     color: var(--muted);
     margin-top: 5px;
+  }
+  .tip-facts {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 2px 10px;
+    margin: 6px 0 0;
+  }
+  .tip-facts dt {
+    color: var(--muted);
+  }
+  .tip-facts dd {
+    margin: 0;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  .tip-who {
+    display: flex;
+    gap: 4px;
+    margin-top: 6px;
   }
   .tip-det {
     color: var(--text-2);

@@ -176,3 +176,25 @@ test("precise clock", () => {
   assert.equal(preciseClock(-20), "-0:20.000");
   assert.equal(preciseClock(3723.004), "1:02:03.004");
 });
+
+// ---------- APM chart behind the markers (lib/apmchart.ts) ----------
+import { apmAt, apmScale } from "../src/lib/apmchart.ts";
+
+test("APM chart: value under the cursor by 10 s bin, nothing outside or unfocused", () => {
+  const bins = [null, 120, 180, null, 90];
+  assert.equal(apmAt(bins, 10, -1), null);
+  assert.equal(apmAt(bins, 10, 5), null, "unfocused bin");
+  assert.equal(apmAt(bins, 10, 10), 120);
+  assert.equal(apmAt(bins, 10, 29.99), 180);
+  assert.equal(apmAt(bins, 10, 49), 90);
+  assert.equal(apmAt(bins, 10, 50), null, "past the end");
+  assert.equal(apmAt(bins, 10, NaN), null);
+});
+
+test("APM chart: one burst doesn't flatten the rest (95th percentile scale)", () => {
+  const bins = Array.from({ length: 100 }, (_, i) => (i === 50 ? 900 : 150));
+  const top = apmScale(bins);
+  assert.ok(top < 200 && top >= 150, `scale ${top}`);
+  assert.equal(apmScale([null, null]), 0, "nothing to draw");
+  assert.equal(apmScale([5]), 30, "a floor so a quiet game isn't a full-height wall");
+});

@@ -64,6 +64,8 @@ pub struct Ctx {
     pub team: Option<String>,
     /// Lower-case player name (with and without tag) -> champion display name.
     pub champions: HashMap<String, String>,
+    /// Lower-case player name -> champion id ("MonkeyKing"), for portraits.
+    pub ids: HashMap<String, String>,
 }
 
 impl Ctx {
@@ -74,6 +76,19 @@ impl Ctx {
 
     pub fn is_me_any(&self, names: &[String]) -> bool {
         names.iter().any(|n| self.is_me(n))
+    }
+
+    /// Champion ids of the named players (unknown names and non-players skipped).
+    pub fn ids_of<'a>(&self, names: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+        let mut v: Vec<String> = Vec::new();
+        for n in names {
+            if let Some(id) = self.ids.get(&n.trim().to_lowercase()) {
+                if !v.contains(id) {
+                    v.push(id.clone());
+                }
+            }
+        }
+        v
     }
 
     /// Champion name for a player, or a readable name for towers/minions/monsters.
@@ -119,6 +134,60 @@ pub fn dragon_name(t: Option<&str>) -> String {
     }
 }
 
+/// A structure from its API name: lane ("Top" / "Mid" / "Bot"), tier ("Outer" ...) and side.
+/// Turrets: `Turret_T2_C_05_A` = red side (T2), mid (C), outer (05). Summoner's Rift numbers:
+/// top / bot 03 outer, 02 inner, 01 inhibitor turret; mid 05 outer, 04 inner, 03 inhibitor
+/// turret, 02 / 01 nexus turrets. Inhibitors: `Barracks_T1_R1`. Other maps: lane only.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Structure {
+    pub lane: Option<&'static str>,
+    pub tier: Option<&'static str>,
+    pub side: Option<&'static str>,
+}
+
+pub fn structure(name: &str) -> Structure {
+    let parts: Vec<&str> = name.split('_').collect();
+    let side = parts.get(1).and_then(|t| match *t {
+        "T1" => Some("Blue"),
+        "T2" => Some("Red"),
+        _ => None,
+    });
+    let lane_of = |c: char| match c {
+        'L' => Some("Top"),
+        'C' => Some("Mid"),
+        'R' => Some("Bot"),
+        _ => None,
+    };
+    match parts.first().map(|p| p.to_ascii_lowercase()).as_deref() {
+        Some("turret") => {
+            let lane = parts.get(2).and_then(|l| l.chars().next()).and_then(lane_of);
+            let n: Option<u32> = parts.get(3).and_then(|n| n.parse().ok());
+            let tier = match (lane, n) {
+                (Some("Mid"), Some(5)) | (Some("Top" | "Bot"), Some(3)) => Some("Outer"),
+                (Some("Mid"), Some(4)) | (Some("Top" | "Bot"), Some(2)) => Some("Inner"),
+                (Some("Mid"), Some(3)) | (Some("Top" | "Bot"), Some(1)) => Some("Inhibitor"),
+                (Some("Mid"), Some(1 | 2)) => Some("Nexus"),
+                _ => None,
+            };
+            // Two mid "lane" nexus turrets stand in the base, not in mid.
+            let lane = if tier == Some("Nexus") { None } else { lane };
+            Structure { lane, tier, side }
+        }
+        Some("barracks") => Structure { lane: parts.get(2).and_then(|l| l.chars().next()).and_then(lane_of), tier: None, side },
+        _ => Structure::default(),
+    }
+}
+
+/// "the mid outer tower", "a nexus tower", "a tower".
+fn tower_phrase(s: &Structure) -> String {
+    match (s.lane, s.tier) {
+        (_, Some("Nexus")) => "a nexus tower".into(),
+        (Some(l), Some(t)) => format!("the {} {} tower", l.to_lowercase(), t.to_lowercase()),
+        (Some(l), None) => format!("a {} tower", l.to_lowercase()),
+        _ => "a tower".into(),
+    }
+}
+
 fn multikill_name(n: u32) -> &'static str {
     match n {
         2 => "Double kill",
@@ -161,14 +230,19 @@ pub fn translate(e: &RawEvent, ctx: &Ctx) -> Vec<GameEvent> {
         "ChampionKill" => {
             let victim = e.victim_name.as_deref().unwrap_or("");
             if i_killed {
-                out.push(GameEvent::new(id(e, "-k"), EventKind::Kill, t, format!("Killed {}", ctx.who(victim))).with_details(assist_details(e, ctx)));
+                out.push(
+                    GameEvent::new(id(e, "-k"), EventKind::Kill, t, format!("Killed {}", ctx.who(victim)))
+                        .with_details(assist_details(e, ctx))
+                        .with_who(ctx.ids_of([victim])),
+                );
             } else if ctx.is_me(victim) {
                 let d = assist_details(e, ctx);
-                out.push(GameEvent::new(id(e, "-d"), EventKind::Death, t, format!("Killed by {}", ctx.who(killer))).with_details(d));
+                out.push(GameEvent::new(id(e, "-d"), EventKind::Death, t, format!("Killed by {}", ctx.who(killer))).with_details(d).with_who(ctx.ids_of([killer])));
             } else if i_helped {
                 out.push(
                     GameEvent::new(id(e, "-a"), EventKind::Assist, t, format!("Assist on {}", ctx.who(victim)))
-                        .with_details(format!("Killed by {}", ctx.who(killer))),
+                        .with_details(format!("Killed by {}", ctx.who(killer)))
+                        .with_who(ctx.ids_of([victim, killer])),
                 );
             }
         }
@@ -190,13 +264,20 @@ pub fn translate(e: &RawEvent, ctx: &Ctx) -> Vec<GameEvent> {
         "TurretKilled" | "FirstBrick" if i_killed || i_helped => {
             // FirstBrick duplicates the TurretKilled event; keep only the turret one.
             if e.event_name == "TurretKilled" {
-                let title = if i_killed { "Destroyed a tower" } else { "Helped destroy a tower" };
-                out.push(GameEvent::new(id(e, ""), EventKind::Tower, t, title).with_details(assist_details(e, ctx)));
+                let st = structure(e.turret_killed.as_deref().unwrap_or(""));
+                let what = tower_phrase(&st);
+                let title = if i_killed { format!("Destroyed {what}") } else { format!("Helped destroy {what}") };
+                out.push(
+                    structure_event(e, ctx, EventKind::Tower, title, &st, i_killed)
+                        .fact("Tower", st.tier.map(|t| if t == "Inhibitor" { "Inhibitor turret".to_string() } else { format!("{t} turret") }).unwrap_or_default()),
+                );
             }
         }
         "InhibKilled" if i_killed || i_helped => {
-            let title = if i_killed { "Destroyed an inhibitor" } else { "Helped destroy an inhibitor" };
-            out.push(GameEvent::new(id(e, ""), EventKind::Inhibitor, t, title).with_details(assist_details(e, ctx)));
+            let st = structure(e.inhib_killed.as_deref().unwrap_or(""));
+            let what = st.lane.map(|l| format!("the {} inhibitor", l.to_lowercase())).unwrap_or_else(|| "an inhibitor".into());
+            let title = if i_killed { format!("Destroyed {what}") } else { format!("Helped destroy {what}") };
+            out.push(structure_event(e, ctx, EventKind::Inhibitor, title, &st, i_killed));
         }
         "DragonKill" if i_killed || i_helped => {
             let name = dragon_name(e.dragon_type.as_deref());
@@ -216,11 +297,31 @@ pub fn translate(e: &RawEvent, ctx: &Ctx) -> Vec<GameEvent> {
     out
 }
 
+/// Who was there: the last hit (a champion, or minions) first, then the assists.
+fn involved(e: &RawEvent, ctx: &Ctx) -> Vec<String> {
+    let killer = e.killer_name.as_deref().unwrap_or("");
+    ctx.ids_of(std::iter::once(killer).chain(e.assisters.iter().map(|a| a.as_str())))
+}
+
+fn structure_event(e: &RawEvent, ctx: &Ctx, kind: EventKind, title: String, st: &Structure, i_killed: bool) -> GameEvent {
+    let killer = e.killer_name.as_deref().unwrap_or("");
+    GameEvent::new(id(e, ""), kind, e.event_time, title)
+        .with_details(assist_details(e, ctx))
+        .fact("Lane", st.lane.unwrap_or_default())
+        .fact("Side", st.side.map(|s| format!("{s} side")).unwrap_or_default())
+        .fact("Last hit", if i_killed { "You".to_string() } else { ctx.who(killer) })
+        .with_who(involved(e, ctx))
+}
+
 fn objective(e: &RawEvent, ctx: &Ctx, kind: EventKind, name: &str, i_killed: bool) -> GameEvent {
     let steal = e.is_stolen();
     let verb = if steal { "Stole" } else if i_killed { "Took" } else { "Helped take" };
+    let killer = e.killer_name.as_deref().unwrap_or("");
     GameEvent::new(id(e, ""), kind, e.event_time, format!("{verb} {name}"))
         .with_details(assist_details(e, ctx))
+        .fact("Last hit", if i_killed { "You".to_string() } else { ctx.who(killer) })
+        .fact("Stolen", if steal { "Yes, from the enemy team".to_string() } else { String::new() })
+        .with_who(involved(e, ctx))
         .stolen(steal)
 }
 
@@ -255,7 +356,8 @@ mod tests {
         for (n, c) in [("me#euw", "Ahri"), ("me", "Ahri"), ("enemy#na1", "Zed"), ("enemy", "Zed"), ("mate", "Lee Sin")] {
             champions.insert(n.to_string(), c.to_string());
         }
-        Ctx { me: vec!["me#euw".into(), "me".into()], team: Some("ORDER".into()), champions }
+        let ids = champions.iter().map(|(k, v)| (k.clone(), v.replace(' ', ""))).collect();
+        Ctx { me: vec!["me#euw".into(), "me".into()], team: Some("ORDER".into()), champions, ids }
     }
 
     fn parse(json: &str) -> Vec<RawEvent> {
@@ -311,11 +413,39 @@ mod tests {
         let titles: Vec<_> = out.iter().map(|e| e.title.as_str()).collect();
         assert_eq!(
             titles,
-            vec!["Helped take Infernal Drake", "Stole Baron Nashor", "Destroyed a tower", "Helped destroy an inhibitor", "Took Voidgrub", "Team ace", "Victory"]
+            vec!["Helped take Infernal Drake", "Stole Baron Nashor", "Destroyed the top outer tower", "Helped destroy the top inhibitor", "Took Voidgrub", "Team ace", "Victory"]
         );
+        let f = |i: usize, k: &str| out[i].facts.iter().find(|(l, _)| l == k).map(|(_, v)| v.clone());
+        assert_eq!(f(2, "Lane").as_deref(), Some("Top"));
+        assert_eq!(f(2, "Tower").as_deref(), Some("Outer turret"));
+        assert_eq!(f(2, "Side").as_deref(), Some("Red side"));
+        assert_eq!(f(2, "Last hit").as_deref(), Some("You"));
+        assert_eq!(f(3, "Last hit").as_deref(), Some("minions"));
+        assert_eq!(f(0, "Last hit").as_deref(), Some("Lee Sin"));
+        assert_eq!(out[0].who, vec!["LeeSin".to_string(), "Ahri".to_string()], "last hit first, then the assists");
+        assert_eq!(f(1, "Stolen").as_deref(), Some("Yes, from the enemy team"));
         assert!(out[1].steal);
         assert_eq!(out[1].kind, EventKind::Baron);
         assert!(!out[0].steal);
+    }
+
+    #[test]
+    fn structures() {
+        let s = |n: &str| {
+            let s = structure(n);
+            (s.lane, s.tier, s.side)
+        };
+        assert_eq!(s("Turret_T2_C_05_A"), (Some("Mid"), Some("Outer"), Some("Red")));
+        assert_eq!(s("Turret_T1_L_02_A"), (Some("Top"), Some("Inner"), Some("Blue")));
+        assert_eq!(s("Turret_T1_R_01_A"), (Some("Bot"), Some("Inhibitor"), Some("Blue")));
+        assert_eq!(s("Turret_T2_C_03_A"), (Some("Mid"), Some("Inhibitor"), Some("Red")));
+        assert_eq!(s("Turret_T2_C_01_A"), (None, Some("Nexus"), Some("Red")));
+        assert_eq!(s("Barracks_T2_R1"), (Some("Bot"), None, Some("Red")));
+        assert_eq!(s("Turret_T1_C_08_A"), (Some("Mid"), None, Some("Blue")), "ARAM numbers: lane only");
+        assert_eq!(s("Something"), (None, None, None));
+        assert_eq!(tower_phrase(&structure("Turret_T2_C_02_A")), "a nexus tower");
+        assert_eq!(tower_phrase(&structure("Turret_T2_C_05_A")), "the mid outer tower");
+        assert_eq!(tower_phrase(&structure("x")), "a tower");
     }
 
     #[test]

@@ -110,7 +110,21 @@
 - **Owner's check of v1.7.1 passed (2026-10-03):** replays not recorded, a spectated game
   caught by the in-game API and its 8 s partial recording deleted, a Practice Tool game ready at
   once.
-- **Waiting for the owner**: the Practice Tool test of the ult kinds (v1.6, see "Next steps"),
+- **v1.8 part 1 (2026-10-07): richer timeline.** Towers / inhibitors / objectives say who
+  (last hit, portraits), which lane / tier / side, and the gold you got (measured from your own
+  gold, "≈ +250"); "Completed <item>" chips with the item's icon, cost and components (inventory
+  compared between player-list reads, undo-safe); summoner spell chips ("Flash", own champion:
+  D / F press + the slot's cooldown in the recording); a faint APM chart (10 s bins) behind the
+  markers with the value on hover. Tested: Rust 163 tests (148 before) incl. the fake game's
+  shop script (buy+undo → no chip, buy again → one chip at the purchase time, a confirmed item
+  undone → withdrawn, a sale → kept) and the summoner check on real HUD crops (18/18 slot
+  states, exact cast frames in a synthetic recording); Chromium: 23/23 new timeline checks,
+  layout audit 504/504 (it caught the new event-list facts cut off without a tooltip: fixed),
+  fullscreen 94/94, overlay 20/20, bubbles 20/20, frame stepping 26/27 (the zoom-smoothness
+  check misses in this sandbox for v1.7.1's unchanged code too: median 28.6 ms vs 22; redraw
+  p95 unchanged, 5-6 ms with 623 markers). Needs a real game: see "Next steps". Details in
+  "Richer timeline".
+- **Waiting for the owner**: the v1.8 part 1 real-game check (see "Next steps"), the Practice Tool test of the ult kinds (v1.6, see "Next steps"),
   the PC benchmark of the v1.6 player (`--bench-replays` with `"player": true`), and the older
   Practice Tool test of the ability bubbles.
 
@@ -1117,6 +1131,54 @@ like a match, so it was recorded as a game.
   fourth was only dropped for being under 30 s); v1.7.1 recorded none (nothing left in the
   recordings folder, status "… not recorded") and still records a normal match.
 
+### Richer timeline (2026-10-07, owner's request, v1.8 part 1)
+- **How others do it:** Overwolf's League game events (what Ascent / Medal-style apps build on)
+  have no purchase or summoner-cast events either (summoner casts are an open feature request);
+  apps read `allPlayers[].items` from the Live Client Data API and compare. Same here.
+- **Event details** (`GameEvent.icon` / `facts` / `who`, all optional, old sessions load as
+  before): turrets from their API name (`Turret_T2_C_05_A` = red side, mid, outer; top/bot 03
+  outer, 02 inner, 01 inhibitor turret; mid 05/04/03, 02/01 nexus; other maps lane only),
+  inhibitors (`Barracks_T1_R1`), objectives: last hit (you / champion / minions), stolen, the
+  champions involved (portraits). Kills / deaths / assists get the other champion's portrait.
+- **"Your gold"** (`gold.rs`): `/activeplayer` gold every poll (already read for the ult);
+  after a gold-earning event the gold 1.5 s later minus the gold before, minus the passive
+  income (median of recent small steps). Dropped when unclear: two rewards within 3 s, the shop
+  used meanwhile, no reading before. Sent as an event *update* (`PollUpdate.updated`) so TTS
+  and auto clips aren't delayed.
+- **Completed items** (`items.rs`): Data Dragon `item.json` + `summoner.json` once per patch
+  (`ddragon::static_data`, cached as a small summary). Finished = built from components, no
+  `into`, not consumable / trinket, purchasable. Two refinements of the "no into" rule: tier-2
+  boots now upgrade into their own tier-3 version (built from them alone), so they count;
+  starters (Doran's, Cull, World Atlas) have no components and don't. Inventory read: every
+  10 s, at once when the gold jumps (> 40 beyond passive income: purchase / sale / undo), every
+  ~2 s while an item waits. Undo safety: a new item is confirmed after 5 game seconds; gone
+  before = no chip; a confirmed one gone with ≥ 90 % of its cost back (a sale gives 70 %) or its
+  components back = undo → withdrawn (`PollUpdate.removed`); an item back after a sale for
+  ~70 % = sale undone, no second chip. The chip sits at the purchase moment (the gold drop),
+  not the confirmation. The starting inventory never makes chips (app started mid-game).
+- **Summoner spells** (`summoners.rs`, `verify.rs` v5, `hud.rs`): live, D / F presses with
+  League's own binds (same reader as the bubbles) → a chip named from the player list
+  (`summonerSpells.summonerSpellOne` = D, id from `rawDescription`), filtered by chat, death
+  and 55 % of the spell's base cooldown (summoner haste); every press kept as a key mark.
+  After the game the ult check's keyframe scan also reads D and F (measured on the owner's
+  recordings: 30 px icons, left edges 29 / 62 px right of the centre, same top line; same blue
+  overlay + countdown as R): a cast = the overlay appearing, refined to the exact frame; the
+  press before it names the key; presses without a cast are dropped, casts without a press
+  (clicked) kept. `verify::VERSION` 5 re-checks older games (they get summoner chips too,
+  unnamed if they have no live chips). No HUD found → the live chips stay.
+- **APM chart:** `Mechanics.apm_bins` (stats version 2; the maintenance pass recomputes older
+  games with an input recording): APM per 10 s of video time, null below a third focused.
+  Drawn on the marker canvas (which ignores the pointer) as a faint area, scaled to the 95th
+  percentile; hover shows "1:35 · 176 APM" in the time label and a dot on the line.
+- **UI:** hover cards show the icon (`GameIcon`, the game's Data Dragon version, kind icon
+  when offline), facts and portraits; event list rows show the icon and facts. New filter chips
+  "Items" and "Summoner spells" (shown by default), colours `--ev-item` / `--ev-summoner`.
+- **Tests:** `items.rs` (buy / undo before and after confirmation / buy again / sell / undo a
+  sale / starters / boots), `gold.rs`, `events.rs` structures, `ddragon.rs` on the real 16.20
+  files (trimmed fixtures), `hud.rs` D/F states on 9 real crops, `verify.rs` summoner casts in
+  a synthetic recording, `tests/mock_match.rs` shop script over HTTP (fake game:
+  `cv_mock_league::SHOP`), `ui/tests/timelinechips.test.mjs` (23 checks, both themes).
+
 ### Replay benchmark and end-to-end tests (developer tools)
 - `Clairvoyance.exe --bench-replays=<config.json>`: opens the given games N times in the real
   window and measures page / first frame / playable / marker jumps / "marker clicked right away"
@@ -1186,6 +1248,8 @@ like a match, so it was recorded as a game.
 - [x] 30. Ready right after the game: in-place index when the recording stops (no copy, crash-safe), 2 s victory-screen tail, thumbnail right away, faster exit detection (v1.7.1)
 - [x] 31. Replays and spectating aren't recorded: League client + in-game API detection before recording, late detection deletes the partial recording, "Record games you spectate" setting, simulator replay / spectate modes (v1.7.1)
 - [x] Owner's check of v1.7.1: replays not recorded, spectating deleted after 8 s, Practice Tool game ready at once
+- [x] 32. Richer timeline: tower / inhibitor / objective details + gold, completed-item chips (undo-safe), summoner spell chips (key + recording), APM chart behind the markers (v1.8 part 1)
+- [ ] Owner's real-game check of v1.8 part 1 (see "Next steps")
 
 ## Known issues
 - v1.6 player: frame steps are seeks, so on recordings with long keyframe gaps (before v1.2:
@@ -1252,7 +1316,24 @@ like a match, so it was recorded as a game.
   Variable is narrower than Inter. The "More controls" level is decided from measured widths,
   so other fonts / scalings adapt by themselves.
 
+- v1.8 summoner chips: D / F geometry measured at HUD scale 0 (scaled with the ult's HUD fit);
+  untested on other HUD scales in real recordings. Smite's charges and Teleport's channel may
+  show the cooldown at another moment than the press (the press window is 1.5 s).
+- v1.8 item chips: an UNDO more than ~2 minutes after a sale, or a purchase and undo within one
+  inventory read (< 1 s), can't be told apart; Data Dragon must be reachable once per patch
+  (else no item chips that game, logged).
+
 ## Next steps
+- **Owner, v1.8 part 1 in a real game (Practice Tool is enough, ~10 min):** Practice Tool on
+  "Record". In base: buy a component, then a finished item and press UNDO right away; buy it
+  again and wait 10 s; buy a second finished item, wait 10 s, then UNDO it; sell the first one.
+  Flash and use your other summoner (also once by clicking its icon); press D again while it's
+  on cooldown. Destroy a tower and take a camp/dragon with gold changes visible. End the game,
+  wait ~1 min (the check runs after the game), open it. Expected: one "Completed <item 1>" chip
+  at the purchase, none for the undone ones, the sale doesn't remove it; "Flash" / other spell
+  chips at the cast frames (the clicked one too), none for the press on cooldown; the tower
+  card says lane / tier / "Your gold ≈ +…"; a faint APM area behind the markers, hover shows
+  the APM. Then Settings > Advanced > Save test report.
 - **Owner, Practice Tool test of the ult kinds (v1.6, ~15 min):** see the steps in the v1.6
   test report (also below). Practice Tool with cooldowns ON (not "No Cooldowns"; use the "Reset
   cooldowns" button between ults), Settings > Game modes > Practice Tool on "Record". Level 16+

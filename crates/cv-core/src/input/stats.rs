@@ -7,7 +7,10 @@ use super::{InputFile, Record, WindowInfo, BTN_RIGHT, UNIT};
 use serde::{Deserialize, Serialize};
 
 /// Bump when the numbers change: cached stats of older versions are recomputed.
-pub const STATS_VERSION: u32 = 1;
+/// 2: `apm_bins` (the APM chart behind the timeline).
+pub const STATS_VERSION: u32 = 2;
+/// Width of one `apm_bins` bin (video seconds).
+pub const APM_BIN_SECS: f64 = 10.0;
 pub const HEAT_W: u32 = 96;
 pub const HEAT_H: u32 = 54;
 /// No input for longer than this counts as idle.
@@ -184,6 +187,11 @@ pub struct Mechanics {
     /// APM per minute of game clock (minute 0 = 0:00-0:59); null = not enough focused time.
     #[serde(default)]
     pub apm_per_min: Vec<Option<f64>>,
+    /// APM in bins of [`APM_BIN_SECS`] of *video* time from 0 (bin i = [10 i, 10 i + 10) s), for
+    /// the chart behind the timeline; null = the game wasn't focused long enough in that bin.
+    /// Only for the whole game.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub apm_bins: Vec<Option<u32>>,
     /// Right-clicks per second.
     pub right_click_hz: f64,
     /// Cursor travel in screen widths.
@@ -312,6 +320,7 @@ pub fn mechanics(an: &Analysis, a: f64, b: f64, offset: f64) -> Mechanics {
         key_presses,
         apm: round(per_min((clicks + key_presses) as f64, focused), 1),
         apm_per_min,
+        apm_bins: Vec::new(),
         right_click_hz: if focused > 0.5 { round(right as f64 / focused, 2) } else { 0.0 },
         cursor_distance: round(dist, 1),
         path_efficiency: (actual > 0.0).then(|| round(straight / actual, 3)),
@@ -327,7 +336,30 @@ fn round(v: f64, d: i32) -> f64 {
 
 /// Whole game: from the game clock's 0:00 (or the first record) to the end of the recording.
 pub fn mechanics_whole(an: &Analysis, offset: f64) -> Mechanics {
-    mechanics(an, offset.max(0.0), an.end, offset)
+    let mut m = mechanics(an, offset.max(0.0), an.end, offset);
+    m.apm_bins = apm_bins(an, APM_BIN_SECS);
+    m
+}
+
+/// Actions per minute in bins of `w` video seconds over the whole recording (loading screen
+/// included: its bins are null or low). A bin needs a third of its time focused.
+pub fn apm_bins(an: &Analysis, w: f64) -> Vec<Option<u32>> {
+    let n = (an.end / w).ceil().max(0.0) as usize;
+    let mut counts = vec![0u32; n];
+    let times = an.clicks.iter().filter(|c| c.down).map(|c| c.t).chain(an.keys.iter().filter(|k| k.down).map(|k| k.t));
+    for t in times {
+        let i = (t / w).floor();
+        if i >= 0.0 && (i as usize) < n {
+            counts[i as usize] += 1;
+        }
+    }
+    (0..n)
+        .map(|i| {
+            let (a, b) = (i as f64 * w, (i as f64 + 1.0) * w);
+            let f = an.focused_secs(a, b.min(an.end));
+            (f >= w / 3.0).then(|| (counts[i] as f64 / f * 60.0).round() as u32)
+        })
+        .collect()
 }
 
 /// Cursor dwell heatmap for [a, b]: time spent in each cell (focused only), normalized to 0..1.
