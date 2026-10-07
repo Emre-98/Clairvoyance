@@ -15,7 +15,8 @@ assists, objectives, steals and ult presses on a clickable timeline.
   so it's safe with Vanguard and VAC.
 - No accounts, no cloud, no telemetry.
 
-See **PLAN.md** for the spec, decisions and milestone status.
+See **PLAN.md** for the spec, milestone status and next steps, and **docs/DECISIONS.md** for
+the design decisions, measurements and tests behind each part.
 
 ## Install (you or a friend)
 
