@@ -166,11 +166,8 @@ mod tests {
             log_file: root.join("local").join(name).join("logs").join("x.log"),
             default_save_dir: root.join("videos").join(name),
         };
-        let old = OldPaths {
-            config_file: root.join("roaming").join(OLD_NAME).join("settings.json"),
-            data_dir: root.join("local").join(OLD_NAME),
-            default_save_dir: root.join("videos").join(OLD_NAME),
-        };
+        let old =
+            OldPaths { config_file: root.join("roaming").join(OLD_NAME).join("settings.json"), data_dir: root.join("local").join(OLD_NAME), default_save_dir: root.join("videos").join(OLD_NAME) };
         (new, old)
     }
 

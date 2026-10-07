@@ -44,10 +44,7 @@ impl WinPlatform {
             return s.clone();
         }
         let (tx, rx) = channel::<(String, u8)>();
-        std::thread::Builder::new()
-            .name("tts".into())
-            .spawn(move || tts_thread(rx))
-            .ok();
+        std::thread::Builder::new().name("tts".into()).spawn(move || tts_thread(rx)).ok();
         *g = Some(tx.clone());
         tx
     }
@@ -128,8 +125,7 @@ mod win {
     use windows::Win32::System::Diagnostics::ToolHelp::{CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS};
     use windows::Win32::System::ProcessStatus::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
     use windows::Win32::System::Threading::{
-        GetCurrentProcess, GetProcessTimes, OpenProcess, QueryFullProcessImageNameW, SetPriorityClass, BELOW_NORMAL_PRIORITY_CLASS,
-        PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+        GetCurrentProcess, GetProcessTimes, OpenProcess, QueryFullProcessImageNameW, SetPriorityClass, BELOW_NORMAL_PRIORITY_CLASS, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
     };
     use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
 
@@ -277,8 +273,8 @@ mod win {
     }
 }
 
-pub use win::{gpu, lower_priority};
 use win::{foreground_exe, own_usage, process_names, tts_thread};
+pub use win::{gpu, lower_priority};
 
 pub fn is_process_running(name: &str) -> bool {
     process_names().iter().any(|p| p.eq_ignore_ascii_case(name))

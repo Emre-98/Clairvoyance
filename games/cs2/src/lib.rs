@@ -276,12 +276,17 @@ impl GameIntegration for Cs2Integration {
         u.events = diff(&mut self.tracker, &v, now);
         if u.phase == MatchPhase::Ended && self.ended.is_none() {
             self.ended = result(&v, self.tracker.team.as_deref());
-            u.events.push(GameEvent::new("cs2-end", EventKind::GameEnd, now, match self.ended {
-                Some(GameResult::Win) => "Victory",
-                Some(GameResult::Loss) => "Defeat",
-                Some(GameResult::Draw) => "Draw",
-                None => "Match over",
-            }));
+            u.events.push(GameEvent::new(
+                "cs2-end",
+                EventKind::GameEnd,
+                now,
+                match self.ended {
+                    Some(GameResult::Win) => "Victory",
+                    Some(GameResult::Loss) => "Defeat",
+                    Some(GameResult::Draw) => "Draw",
+                    None => "Match over",
+                },
+            ));
         }
         u.result = self.ended;
         let map = s(&v, &["map", "name"]).as_str().unwrap_or("");

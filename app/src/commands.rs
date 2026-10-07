@@ -1,11 +1,11 @@
 //! Commands the UI can call (`invoke("name", {...})`).
 
 use crate::state::{AppState, GpuInfo};
+use cv_core::engine::ClipCutter;
 use cv_core::engine::{EngineCommand, LiveStatus};
 use cv_core::library::{ClipEntry, SessionSummary};
 use cv_core::session::{ClipInfo, GameSession, CLIPS_DIR};
 use cv_core::Settings;
-use cv_core::engine::ClipCutter;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -329,13 +329,7 @@ pub async fn input_actions(st: St<'_>, id: String) -> R<ActionsView> {
             g.action_press_states(&s, &keys, &mut presses);
         }
         log::debug!("ability bubbles for {}: {} presses, {} ms", dir.display(), presses.len(), t.elapsed().as_millis());
-        Ok(ActionsView {
-            categories: game.map(|g| g.action_categories()).unwrap_or_default(),
-            actions: keys,
-            saved_binds: saved,
-            frame_exact: frames.is_some(),
-            presses: actions::to_arrays(&presses),
-        })
+        Ok(ActionsView { categories: game.map(|g| g.action_categories()).unwrap_or_default(), actions: keys, saved_binds: saved, frame_exact: frames.is_some(), presses: actions::to_arrays(&presses) })
     })
     .await
     .map_err(err)?
@@ -373,9 +367,7 @@ pub async fn video_frame_times(path: String) -> R<tauri::ipc::Response> {
 /// Layout, codec and keyframe spacing of a video (Settings > Advanced, test report).
 #[tauri::command]
 pub async fn video_info(path: String) -> R<cv_capture::remux::VideoInfo> {
-    tauri::async_runtime::spawn_blocking(move || cv_capture::remux::info(std::path::Path::new(&path)).map_err(err))
-        .await
-        .map_err(err)?
+    tauri::async_runtime::spawn_blocking(move || cv_capture::remux::info(std::path::Path::new(&path)).map_err(err)).await.map_err(err)?
 }
 
 /// Keyframe times of a video (cached per file, size and modification time): marker jumps land
@@ -607,7 +599,15 @@ pub async fn storage_info(app: AppHandle, st: St<'_>) -> R<StorageInfo> {
         let plan = cv_core::library::plan_cleanup(&games, limit, 0, chrono::Local::now(), protect.as_deref());
         let protected_bytes = games
             .iter()
-            .map(|g| if g.favorite { g.size_bytes } else if g.kept_clips > 0 { g.size_bytes.saturating_sub(g.video_bytes) } else { 0 })
+            .map(|g| {
+                if g.favorite {
+                    g.size_bytes
+                } else if g.kept_clips > 0 {
+                    g.size_bytes.saturating_sub(g.video_bytes)
+                } else {
+                    0
+                }
+            })
             .sum();
         let mut recent = crate::maintenance::read_log(&st.paths.data_dir.join("cleanup-log.json"));
         recent.reverse();

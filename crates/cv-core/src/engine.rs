@@ -115,17 +115,32 @@ pub struct LiveStatus {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EngineEvent {
     Status(LiveStatus),
-    GameEvent { session_id: String, event: GameEvent },
-    GameStarted { game_name: String },
-    GameEnded { session_id: String },
+    GameEvent {
+        session_id: String,
+        event: GameEvent,
+    },
+    GameStarted {
+        game_name: String,
+    },
+    GameEnded {
+        session_id: String,
+    },
     /// Session file changed (saved, clips added).
     LibraryChanged,
     /// A mode seen for the first time was added to the game's mode list (save the settings).
-    ModesChanged { game_id: String, modes: GameModes },
+    ModesChanged {
+        game_id: String,
+        modes: GameModes,
+    },
     /// A finished game's after-work (auto clips) is done: a good moment for thumbnails and the
     /// storage clean-up, which never run while a game is recording.
-    PostProcessed { session_id: String },
-    Notice { level: String, text: String },
+    PostProcessed {
+        session_id: String,
+    },
+    Notice {
+        level: String,
+        text: String,
+    },
 }
 
 struct Active {
@@ -336,10 +351,9 @@ impl Engine {
     /// Returns the index of a running, enabled game.
     fn detect_game(&self) -> Option<usize> {
         let procs = self.platform.running_processes();
-        self.games.iter().position(|g| {
-            !self.settings.disabled_games.iter().any(|d| d == g.id())
-                && g.process_names().iter().any(|p| procs.iter().any(|r| r.eq_ignore_ascii_case(p)))
-        })
+        self.games
+            .iter()
+            .position(|g| !self.settings.disabled_games.iter().any(|d| d == g.id()) && g.process_names().iter().any(|p| procs.iter().any(|r| r.eq_ignore_ascii_case(p))))
     }
 
     fn game_running(&self, idx: usize) -> bool {
@@ -666,10 +680,8 @@ impl Engine {
                 let keys = g.action_keys();
                 session.action_keys = (!keys.is_empty()).then_some(keys);
                 let _ = session.save(dir);
-                self.platform.start_input_capture(crate::input::CaptureRequest {
-                    writer: w.clone(),
-                    process_names: g.process_names().iter().map(|p| p.to_lowercase()).collect(),
-                });
+                self.platform
+                    .start_input_capture(crate::input::CaptureRequest { writer: w.clone(), process_names: g.process_names().iter().map(|p| p.to_lowercase()).collect() });
                 log::info!("input recording on ({rate} Hz cursor)");
                 Some(w)
             }
@@ -728,10 +740,7 @@ impl Engine {
         let recording = self.active.as_ref().unwrap().recording;
         // Ask the recorder for its own elapsed time right after the poll (used for the offset).
         // Only sample while the clock runs (League reports 0:00 during the loading screen).
-        let rec_elapsed = if recording
-            && update.as_ref().is_some_and(|u| u.game_time.is_some_and(|t| t > 0.5))
-            && self.active.as_ref().unwrap().offset_samples.len() < OFFSET_SAMPLES
-        {
+        let rec_elapsed = if recording && update.as_ref().is_some_and(|u| u.game_time.is_some_and(|t| t > 0.5)) && self.active.as_ref().unwrap().offset_samples.len() < OFFSET_SAMPLES {
             match self.recorder.record_elapsed().await {
                 Ok(Some(d)) => Some(d.as_secs_f64()),
                 _ => self.active.as_ref().unwrap().rec_started.map(|r| r.elapsed().as_secs_f64()),
@@ -1128,11 +1137,7 @@ impl Engine {
             let elapsed = a.rec_started.map(|r| r.elapsed().as_secs_f64());
             let t_stop = Instant::now();
             let stopped = self.recorder.stop_recording().await;
-            log::info!(
-                "post-game: recording stopped and made playable in {} ms ({} ms after the match ended)",
-                t_stop.elapsed().as_millis(),
-                over.elapsed().as_millis()
-            );
+            log::info!("post-game: recording stopped and made playable in {} ms ({} ms after the match ended)", t_stop.elapsed().as_millis(), over.elapsed().as_millis());
             match stopped {
                 Ok(_) if a.rule == ModeRule::ClipsOnly => {
                     log::info!("clips-only game ended: {} clips", a.session.clips.len());
@@ -1142,13 +1147,8 @@ impl Engine {
                     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("mp4").to_string();
                     let dest = session::unique_path(&a.dir, &a.session.video_name(short, &ext));
                     let final_path = if move_file(&path, &dest).await { dest } else { path };
-                    a.session.video_file = Some(
-                        if final_path.parent() == Some(a.dir.as_path()) {
-                            final_path.file_name().unwrap().to_string_lossy().to_string()
-                        } else {
-                            final_path.to_string_lossy().to_string()
-                        },
-                    );
+                    a.session.video_file =
+                        Some(if final_path.parent() == Some(a.dir.as_path()) { final_path.file_name().unwrap().to_string_lossy().to_string() } else { final_path.to_string_lossy().to_string() });
                 }
                 Err(e) => {
                     let msg = format!("Stopping the recording failed: {e:#}");
@@ -1167,10 +1167,7 @@ impl Engine {
         }
         self.recorder_status = self.recorder.status().await;
 
-        let too_short = !a.reached_in_progress
-            && a.session.events.is_empty()
-            && a.session.clips.is_empty()
-            && a.session.video_duration.unwrap_or(0.0) < 30.0;
+        let too_short = !a.reached_in_progress && a.session.events.is_empty() && a.session.clips.is_empty() && a.session.video_duration.unwrap_or(0.0) < 30.0;
         let sid = a.session.id.clone();
         if too_short {
             log::info!("discarding short session {sid}");
@@ -1310,7 +1307,11 @@ async fn move_file(from: &Path, to: &Path) -> bool {
 
 fn is_cross_device(e: &std::io::Error) -> bool {
     // ERROR_NOT_SAME_DEVICE on Windows, EXDEV elsewhere.
-    if cfg!(windows) { e.raw_os_error() == Some(17) } else { e.raw_os_error() == Some(18) }
+    if cfg!(windows) {
+        e.raw_os_error() == Some(17)
+    } else {
+        e.raw_os_error() == Some(18)
+    }
 }
 
 #[cfg(test)]

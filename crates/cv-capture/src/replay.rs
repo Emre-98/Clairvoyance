@@ -92,7 +92,7 @@ mod tests {
         let (clip, start) = r.snapshot(10);
         assert!(clip[0].key);
         assert_eq!(start, 18 * S); // latest 29.9 -> cutoff 19.9 -> keyframe at 18
-        // Buffer never holds much more than the window + one GOP.
+                                   // Buffer never holds much more than the window + one GOP.
         let first = r.packets.front().unwrap().pts;
         assert!(first >= 16 * S && first <= 20 * S, "first = {first}");
     }

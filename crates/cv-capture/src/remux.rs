@@ -874,12 +874,7 @@ fn build_head(p: &Parsed, co64: bool) -> io::Result<(Vec<u8>, Vec<Vec<(usize, us
     let data_len = o;
     let build = |shift: u64| -> io::Result<Vec<u8>> {
         let mut parts = Vec::new();
-        let longest = p
-            .tracks
-            .iter()
-            .map(|t| out_durations(t).iter().map(|d| *d as u64).sum::<u64>() * movie_ts as u64 / t.timescale as u64)
-            .max()
-            .unwrap_or(0);
+        let longest = p.tracks.iter().map(|t| out_durations(t).iter().map(|d| *d as u64).sum::<u64>() * movie_ts as u64 / t.timescale as u64).max().unwrap_or(0);
         parts.push(with_duration(&p.mvhd, b"mvhd", longest));
         for (i, t) in p.tracks.iter().enumerate() {
             if t.samples.is_empty() {
@@ -1058,12 +1053,7 @@ fn index_steps(path: &Path, last: u8) -> io::Result<InPlaceReport> {
     rep.reserve_bytes = res.size;
     let co64 = p.len > u32::MAX as u64;
     let movie_ts = movie_timescale(&p.mvhd);
-    let longest = p
-        .tracks
-        .iter()
-        .map(|t| out_durations(t).iter().map(|d| *d as u64).sum::<u64>() * movie_ts as u64 / t.timescale as u64)
-        .max()
-        .unwrap_or(0);
+    let longest = p.tracks.iter().map(|t| out_durations(t).iter().map(|d| *d as u64).sum::<u64>() * movie_ts as u64 / t.timescale as u64).max().unwrap_or(0);
     let mut parts = vec![with_duration(&p.mvhd, b"mvhd", longest)];
     for (i, t) in p.tracks.iter().enumerate() {
         if t.samples.is_empty() {
@@ -1160,11 +1150,14 @@ pub fn cut(src: &Path, dst: &Path, start: f64, secs: f64) -> io::Result<f64> {
         .iter()
         .map(|t| {
             let mut d = t.first_dts;
-            t.samples.iter().map(|s| {
-                let v = d;
-                d += s.dur as u64;
-                v
-            }).collect()
+            t.samples
+                .iter()
+                .map(|s| {
+                    let v = d;
+                    d += s.dur as u64;
+                    v
+                })
+                .collect()
         })
         .collect();
     let vts = p.tracks[vi].timescale as f64;
@@ -1250,14 +1243,22 @@ pub fn loop_recording_r(src: &Path, dst: &Path, secs: f64, reserve: u64) -> io::
         .iter()
         .map(|t| {
             let mut d = t.first_dts;
-            t.samples.iter().map(|s| {
-                let v = d;
-                d += s.dur as u64;
-                v
-            }).collect()
+            t.samples
+                .iter()
+                .map(|s| {
+                    let v = d;
+                    d += s.dur as u64;
+                    v
+                })
+                .collect()
         })
         .collect();
-    let period: Vec<u64> = p.tracks.iter().enumerate().map(|(i, t)| dts[i].last().copied().unwrap_or(0) + t.samples.last().map(|s| s.dur as u64).unwrap_or(0)).collect();
+    let period: Vec<u64> = p
+        .tracks
+        .iter()
+        .enumerate()
+        .map(|(i, t)| dts[i].last().copied().unwrap_or(0) + t.samples.last().map(|s| s.dur as u64).unwrap_or(0))
+        .collect();
     let period_secs = period[vi] as f64 / p.tracks[vi].timescale as f64;
     // Header: the source's ftyp + moov as they are.
     let mut inp = File::open(src)?;

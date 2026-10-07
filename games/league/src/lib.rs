@@ -10,22 +10,20 @@
 //! after the game, a check against the recording's ability bar ([`verify`], [`hud`]).
 
 pub mod actions;
-pub mod events;
-pub mod queues;
 pub mod ddragon;
+pub mod events;
 pub mod hud;
+pub mod queues;
 pub mod ult;
 pub mod ultkind;
 pub mod verify;
 pub mod watch;
 
 use async_trait::async_trait;
-use events::{translate, Ctx, EventList};
-use cv_core::game::{
-    CaptureTarget, ConfigField, GameIntegration, GameResult, KeyPress, MatchPhase, PlayerInfo, PlayerStats, PollUpdate, SessionCheck, WatchKind,
-};
+use cv_core::game::{CaptureTarget, ConfigField, GameIntegration, GameResult, KeyPress, MatchPhase, PlayerInfo, PlayerStats, PollUpdate, SessionCheck, WatchKind};
 use cv_core::modes::{CatalogMode, MatchMode, ModeGroupInfo};
 use cv_core::{EventKind, GameEvent};
+use events::{translate, Ctx, EventList};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
@@ -420,10 +418,7 @@ impl GameIntegration for LeagueIntegration {
         &["league of legends.exe"]
     }
     fn capture(&self) -> CaptureTarget {
-        CaptureTarget {
-            exe: "League of Legends.exe".into(),
-            display_capture_only: false,
-        }
+        CaptureTarget { exe: "League of Legends.exe".into(), display_capture_only: false }
     }
     fn supports_events(&self) -> bool {
         true
@@ -507,11 +502,7 @@ impl GameIntegration for LeagueIntegration {
             if attempt > 0 {
                 tokio::time::sleep(Duration::from_millis(300)).await;
             }
-            let (phase, replays, w) = tokio::join!(
-                lcu.get_raw("/lol-gameflow/v1/gameflow-phase"),
-                lcu.get_raw("/lol-replays/v1/configuration"),
-                lcu.get_raw("/lol-gameflow/v1/watch")
-            );
+            let (phase, replays, w) = tokio::join!(lcu.get_raw("/lol-gameflow/v1/gameflow-phase"), lcu.get_raw("/lol-replays/v1/configuration"), lcu.get_raw("/lol-gameflow/v1/watch"));
             if let Ok((200, v)) = phase {
                 facts.phase = v.as_str().map(str::to_string);
             }
@@ -807,12 +798,7 @@ impl GameIntegration for LeagueIntegration {
         actions::press_states(session, keys, presses)
     }
 
-    fn verify_recording(
-        &self,
-        session: &mut cv_core::session::GameSession,
-        video: &mut dyn cv_core::game::FrameSource,
-        cancel: &dyn Fn() -> bool,
-    ) -> Option<anyhow::Result<()>> {
+    fn verify_recording(&self, session: &mut cv_core::session::GameSession, video: &mut dyn cv_core::game::FrameSource, cancel: &dyn Fn() -> bool) -> Option<anyhow::Result<()>> {
         Some(verify::verify(session, video, &ult::UltRules::load(data_dir()), cancel))
     }
 

@@ -64,21 +64,12 @@ fn roots() -> Roots {
 fn paths() -> Paths {
     let r = roots();
     let data_dir = r.local.join(APP_NAME);
-    Paths {
-        config_file: r.roaming.join(APP_NAME).join("settings.json"),
-        log_file: data_dir.join("logs").join("clairvoyance.log"),
-        data_dir,
-        default_save_dir: r.videos.join(APP_NAME),
-    }
+    Paths { config_file: r.roaming.join(APP_NAME).join("settings.json"), log_file: data_dir.join("logs").join("clairvoyance.log"), data_dir, default_save_dir: r.videos.join(APP_NAME) }
 }
 
 fn old_paths() -> migrate::OldPaths {
     let r = roots();
-    migrate::OldPaths {
-        config_file: r.roaming.join(migrate::OLD_NAME).join("settings.json"),
-        data_dir: r.local.join(migrate::OLD_NAME),
-        default_save_dir: r.videos.join(migrate::OLD_NAME),
-    }
+    migrate::OldPaths { config_file: r.roaming.join(migrate::OLD_NAME).join("settings.json"), data_dir: r.local.join(migrate::OLD_NAME), default_save_dir: r.videos.join(migrate::OLD_NAME) }
 }
 
 /// Native background behind the page: matches the theme so opening the window never flashes.
@@ -303,23 +294,11 @@ fn main() {
             log::info!("GPU: {gpu:?}");
             let shared = Arc::new(RwLock::new(settings.clone()));
 
-            let ffmpeg = Arc::new(ffmpeg::Ffmpeg::new(
-                settings.ffmpeg_path.clone(),
-                paths.data_dir.join("ffmpeg"),
-                gpu.as_ref().map(|g| g.encoder.clone()).unwrap_or_default(),
-            ));
+            let ffmpeg = Arc::new(ffmpeg::Ffmpeg::new(settings.ffmpeg_path.clone(), paths.data_dir.join("ffmpeg"), gpu.as_ref().map(|g| g.encoder.clone()).unwrap_or_default()));
             let recorder = Arc::new(cv_capture::NativeRecorder::new());
             // League: Data Dragon cache and the user's ult_rules.json override live here.
             cv_game_league::set_data_dir(paths.data_dir.clone());
-            let engine = Engine::new(
-                games::all(),
-                recorder.clone(),
-                platform.clone(),
-                Some(ffmpeg.clone()),
-                state::resolve_encoder(&settings, gpu.as_ref()),
-                paths.default_save_dir.clone(),
-                ev_tx,
-            );
+            let engine = Engine::new(games::all(), recorder.clone(), platform.clone(), Some(ffmpeg.clone()), state::resolve_encoder(&settings, gpu.as_ref()), paths.default_save_dir.clone(), ev_tx);
             let task = tauri::async_runtime::spawn(engine.run(cmd_rx, in_rx));
 
             let st = Arc::new(AppState {
@@ -335,10 +314,7 @@ fn main() {
                 perf: Mutex::new(Default::default()),
                 perf_cancel: Default::default(),
                 ui_visible: Default::default(),
-                library: Arc::new(cv_core::library::LibraryIndex::new(
-                    paths.data_dir.join("library-cache.json"),
-                    cv_core::library::ThumbStore::new(paths.data_dir.join("Thumbnails")),
-                )),
+                library: Arc::new(cv_core::library::LibraryIndex::new(paths.data_dir.join("library-cache.json"), cv_core::library::ThumbStore::new(paths.data_dir.join("Thumbnails")))),
                 library_dirty: Default::default(),
                 library_first_refresh: Default::default(),
                 maintenance: Default::default(),

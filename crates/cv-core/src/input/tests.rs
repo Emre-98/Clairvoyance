@@ -208,7 +208,17 @@ fn gaps_break_the_trail_and_payload_layout() {
     // First sample's x (0.2 + 0) in i16 units.
     let x0 = i16::from_le_bytes(b[44 + nm as usize * 4..44 + nm as usize * 4 + 2].try_into().unwrap());
     assert_eq!(x0, (0.2 * POS_SCALE).round() as i16);
-    let len = 44 + nm as usize * 4 + pad(nm as usize * 4) + nb as usize * 4 + nc as usize * 12 + pad(nc as usize) + nk as usize * 4 + pad(nk as usize * 2) + ng as usize * 8 + nw as usize * 28 + (hw * hh) as usize * 4;
+    let len = 44
+        + nm as usize * 4
+        + pad(nm as usize * 4)
+        + nb as usize * 4
+        + nc as usize * 12
+        + pad(nc as usize)
+        + nk as usize * 4
+        + pad(nk as usize * 2)
+        + ng as usize * 8
+        + nw as usize * 28
+        + (hw * hh) as usize * 4;
     assert_eq!(b.len(), len);
 }
 

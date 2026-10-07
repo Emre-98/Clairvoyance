@@ -618,7 +618,8 @@ mod tests {
         if kept_clip {
             std::fs::create_dir_all(dir.join(CLIPS_DIR)).unwrap();
             std::fs::write(dir.join(CLIPS_DIR).join("c.mp4"), vec![0u8; 10]).unwrap();
-            s.clips.push(ClipInfo { file: "c.mp4".into(), title: "c".into(), video_start: Some(1.0), video_end: Some(5.0), created_at: Local::now(), source: "replay".into(), keep: true });
+            s.clips
+                .push(ClipInfo { file: "c.mp4".into(), title: "c".into(), video_start: Some(1.0), video_end: Some(5.0), created_at: Local::now(), source: "replay".into(), keep: true });
         }
         s.save(&dir).unwrap();
         std::fs::write(dir.join("v.mp4"), vec![0u8; bytes]).unwrap();

@@ -22,12 +22,7 @@ pub fn view(st: &AppState) -> Vec<GameModesView> {
     crate::games::all()
         .into_iter()
         .filter(|g| !g.mode_groups().is_empty())
-        .map(|g| GameModesView {
-            game_id: g.id().to_string(),
-            game_name: g.name().to_string(),
-            groups: g.mode_groups(),
-            modes: s.modes.get(g.id()).cloned().unwrap_or_default(),
-        })
+        .map(|g| GameModesView { game_id: g.id().to_string(), game_name: g.name().to_string(), groups: g.mode_groups(), modes: s.modes.get(g.id()).cloned().unwrap_or_default() })
         .collect()
 }
 

@@ -9,13 +9,27 @@ struct FakeGame {
 
 #[async_trait]
 impl GameIntegration for FakeGame {
-    fn id(&self) -> &'static str { "fake" }
-    fn name(&self) -> &'static str { "Fake Game" }
-    fn short_name(&self) -> &'static str { "Fake" }
-    fn process_names(&self) -> &'static [&'static str] { &["fake.exe"] }
-    fn capture(&self) -> CaptureTarget { CaptureTarget { exe: "fake.exe".into(), display_capture_only: false } }
-    fn supports_events(&self) -> bool { true }
-    fn end_grace(&self) -> Duration { Duration::from_millis(0) }
+    fn id(&self) -> &'static str {
+        "fake"
+    }
+    fn name(&self) -> &'static str {
+        "Fake Game"
+    }
+    fn short_name(&self) -> &'static str {
+        "Fake"
+    }
+    fn process_names(&self) -> &'static [&'static str] {
+        &["fake.exe"]
+    }
+    fn capture(&self) -> CaptureTarget {
+        CaptureTarget { exe: "fake.exe".into(), display_capture_only: false }
+    }
+    fn supports_events(&self) -> bool {
+        true
+    }
+    fn end_grace(&self) -> Duration {
+        Duration::from_millis(0)
+    }
     async fn poll(&mut self) -> anyhow::Result<PollUpdate> {
         self.polls += 1;
         let p = self.polls;
@@ -51,13 +65,18 @@ struct FakeRecorder {
 
 #[async_trait]
 impl Recorder for FakeRecorder {
-    async fn ensure_connected(&self) -> anyhow::Result<()> { Ok(()) }
+    async fn ensure_connected(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
     async fn prepare(&self, _t: &CaptureTarget, o: &RecordOptions) -> anyhow::Result<()> {
         *self.dir.lock().unwrap() = Some(o.output_dir.clone());
         *self.full_video.lock().unwrap() = Some(o.full_video);
         Ok(())
     }
-    async fn start_recording(&self) -> anyhow::Result<()> { *self.started.lock().unwrap() = true; Ok(()) }
+    async fn start_recording(&self) -> anyhow::Result<()> {
+        *self.started.lock().unwrap() = true;
+        Ok(())
+    }
     async fn stop_recording(&self) -> anyhow::Result<PathBuf> {
         *self.stops.lock().unwrap() += 1;
         let p = self.dir.lock().unwrap().clone().unwrap().join("raw.mp4");
@@ -69,10 +88,18 @@ impl Recorder for FakeRecorder {
         let polls = *self.game_clock.lock().unwrap();
         Ok(Some(Duration::from_secs_f64(polls + 25.0)))
     }
-    async fn save_replay(&self, _secs: Option<u32>) -> anyhow::Result<PathBuf> { anyhow::bail!("no") }
-    async fn finish(&self) -> anyhow::Result<()> { Ok(()) }
-    async fn status(&self) -> RecorderStatus { RecorderStatus { connected: true, ..Default::default() } }
-    fn clock_base_hns(&self) -> Option<i64> { Some(0) }
+    async fn save_replay(&self, _secs: Option<u32>) -> anyhow::Result<PathBuf> {
+        anyhow::bail!("no")
+    }
+    async fn finish(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+    async fn status(&self) -> RecorderStatus {
+        RecorderStatus { connected: true, ..Default::default() }
+    }
+    fn clock_base_hns(&self) -> Option<i64> {
+        Some(0)
+    }
 }
 
 struct FakePlatform {
@@ -80,11 +107,19 @@ struct FakePlatform {
     capture: Mutex<Option<crate::input::CaptureRequest>>,
 }
 impl Platform for FakePlatform {
-    fn running_processes(&self) -> Vec<String> { self.procs.lock().unwrap().clone() }
-    fn foreground_process(&self) -> Option<String> { Some("fake.exe".into()) }
+    fn running_processes(&self) -> Vec<String> {
+        self.procs.lock().unwrap().clone()
+    }
+    fn foreground_process(&self) -> Option<String> {
+        Some("fake.exe".into())
+    }
     fn speak(&self, _t: &str, _v: u8) {}
-    fn perf_sample(&self) -> Option<(f64, f64)> { Some((0.2, 40.0)) }
-    fn start_input_capture(&self, req: crate::input::CaptureRequest) { *self.capture.lock().unwrap() = Some(req); }
+    fn perf_sample(&self) -> Option<(f64, f64)> {
+        Some((0.2, 40.0))
+    }
+    fn start_input_capture(&self, req: crate::input::CaptureRequest) {
+        *self.capture.lock().unwrap() = Some(req);
+    }
     fn stop_input_capture(&self) -> Option<crate::input::CaptureStats> {
         self.capture.lock().unwrap().take().map(|_| crate::input::CaptureStats::default())
     }
@@ -97,13 +132,27 @@ struct ClockGame {
 }
 #[async_trait]
 impl GameIntegration for ClockGame {
-    fn id(&self) -> &'static str { self.inner.id() }
-    fn name(&self) -> &'static str { self.inner.name() }
-    fn short_name(&self) -> &'static str { self.inner.short_name() }
-    fn process_names(&self) -> &'static [&'static str] { self.inner.process_names() }
-    fn capture(&self) -> CaptureTarget { self.inner.capture() }
-    fn supports_events(&self) -> bool { true }
-    fn end_grace(&self) -> Duration { Duration::from_millis(0) }
+    fn id(&self) -> &'static str {
+        self.inner.id()
+    }
+    fn name(&self) -> &'static str {
+        self.inner.name()
+    }
+    fn short_name(&self) -> &'static str {
+        self.inner.short_name()
+    }
+    fn process_names(&self) -> &'static [&'static str] {
+        self.inner.process_names()
+    }
+    fn capture(&self) -> CaptureTarget {
+        self.inner.capture()
+    }
+    fn supports_events(&self) -> bool {
+        true
+    }
+    fn end_grace(&self) -> Duration {
+        Duration::from_millis(0)
+    }
     async fn poll(&mut self) -> anyhow::Result<PollUpdate> {
         let u = self.inner.poll().await?;
         if let Some(gt) = u.game_time {
@@ -111,7 +160,9 @@ impl GameIntegration for ClockGame {
         }
         Ok(u)
     }
-    fn on_key(&mut self, key: &KeyPress, gt: f64) -> Option<GameEvent> { self.inner.on_key(key, gt) }
+    fn on_key(&mut self, key: &KeyPress, gt: f64) -> Option<GameEvent> {
+        self.inner.on_key(key, gt)
+    }
 }
 
 #[tokio::test(start_paused = true)]
@@ -212,14 +263,30 @@ struct MatchGame {
 
 #[async_trait]
 impl GameIntegration for MatchGame {
-    fn id(&self) -> &'static str { "mg" }
-    fn name(&self) -> &'static str { "Match Game" }
-    fn short_name(&self) -> &'static str { "MG" }
-    fn process_names(&self) -> &'static [&'static str] { &["mg.exe"] }
-    fn capture(&self) -> CaptureTarget { CaptureTarget { exe: "mg.exe".into(), display_capture_only: true } }
-    fn supports_events(&self) -> bool { true }
-    fn match_only(&self) -> bool { true }
-    fn end_grace(&self) -> Duration { Duration::from_secs(1) }
+    fn id(&self) -> &'static str {
+        "mg"
+    }
+    fn name(&self) -> &'static str {
+        "Match Game"
+    }
+    fn short_name(&self) -> &'static str {
+        "MG"
+    }
+    fn process_names(&self) -> &'static [&'static str] {
+        &["mg.exe"]
+    }
+    fn capture(&self) -> CaptureTarget {
+        CaptureTarget { exe: "mg.exe".into(), display_capture_only: true }
+    }
+    fn supports_events(&self) -> bool {
+        true
+    }
+    fn match_only(&self) -> bool {
+        true
+    }
+    fn end_grace(&self) -> Duration {
+        Duration::from_secs(1)
+    }
     async fn poll(&mut self) -> anyhow::Result<PollUpdate> {
         let phase = *self.phase.lock().unwrap();
         Ok(PollUpdate { phase, game_time: Some(1.0), events: vec![GameEvent::new("x", EventKind::Kill, 1.0, "Kill")], ..Default::default() })
@@ -279,18 +346,36 @@ struct ModeGame {
 }
 #[async_trait]
 impl GameIntegration for ModeGame {
-    fn id(&self) -> &'static str { self.inner.id() }
-    fn name(&self) -> &'static str { self.inner.name() }
-    fn short_name(&self) -> &'static str { self.inner.short_name() }
-    fn process_names(&self) -> &'static [&'static str] { self.inner.process_names() }
-    fn capture(&self) -> CaptureTarget { self.inner.capture() }
-    fn supports_events(&self) -> bool { true }
-    fn end_grace(&self) -> Duration { Duration::from_millis(0) }
-    async fn poll(&mut self) -> anyhow::Result<PollUpdate> { self.inner.poll().await }
+    fn id(&self) -> &'static str {
+        self.inner.id()
+    }
+    fn name(&self) -> &'static str {
+        self.inner.name()
+    }
+    fn short_name(&self) -> &'static str {
+        self.inner.short_name()
+    }
+    fn process_names(&self) -> &'static [&'static str] {
+        self.inner.process_names()
+    }
+    fn capture(&self) -> CaptureTarget {
+        self.inner.capture()
+    }
+    fn supports_events(&self) -> bool {
+        true
+    }
+    fn end_grace(&self) -> Duration {
+        Duration::from_millis(0)
+    }
+    async fn poll(&mut self) -> anyhow::Result<PollUpdate> {
+        self.inner.poll().await
+    }
     fn mode_groups(&self) -> Vec<crate::modes::ModeGroupInfo> {
         vec![crate::modes::ModeGroupInfo { id: "aram", label: "ARAM", help: "" }]
     }
-    async fn detect_mode(&mut self) -> Option<crate::modes::MatchMode> { Some(self.mode.clone()) }
+    async fn detect_mode(&mut self) -> Option<crate::modes::MatchMode> {
+        Some(self.mode.clone())
+    }
 }
 
 fn mode(key: &str, name: &str) -> crate::modes::MatchMode {
@@ -311,7 +396,18 @@ async fn modes_switched_off_are_never_recorded() {
     let mut settings = Settings::default();
     settings.save_dir = root.to_string_lossy().to_string();
     let mut gm = crate::modes::GameModes::default();
-    gm.merge_catalog(&[crate::modes::CatalogMode { key: "q450".into(), queue_id: Some(450), name: "ARAM".into(), game_mode: Some("ARAM".into()), group: "aram".into(), default_rule: Some(ModeRule::Off), available: Some(true) }], false);
+    gm.merge_catalog(
+        &[crate::modes::CatalogMode {
+            key: "q450".into(),
+            queue_id: Some(450),
+            name: "ARAM".into(),
+            game_mode: Some("ARAM".into()),
+            group: "aram".into(),
+            default_rule: Some(ModeRule::Off),
+            available: Some(true),
+        }],
+        false,
+    );
     settings.modes.insert("fake".into(), gm);
     let engine = Engine::new(vec![Box::new(game)], recorder.clone(), platform.clone(), None, settings, root.clone(), tx);
     let handle = tokio::spawn(engine.run(crx, irx));
@@ -372,14 +468,30 @@ struct InputGame {
 }
 #[async_trait]
 impl GameIntegration for InputGame {
-    fn id(&self) -> &'static str { self.inner.id() }
-    fn name(&self) -> &'static str { self.inner.name() }
-    fn short_name(&self) -> &'static str { self.inner.short_name() }
-    fn process_names(&self) -> &'static [&'static str] { self.inner.process_names() }
-    fn capture(&self) -> CaptureTarget { self.inner.capture() }
-    fn supports_events(&self) -> bool { true }
-    fn end_grace(&self) -> Duration { Duration::from_millis(0) }
-    async fn poll(&mut self) -> anyhow::Result<PollUpdate> { self.inner.poll().await }
+    fn id(&self) -> &'static str {
+        self.inner.id()
+    }
+    fn name(&self) -> &'static str {
+        self.inner.name()
+    }
+    fn short_name(&self) -> &'static str {
+        self.inner.short_name()
+    }
+    fn process_names(&self) -> &'static [&'static str] {
+        self.inner.process_names()
+    }
+    fn capture(&self) -> CaptureTarget {
+        self.inner.capture()
+    }
+    fn supports_events(&self) -> bool {
+        true
+    }
+    fn end_grace(&self) -> Duration {
+        Duration::from_millis(0)
+    }
+    async fn poll(&mut self) -> anyhow::Result<PollUpdate> {
+        self.inner.poll().await
+    }
     fn on_key(&mut self, key: &KeyPress, gt: f64) -> Option<GameEvent> {
         if key.key == "Enter" {
             self.chat = !self.chat;
@@ -387,8 +499,12 @@ impl GameIntegration for InputGame {
         }
         self.inner.on_key(key, gt)
     }
-    fn input_tracking(&self) -> bool { true }
-    fn chat_open(&self) -> bool { self.chat }
+    fn input_tracking(&self) -> bool {
+        true
+    }
+    fn chat_open(&self) -> bool {
+        self.chat
+    }
     fn action_keys(&self) -> Vec<crate::input::actions::ActionKey> {
         vec![crate::input::actions::ActionKey {
             id: "spell1".into(),
@@ -435,13 +551,7 @@ async fn input_recording_keys_chat_and_mouse_marks() {
     w.push(Record::Focus { t: 30_000_000, focused: true });
     w.push(Record::Cursor { t: 30_000_000, x: 1000, y: 2000 });
     w.push(Record::Button { t: 31_000_000, button: 5, down: true });
-    let key = |name: &str, vk: u16, down: bool, us: i64| InputEvent {
-        key: Some(KeyPress { key: name.into(), ctrl: false, shift: false, alt: false }),
-        vk,
-        down,
-        at: Instant::now(),
-        qpc_hns: us * 10,
-    };
+    let key = |name: &str, vk: u16, down: bool, us: i64| InputEvent { key: Some(KeyPress { key: name.into(), ctrl: false, shift: false, alt: false }), vk, down, at: Instant::now(), qpc_hns: us * 10 };
     for ev in [
         key("Q", 0x51, true, 32_000_000),
         key("Q", 0x51, false, 32_100_000),
@@ -507,15 +617,33 @@ struct WatchGame {
 
 #[async_trait]
 impl GameIntegration for WatchGame {
-    fn id(&self) -> &'static str { "fake" }
-    fn name(&self) -> &'static str { "Fake Game" }
-    fn short_name(&self) -> &'static str { "Fake" }
-    fn process_names(&self) -> &'static [&'static str] { &["fake.exe"] }
-    fn capture(&self) -> CaptureTarget { CaptureTarget { exe: "fake.exe".into(), display_capture_only: false } }
-    fn supports_events(&self) -> bool { true }
-    fn end_grace(&self) -> Duration { Duration::from_millis(0) }
-    async fn session_check(&mut self) -> SessionCheck { self.check }
-    fn record_spectating(&self) -> bool { self.spectate_setting }
+    fn id(&self) -> &'static str {
+        "fake"
+    }
+    fn name(&self) -> &'static str {
+        "Fake Game"
+    }
+    fn short_name(&self) -> &'static str {
+        "Fake"
+    }
+    fn process_names(&self) -> &'static [&'static str] {
+        &["fake.exe"]
+    }
+    fn capture(&self) -> CaptureTarget {
+        CaptureTarget { exe: "fake.exe".into(), display_capture_only: false }
+    }
+    fn supports_events(&self) -> bool {
+        true
+    }
+    fn end_grace(&self) -> Duration {
+        Duration::from_millis(0)
+    }
+    async fn session_check(&mut self) -> SessionCheck {
+        self.check
+    }
+    fn record_spectating(&self) -> bool {
+        self.spectate_setting
+    }
     async fn poll(&mut self) -> anyhow::Result<PollUpdate> {
         self.polls += 1;
         if self.polls <= 2 {

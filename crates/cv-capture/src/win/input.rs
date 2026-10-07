@@ -30,8 +30,8 @@ use windows::Win32::Foundation::{CloseHandle, FILETIME, HANDLE, HWND, POINT, REC
 use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
 use windows::Win32::Graphics::Gdi::ClientToScreen;
 use windows::Win32::System::Threading::{
-    CreateWaitableTimerExW, GetCurrentThread, GetThreadTimes, SetThreadPriority, SetWaitableTimer, WaitForSingleObject, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
-    THREAD_PRIORITY_BELOW_NORMAL, TIMER_ALL_ACCESS,
+    CreateWaitableTimerExW, GetCurrentThread, GetThreadTimes, SetThreadPriority, SetWaitableTimer, WaitForSingleObject, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, THREAD_PRIORITY_BELOW_NORMAL,
+    TIMER_ALL_ACCESS,
 };
 use windows::Win32::UI::HiDpi::{GetDpiForWindow, SetThreadDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, GetLastInputInfo, LASTINPUTINFO};
@@ -340,12 +340,7 @@ fn run(req: CaptureRequest, stop: Arc<AtomicBool>) -> CaptureStats {
     let hz = (tsc() - tsc0) as f64 / ((qpc_hns() - qpc0) as f64 / 1e7);
     let ms = |c: u64| if hz > 0.0 { c as f64 / hz * 1000.0 } else { 0.0 };
     st.cpu_ms = if hz > 0.0 { ms(thread_cycles() - cyc0) } else { st.cpu_ms_sampled };
-    st.sections_ms = vec![
-        ("buttons".into(), ms(sec.buttons)),
-        ("foreground".into(), ms(sec.focus)),
-        ("cursor".into(), ms(sec.cursor)),
-        ("window".into(), ms(sec.window)),
-        ("write".into(), ms(sec.write)),
-    ];
+    st.sections_ms =
+        vec![("buttons".into(), ms(sec.buttons)), ("foreground".into(), ms(sec.focus)), ("cursor".into(), ms(sec.cursor)), ("window".into(), ms(sec.window)), ("write".into(), ms(sec.write))];
     st
 }

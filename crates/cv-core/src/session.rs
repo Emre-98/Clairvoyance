@@ -253,11 +253,23 @@ pub fn session_folder_name(started: DateTime<Local>, short_game: &str) -> String
 pub fn sanitize(s: &str) -> String {
     let cleaned: String = s
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '.' { c } else if c == ' ' || c == '_' { '-' } else { '\0' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '.' {
+                c
+            } else if c == ' ' || c == '_' {
+                '-'
+            } else {
+                '\0'
+            }
+        })
         .filter(|c| *c != '\0')
         .collect();
     let trimmed = cleaned.trim_matches(|c| c == '.' || c == '-').to_string();
-    if trimmed.is_empty() { "Unknown".into() } else { trimmed }
+    if trimmed.is_empty() {
+        "Unknown".into()
+    } else {
+        trimmed
+    }
 }
 
 /// Picks a path that doesn't exist yet by appending `_2`, `_3`, ...

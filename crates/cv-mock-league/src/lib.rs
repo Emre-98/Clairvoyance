@@ -69,9 +69,7 @@ impl Watch {
 /// An LCU-style queue object for a queue id (a few well-known ones; anything else is a
 /// "brand new" mode, to test how new modes are handled).
 pub fn queue_json(id: i64) -> Value {
-    let q = |desc: &str, t: &str, mode: &str, ranked: bool, cat: &str| {
-        json!({ "id": id, "name": desc, "description": desc, "shortName": desc, "type": t, "gameMode": mode, "isRanked": ranked, "category": cat, "queueAvailability": "Available", "mapId": if mode == "ARAM" { 12 } else if mode == "CHERRY" { 30 } else { 11 } })
-    };
+    let q = |desc: &str, t: &str, mode: &str, ranked: bool, cat: &str| json!({ "id": id, "name": desc, "description": desc, "shortName": desc, "type": t, "gameMode": mode, "isRanked": ranked, "category": cat, "queueAvailability": "Available", "mapId": if mode == "ARAM" { 12 } else if mode == "CHERRY" { 30 } else { 11 } });
     match id {
         420 => q("Ranked Solo/Duo", "RANKED_SOLO_5x5", "CLASSIC", true, "PvP"),
         440 => q("Ranked Flex", "RANKED_FLEX_SR", "CLASSIC", true, "PvP"),
@@ -87,17 +85,7 @@ pub fn queue_json(id: i64) -> Value {
 
 impl Default for MockOptions {
     fn default() -> Self {
-        Self {
-            port: 2998,
-            speed: 4.0,
-            length: 600.0,
-            loading_secs: 8.0,
-            linger_secs: 8.0,
-            player: "Tester#EUW".into(),
-            champion: "Ahri".into(),
-            queue: queue_json(400),
-            watch: Watch::None,
-        }
+        Self { port: 2998, speed: 4.0, length: 600.0, loading_secs: 8.0, linger_secs: 8.0, player: "Tester#EUW".into(), champion: "Ahri".into(), queue: queue_json(400), watch: Watch::None }
     }
 }
 
@@ -233,14 +221,18 @@ impl Script {
         let w = self.opts.watch;
         let has_session = matches!(w, Watch::None | Watch::ReplayLate);
         match path {
-            "/lol-gameflow/v1/session" if !has_session => {
-                return Some(json!({"errorCode":"RPC_ERROR","httpStatus":404,"implementationDetails":{},"message":"No gameflow session exists."}))
-            }
+            "/lol-gameflow/v1/session" if !has_session => return Some(json!({"errorCode":"RPC_ERROR","httpStatus":404,"implementationDetails":{},"message":"No gameflow session exists."})),
             "/lol-gameflow/v1/session" => return Some(json!({ "phase": "InProgress", "gameData": { "queue": self.opts.queue.clone(), "isCustomGame": self.opts.queue["category"] == "Custom" } })),
             "/lol-gameflow/v1/gameflow-phase" => return Some(json!(if has_session { "InProgress" } else { "None" })),
-            "/lol-gameflow/v1/watch" => return Some(json!({ "gameId": if w == Watch::Spectate { 7_000_000_001u64 } else { 0 }, "watchPhase": if w == Watch::Spectate { "WatchInProgress" } else { "None" }, "watchErrorMessage": "" })),
+            "/lol-gameflow/v1/watch" => {
+                return Some(
+                    json!({ "gameId": if w == Watch::Spectate { 7_000_000_001u64 } else { 0 }, "watchPhase": if w == Watch::Spectate { "WatchInProgress" } else { "None" }, "watchErrorMessage": "" }),
+                )
+            }
             "/lol-replays/v1/configuration" => {
-                return Some(json!({"gameVersion":"16.19.823.0722","isInTournament":false,"isLoggedIn":true,"isPatching":false,"isPlayingGame": has_session,"isPlayingReplay": w == Watch::Replay,"isReplaysEnabled":true,"isReplaysForEndOfGameEnabled":true,"isReplaysForMatchHistoryEnabled":true,"minServerVersion":"","minutesUntilReplayConsideredLost":30}))
+                return Some(
+                    json!({"gameVersion":"16.19.823.0722","isInTournament":false,"isLoggedIn":true,"isPatching":false,"isPlayingGame": has_session,"isPlayingReplay": w == Watch::Replay,"isReplaysEnabled":true,"isReplaysForEndOfGameEnabled":true,"isReplaysForMatchHistoryEnabled":true,"minServerVersion":"","minutesUntilReplayConsideredLost":30}),
+                )
             }
             "/lol-game-queues/v1/queues" => {
                 let mut list: Vec<Value> = [420, 440, 400, 480, 450, 1700].iter().map(|id| queue_json(*id)).collect();

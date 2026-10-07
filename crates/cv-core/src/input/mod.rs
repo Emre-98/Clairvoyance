@@ -95,14 +95,40 @@ pub struct WindowInfo {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Record {
     /// Cursor position (client units, see [`UNIT`]).
-    Cursor { t: i64, x: i32, y: i32 },
-    Key { t: i64, vk: u8, down: bool },
-    Button { t: i64, button: u8, down: bool },
-    Wheel { t: i64, delta: i32 },
-    Window { t: i64, info: WindowInfo },
-    Focus { t: i64, focused: bool },
-    Chat { t: i64, open: bool },
-    End { t: i64 },
+    Cursor {
+        t: i64,
+        x: i32,
+        y: i32,
+    },
+    Key {
+        t: i64,
+        vk: u8,
+        down: bool,
+    },
+    Button {
+        t: i64,
+        button: u8,
+        down: bool,
+    },
+    Wheel {
+        t: i64,
+        delta: i32,
+    },
+    Window {
+        t: i64,
+        info: WindowInfo,
+    },
+    Focus {
+        t: i64,
+        focused: bool,
+    },
+    Chat {
+        t: i64,
+        open: bool,
+    },
+    End {
+        t: i64,
+    },
 }
 
 impl Record {
@@ -283,10 +309,7 @@ fn decode_records(b: &[u8], out: &mut Vec<Record>) -> Option<()> {
                     *x = r.i()? as i32;
                 }
                 let dpi = r.u()? as u32;
-                Record::Window {
-                    t,
-                    info: WindowInfo { client: Rect { x: v[0], y: v[1], w: v[2], h: v[3] }, frame: Rect { x: v[4], y: v[5], w: v[6], h: v[7] }, dpi },
-                }
+                Record::Window { t, info: WindowInfo { client: Rect { x: v[0], y: v[1], w: v[2], h: v[3] }, frame: Rect { x: v[4], y: v[5], w: v[6], h: v[7] }, dpi } }
             }
             T_FOCUS => Record::Focus { t, focused: r.byte()? != 0 },
             T_CHAT => Record::Chat { t, open: r.byte()? != 0 },
@@ -528,7 +551,11 @@ pub struct CaptureStats {
 impl CaptureStats {
     /// Share of one CPU core (percent).
     pub fn core_percent(&self) -> f64 {
-        if self.wall_secs > 0.0 { self.cpu_ms / 10.0 / self.wall_secs } else { 0.0 }
+        if self.wall_secs > 0.0 {
+            self.cpu_ms / 10.0 / self.wall_secs
+        } else {
+            0.0
+        }
     }
 }
 

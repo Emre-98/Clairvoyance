@@ -91,7 +91,9 @@ pub fn bench_log(line: String) {
 /// End-to-end tests: the folders in the recordings folder (a replay must leave none behind).
 #[tauri::command]
 pub fn bench_save_dir(st: State<'_, Arc<AppState>>) -> Vec<String> {
-    let mut v: Vec<String> = std::fs::read_dir(st.save_dir()).map(|rd| rd.flatten().filter(|e| e.path().is_dir()).map(|e| e.file_name().to_string_lossy().to_string()).collect()).unwrap_or_default();
+    let mut v: Vec<String> = std::fs::read_dir(st.save_dir())
+        .map(|rd| rd.flatten().filter(|e| e.path().is_dir()).map(|e| e.file_name().to_string_lossy().to_string()).collect())
+        .unwrap_or_default();
     v.sort();
     v
 }

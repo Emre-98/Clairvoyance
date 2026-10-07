@@ -42,9 +42,7 @@ fn main() {
     let t = Instant::now();
     let r: Result<String, String> = match a.get(1).map(|s| s.as_str()) {
         Some("info") if a.len() == 3 => remux::info(Path::new(&a[2])).map(|i| serde_json::to_string_pretty(&i).unwrap()).map_err(|e| e.to_string()),
-        Some("finalize") if a.len() == 4 => remux::finalize(Path::new(&a[2]), Path::new(&a[3]), &|| false)
-            .map(|r| serde_json::to_string_pretty(&r).unwrap())
-            .map_err(|e| e.to_string()),
+        Some("finalize") if a.len() == 4 => remux::finalize(Path::new(&a[2]), Path::new(&a[3]), &|| false).map(|r| serde_json::to_string_pretty(&r).unwrap()).map_err(|e| e.to_string()),
         Some("loop") if a.len() >= 5 => {
             let reserve = if a.iter().any(|x| x == "--reserve") { reserve_bytes(60, 1) } else { 0 };
             remux::loop_recording_r(Path::new(&a[2]), Path::new(&a[3]), a[4].parse().unwrap_or(60.0), reserve)
@@ -308,7 +306,12 @@ fn ult_check(dir: &Path, write: bool, offset: Option<f64>) -> Result<String, Str
         .collect();
     // v1.6: the R spell's id/name from the Live Client Data API whenever it changed in game.
     let r_states: Vec<serde_json::Value> = s.key_presses.iter().filter(|m| m.action == "r_state").map(|m| serde_json::json!({"game_t": m.game_time, "r": m.key})).collect();
-    let presses: Vec<serde_json::Value> = s.key_presses.iter().filter(|m| m.action == "ult").map(|m| serde_json::json!({"game_t": m.game_time, "key": m.key, "accepted": m.accepted, "reason": m.reason})).collect();
+    let presses: Vec<serde_json::Value> = s
+        .key_presses
+        .iter()
+        .filter(|m| m.action == "ult")
+        .map(|m| serde_json::json!({"game_t": m.game_time, "key": m.key, "accepted": m.accepted, "reason": m.reason}))
+        .collect();
     let report = serde_json::json!({
         "video": video,
         "hardware_decoding": v.hardware,
@@ -395,7 +398,10 @@ fn bubbles(dir: &Path, detail: bool) -> Result<String, String> {
     let r_detail: Vec<serde_json::Value> = if detail {
         let no_cast: Vec<f64> = s.events.iter().filter(|e| e.kind == cv_core::EventKind::UltUnconfirmed).map(|e| e.game_time).collect();
         let used: Vec<f64> = s.events.iter().filter(|e| e.kind == cv_core::EventKind::UltUsed).map(|e| e.game_time + s.video_offset).collect();
-        let mut rows: Vec<(f64, serde_json::Value)> = rs.iter().map(|q| (q.t, serde_json::json!({ "t": (q.t * 1000.0).round() / 1000.0, "bubble": format!("{:?}", q.state), "hint": q.hint }))).collect();
+        let mut rows: Vec<(f64, serde_json::Value)> = rs
+            .iter()
+            .map(|q| (q.t, serde_json::json!({ "t": (q.t * 1000.0).round() / 1000.0, "bubble": format!("{:?}", q.state), "hint": q.hint })))
+            .collect();
         for m in s.key_presses.iter().filter(|m| m.action == "ult") {
             let t = m.game_time + s.video_offset;
             let nc = no_cast.iter().any(|&g| (g - m.game_time).abs() < 0.005);

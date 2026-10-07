@@ -304,7 +304,15 @@ unsafe fn sequence_header(mft: &IMFTransform) -> Option<Vec<u8>> {
     }
 }
 
-unsafe fn pull_output(mft: &IMFTransform, provides: bool, out_size: u32, tx: &Sender<super::mux::MuxMsg>, in_flight: &AtomicUsize, fed: &mut std::collections::VecDeque<i64>, last_key: &mut i64) -> Result<()> {
+unsafe fn pull_output(
+    mft: &IMFTransform,
+    provides: bool,
+    out_size: u32,
+    tx: &Sender<super::mux::MuxMsg>,
+    in_flight: &AtomicUsize,
+    fed: &mut std::collections::VecDeque<i64>,
+    last_key: &mut i64,
+) -> Result<()> {
     unsafe {
         let own = if provides {
             None
@@ -442,44 +450,42 @@ pub fn start(gpu: Arc<Gpu>, p: EncodeParams, out: Sender<super::mux::MuxMsg>) ->
     let in_flight = Arc::new(AtomicUsize::new(0));
     let inf = in_flight.clone();
     let fps = p.fps;
-    let thread = std::thread::Builder::new()
-        .name("video-encoder".into())
-        .spawn(move || unsafe {
-            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
-            let _ = MFStartup(MF_VERSION, MFSTARTUP_FULL);
-            let list = match list_encoders(gpu.info.luid, gpu.info.vendor_id, &p.prefer) {
-                Ok(l) => l,
+    let thread = std::thread::Builder::new().name("video-encoder".into()).spawn(move || unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+        let _ = MFStartup(MF_VERSION, MFSTARTUP_FULL);
+        let list = match list_encoders(gpu.info.luid, gpu.info.vendor_id, &p.prefer) {
+            Ok(l) => l,
+            Err(e) => {
+                let _ = ready_tx.send(Err(e));
+                return;
+            }
+        };
+        let mut last_err = anyhow!("no hardware H.264 encoder found (update your graphics driver)");
+        for (act, desc) in list {
+            let mft: IMFTransform = match act.ActivateObject() {
+                Ok(m) => m,
                 Err(e) => {
-                    let _ = ready_tx.send(Err(e));
-                    return;
+                    last_err = anyhow!("{}: {e}", desc.name);
+                    continue;
                 }
             };
-            let mut last_err = anyhow!("no hardware H.264 encoder found (update your graphics driver)");
-            for (act, desc) in list {
-                let mft: IMFTransform = match act.ActivateObject() {
-                    Ok(m) => m,
-                    Err(e) => {
-                        last_err = anyhow!("{}: {e}", desc.name);
-                        continue;
-                    }
-                };
-                match configure(&mft, &gpu, &p) {
-                    Ok(mgr) => {
-                        log::info!("video encoder: {} ({})", desc.name, desc.vendor);
-                        let _ = ready_tx.send(Ok(desc));
-                        run(mft, mgr, fps, rx, out, inf);
-                        let _ = act.ShutdownObject();
-                        return;
-                    }
-                    Err(e) => {
-                        log::warn!("encoder {} unusable: {e:#}", desc.name);
-                        last_err = e.context(desc.name.clone());
-                        let _ = act.ShutdownObject();
-                    }
+            match configure(&mft, &gpu, &p) {
+                Ok(mgr) => {
+                    log::info!("video encoder: {} ({})", desc.name, desc.vendor);
+                    let _ = ready_tx.send(Ok(desc));
+                    run(mft, mgr, fps, rx, out, inf);
+                    let _ = act.ShutdownObject();
+                    return;
+                }
+                Err(e) => {
+                    log::warn!("encoder {} unusable: {e:#}", desc.name);
+                    last_err = e.context(desc.name.clone());
+                    let _ = act.ShutdownObject();
                 }
             }
-            let _ = ready_tx.send(Err(last_err));
-        })?;
+        }
+        let _ = ready_tx.send(Err(last_err));
+    })?;
     let desc = ready_rx.recv().map_err(|_| anyhow!("encoder thread died"))??;
     Ok(VideoEncoder { tx, in_flight, desc, thread: Some(thread) })
 }

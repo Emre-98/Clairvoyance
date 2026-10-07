@@ -166,10 +166,7 @@ pub fn translate(e: &RawEvent, ctx: &Ctx) -> Vec<GameEvent> {
                 let d = assist_details(e, ctx);
                 out.push(GameEvent::new(id(e, "-d"), EventKind::Death, t, format!("Killed by {}", ctx.who(killer))).with_details(d));
             } else if i_helped {
-                out.push(
-                    GameEvent::new(id(e, "-a"), EventKind::Assist, t, format!("Assist on {}", ctx.who(victim)))
-                        .with_details(format!("Killed by {}", ctx.who(killer))),
-                );
+                out.push(GameEvent::new(id(e, "-a"), EventKind::Assist, t, format!("Assist on {}", ctx.who(victim))).with_details(format!("Killed by {}", ctx.who(killer))));
             }
         }
         "Multikill" if i_killed => {
@@ -218,10 +215,14 @@ pub fn translate(e: &RawEvent, ctx: &Ctx) -> Vec<GameEvent> {
 
 fn objective(e: &RawEvent, ctx: &Ctx, kind: EventKind, name: &str, i_killed: bool) -> GameEvent {
     let steal = e.is_stolen();
-    let verb = if steal { "Stole" } else if i_killed { "Took" } else { "Helped take" };
-    GameEvent::new(id(e, ""), kind, e.event_time, format!("{verb} {name}"))
-        .with_details(assist_details(e, ctx))
-        .stolen(steal)
+    let verb = if steal {
+        "Stole"
+    } else if i_killed {
+        "Took"
+    } else {
+        "Helped take"
+    };
+    GameEvent::new(id(e, ""), kind, e.event_time, format!("{verb} {name}")).with_details(assist_details(e, ctx)).stolen(steal)
 }
 
 pub fn mode_name(game_mode: &str) -> String {
@@ -279,10 +280,7 @@ mod tests {
         let c = ctx();
         let out: Vec<GameEvent> = evs.iter().flat_map(|e| translate(e, &c)).collect();
         let kinds: Vec<_> = out.iter().map(|e| e.kind).collect();
-        assert_eq!(
-            kinds,
-            vec![EventKind::GameStart, EventKind::Kill, EventKind::Death, EventKind::Assist, EventKind::Death, EventKind::Multikill, EventKind::FirstBlood]
-        );
+        assert_eq!(kinds, vec![EventKind::GameStart, EventKind::Kill, EventKind::Death, EventKind::Assist, EventKind::Death, EventKind::Multikill, EventKind::FirstBlood]);
         assert_eq!(out[1].title, "Killed Zed");
         assert_eq!(out[1].details.as_deref(), Some("Assists: Lee Sin"));
         assert_eq!(out[2].title, "Killed by Zed");
@@ -309,10 +307,7 @@ mod tests {
         let c = ctx();
         let out: Vec<GameEvent> = evs.iter().flat_map(|e| translate(e, &c)).collect();
         let titles: Vec<_> = out.iter().map(|e| e.title.as_str()).collect();
-        assert_eq!(
-            titles,
-            vec!["Helped take Infernal Drake", "Stole Baron Nashor", "Destroyed a tower", "Helped destroy an inhibitor", "Took Voidgrub", "Team ace", "Victory"]
-        );
+        assert_eq!(titles, vec!["Helped take Infernal Drake", "Stole Baron Nashor", "Destroyed a tower", "Helped destroy an inhibitor", "Took Voidgrub", "Team ace", "Victory"]);
         assert!(out[1].steal);
         assert_eq!(out[1].kind, EventKind::Baron);
         assert!(!out[0].steal);

@@ -527,14 +527,7 @@ fn finalize_video(st: &AppState, video: &Path) -> bool {
     // too long for its reserved room (> ~3 h), are copied (below).
     match remux::index_in_place(video) {
         Ok(r) => {
-            log::info!(
-                "finalized {} for instant playback in place in {} ms ({:?}, index {} KB, {} fragments)",
-                video.display(),
-                t.elapsed().as_millis(),
-                r.from,
-                r.moov_bytes / 1024,
-                r.fragments
-            );
+            log::info!("finalized {} for instant playback in place in {} ms ({:?}, index {} KB, {} fragments)", video.display(), t.elapsed().as_millis(), r.from, r.moov_bytes / 1024, r.fragments);
             return true;
         }
         Err(e) if e.kind() == std::io::ErrorKind::Unsupported => log::debug!("finalize {}: {e}; copying", video.display()),

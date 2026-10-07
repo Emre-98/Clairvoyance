@@ -62,7 +62,12 @@ async fn full_mock_match() {
 /// before the game, and the live queue list is used for the mode catalog.
 #[tokio::test(flavor = "multi_thread")]
 async fn mode_from_the_fake_league_client() {
-    for (port, id, key, name, group) in [(29982u16, 450i64, "q450", "ARAM", "aram"), (29983, 420, "q420", "Ranked Solo/Duo", "ranked"), (29984, 9999, "q9999", "Brand New Mode", "rotating"), (29985, -1, "practice", "Practice Tool", "other")] {
+    for (port, id, key, name, group) in [
+        (29982u16, 450i64, "q450", "ARAM", "aram"),
+        (29983, 420, "q420", "Ranked Solo/Duo", "ranked"),
+        (29984, 9999, "q9999", "Brand New Mode", "rotating"),
+        (29985, -1, "practice", "Practice Tool", "other"),
+    ] {
         let opts = cv_mock_league::MockOptions { port, speed: 60.0, length: 120.0, loading_secs: 30.0, queue: cv_mock_league::queue_json(id), ..Default::default() };
         let mock = cv_mock_league::spawn(opts).unwrap();
         let dir = std::env::temp_dir().join(format!("cv-lcu-{port}-{}", std::process::id()));

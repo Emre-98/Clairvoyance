@@ -79,10 +79,7 @@ unsafe fn process_loopback_client(pid: u32) -> Result<IAudioClient> {
         let params = AUDIOCLIENT_ACTIVATION_PARAMS {
             ActivationType: AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK,
             Anonymous: AUDIOCLIENT_ACTIVATION_PARAMS_0 {
-                ProcessLoopbackParams: AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS {
-                    TargetProcessId: pid,
-                    ProcessLoopbackMode: PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE,
-                },
+                ProcessLoopbackParams: AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS { TargetProcessId: pid, ProcessLoopbackMode: PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE },
             },
         };
         // The PROPVARIANT only *borrows* `params` (on our stack). It must never be dropped:
@@ -244,8 +241,8 @@ impl Aac {
 
 struct Clock {
     rec_start: i64,
-    t0: i64,       // timeline position of the first sample (100 ns)
-    frames: i64,   // frames sent to the encoder so far
+    t0: i64,         // timeline position of the first sample (100 ns)
+    frames: i64,     // frames sent to the encoder so far
     out_frames: i64, // AAC frames received from the encoder
 }
 

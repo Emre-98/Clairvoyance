@@ -281,7 +281,13 @@ pub fn mechanics(an: &Analysis, a: f64, b: f64, offset: f64) -> Mechanics {
     }
 
     // Idle: gaps without input (> 1 s) inside focused time.
-    let mut times: Vec<f64> = moves.iter().map(|m| m.t).chain(downs.iter().map(|c| c.t)).chain(keys.iter().map(|k| k.t)).chain(an.wheel.iter().map(|w| w.0).filter(|t| inr(*t))).collect();
+    let mut times: Vec<f64> = moves
+        .iter()
+        .map(|m| m.t)
+        .chain(downs.iter().map(|c| c.t))
+        .chain(keys.iter().map(|k| k.t))
+        .chain(an.wheel.iter().map(|w| w.0).filter(|t| inr(*t)))
+        .collect();
     times.sort_by(|x, y| x.total_cmp(y));
     let mut idle = 0.0;
     for &(fs, fe) in &an.focus {
