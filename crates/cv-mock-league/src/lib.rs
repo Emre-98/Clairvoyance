@@ -49,6 +49,11 @@ pub enum Watch {
     /// A replay with no replay flag in the client (no gameflow session, nothing else): the
     /// app waits for the in-game API.
     ReplayUnsure,
+    /// Spectating a friend's live game as the owner saw it on 2026-10-03: the client reports it
+    /// like a match of yours (phase "InProgress", a session with its queue, `isPlayingReplay`
+    /// false, no watch state), only the session's players don't include you; the in-game API is
+    /// in spectator mode.
+    SpectateLive,
 }
 
 impl Watch {
@@ -58,6 +63,7 @@ impl Watch {
             "spectate" => Watch::Spectate,
             "replay-late" => Watch::ReplayLate,
             "replay-unsure" => Watch::ReplayUnsure,
+            "spectate-live" => Watch::SpectateLive,
             _ => Watch::None,
         }
     }
@@ -219,10 +225,26 @@ impl Script {
         let path = path.split('?').next().unwrap_or(path);
         // The League client answers from the start (during the loading screen too).
         let w = self.opts.watch;
-        let has_session = matches!(w, Watch::None | Watch::ReplayLate);
+        let has_session = matches!(w, Watch::None | Watch::ReplayLate | Watch::SpectateLive);
         match path {
             "/lol-gameflow/v1/session" if !has_session => return Some(json!({"errorCode":"RPC_ERROR","httpStatus":404,"implementationDetails":{},"message":"No gameflow session exists."})),
-            "/lol-gameflow/v1/session" => return Some(json!({ "phase": "InProgress", "gameData": { "queue": self.opts.queue.clone(), "isCustomGame": self.opts.queue["category"] == "Custom" } })),
+            "/lol-gameflow/v1/session" => {
+                // The match's players (LCU format, shortened): you, unless you're spectating.
+                let player = |name: &str, n: u64| json!({ "puuid": format!("puuid-{}", name.to_lowercase()), "summonerId": 1000 + n, "championId": 103 + n });
+                let mut team_one: Vec<Value> = (1..5).map(|n| player(&format!("ally{n}"), n)).collect();
+                team_one.insert(0, if w == Watch::SpectateLive { player("friend", 0) } else { player(&self.me_short(), 0) });
+                let team_two: Vec<Value> = (5..10).map(|n| player(&format!("enemy{n}"), n)).collect();
+                return Some(json!({ "phase": "InProgress", "gameData": {
+                    "queue": self.opts.queue.clone(),
+                    "isCustomGame": self.opts.queue["category"] == "Custom",
+                    "teamOne": team_one,
+                    "teamTwo": team_two,
+                } }));
+            }
+            "/lol-summoner/v1/current-summoner" => {
+                return Some(json!({ "puuid": format!("puuid-{}", self.me_short().to_lowercase()), "summonerId": 1000, "gameName": self.me_short(), "tagLine": "EUW" }))
+            }
+            "/lol-gameflow/v1/watch" if w == Watch::SpectateLive => return None,
             "/lol-gameflow/v1/gameflow-phase" => return Some(json!(if has_session { "InProgress" } else { "None" })),
             "/lol-gameflow/v1/watch" => {
                 return Some(

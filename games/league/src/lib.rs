@@ -648,8 +648,19 @@ impl cv_core::game::WatchDetection for LeagueIntegration {
                 break;
             }
         }
-        let c = watch::classify_client(&facts);
+        let mut c = watch::classify_client(&facts);
         log::info!("session check: League client phase {:?}, playing replay {:?}, watch {:?} -> {c:?}", facts.phase, facts.playing_replay, facts.watch_phase);
+        if c == SessionCheck::Playing {
+            // Spectating a friend's game looks like your own match to the client: are you one
+            // of its players?
+            let (me, session) = tokio::join!(lcu.get_raw("/lol-summoner/v1/current-summoner"), lcu.get_raw("/lol-gameflow/v1/session"));
+            let roster = match (me, session) {
+                (Ok((200, me)), Ok((200, session))) => watch::in_roster(&me, &session),
+                _ => None,
+            };
+            c = watch::refine_with_roster(c, roster);
+            log::info!("session check: you are one of the match's players: {roster:?} -> {c:?}");
+        }
         self.watch_hint = match c {
             SessionCheck::Watching(k) | SessionCheck::Unsure(k) => Some(k),
             _ => None,

@@ -679,7 +679,7 @@ pub fn simulate_game(st: St, speed: f64, length: f64, queue: Option<i64>, watch:
 
 /// Plays a fake League match (and a fake League client reporting `queue`, default Draft Pick),
 /// so detection, mode rules, recording, events and the timeline can be tried without playing.
-/// `watch`: "replay" / "spectate" / "replay-late" / "replay-unsure" plays spectator mode instead
+/// `watch`: "replay" / "spectate" / "spectate-live" / "replay-late" / "replay-unsure" plays spectator mode instead
 /// (v1.7.1: never recorded), see `cv_mock_league::Watch`.
 pub fn start_simulation(st: Arc<AppState>, speed: f64, length: f64, queue: Option<i64>, watch: Option<&str>) -> R<()> {
     // Each simulation has a number: the clean-up of an earlier one (which waits for its game to

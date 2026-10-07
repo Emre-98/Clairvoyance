@@ -530,7 +530,13 @@ impl Engine {
                 // Not recorded until the game's API says this is a match you play.
                 log::info!("probably {} (no game session in the client): not recording until the game confirms", k.label().to_lowercase());
                 active.stage = Stage::Hold(k);
-                self.message = Some("Checking whether this is a replay…".into());
+                self.message = Some(
+                    match k {
+                        WatchKind::Spectate => "Checking whether you're playing or spectating…",
+                        _ => "Checking whether this is a replay…",
+                    }
+                    .into(),
+                );
                 self.platform.set_input_enabled(false);
                 self.active = Some(active);
                 self.emit(EngineEvent::GameStarted { game_name: gname.into() });

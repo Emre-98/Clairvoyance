@@ -16,7 +16,10 @@
 //!
 //! The in-game API (port 2999) only answers once the game has loaded (~6 s for a replay, the end
 //! of the loading screen for a match), so the League client decides first:
-//! - a game session in progress → a match you play: recorded as before;
+//! - a game session in progress → a match you play: recorded as before, unless the session's
+//!   players clearly don't include you (spectating a friend's game: the client reports it like
+//!   your own match, seen on the owner's PC) → nothing is recorded until the in-game API says
+//!   (a wrong guess only loses the loading screen);
 //! - the client playing a replay → never recorded;
 //! - the client spectating (its watch state) → not recorded unless "Record games you spectate";
 //! - no game session at all → most likely a replay / spectating: nothing is recorded until the
@@ -54,6 +57,37 @@ pub fn classify_client(f: &ClientFacts) -> SessionCheck {
         // "None", "Lobby", "EndOfGame" (a replay started from the end-of-game screen), ...: no
         // match of yours is running.
         Some(_) => SessionCheck::Unsure(WatchKind::Unknown),
+    }
+}
+
+/// Are you one of the match's players? `me` = `/lol-summoner/v1/current-summoner`, `session` =
+/// `/lol-gameflow/v1/session` (its `gameData.teamOne` / `teamTwo`). Compared by `puuid`, else
+/// by `summonerId`. `None` = can't tell (a list without ids, an unknown format, your account
+/// unknown): then nothing changes. Only a list with at least two players carrying the same id
+/// as yours, and none of them you, says `Some(false)`.
+pub fn in_roster(me: &serde_json::Value, session: &serde_json::Value) -> Option<bool> {
+    let players: Vec<&serde_json::Value> = ["teamOne", "teamTwo"].iter().filter_map(|t| session["gameData"][*t].as_array()).flatten().collect();
+    let id = |v: &serde_json::Value, key: &str| match &v[key] {
+        serde_json::Value::String(s) if !s.is_empty() => Some(s.clone()),
+        serde_json::Value::Number(n) if n.as_u64().is_some_and(|n| n > 0) => Some(n.to_string()),
+        _ => None,
+    };
+    for key in ["puuid", "summonerId"] {
+        let Some(mine) = id(me, key) else { continue };
+        let ids: Vec<String> = players.iter().filter_map(|p| id(p, key)).collect();
+        if ids.len() >= 2 {
+            return Some(ids.contains(&mine));
+        }
+    }
+    None
+}
+
+/// The client's verdict refined by the match's players: a "match of yours" you aren't playing
+/// in is probably spectating, so the in-game API decides (`Unsure`).
+pub fn refine_with_roster(c: SessionCheck, in_roster: Option<bool>) -> SessionCheck {
+    match (c, in_roster) {
+        (SessionCheck::Playing, Some(false)) => SessionCheck::Unsure(WatchKind::Spectate),
+        _ => c,
     }
 }
 
@@ -104,6 +138,39 @@ mod tests {
         assert_eq!(classify_client(&facts(Some("EndOfGame"), Some(false), Some("None"))), SessionCheck::Unsure(WatchKind::Unknown));
         // Client not reachable.
         assert_eq!(classify_client(&facts(None, None, None)), SessionCheck::Unknown);
+    }
+
+    #[test]
+    fn the_match_players_tell_spectating_apart() {
+        use serde_json::json;
+        let me = json!({"puuid": "p-me", "summonerId": 11, "gameName": "Me"});
+        let session = |one: Vec<serde_json::Value>| json!({"phase": "InProgress", "gameData": {"teamOne": one, "teamTwo": [{"puuid": "p-5", "summonerId": 5}, {"puuid": "p-6", "summonerId": 6}]}});
+        let mine = session(vec![json!({"puuid": "p-me", "summonerId": 11}), json!({"puuid": "p-2", "summonerId": 2})]);
+        let friends = session(vec![json!({"puuid": "p-friend", "summonerId": 12}), json!({"puuid": "p-2", "summonerId": 2})]);
+        assert_eq!(in_roster(&me, &mine), Some(true));
+        assert_eq!(in_roster(&me, &friends), Some(false));
+        // Only summoner ids (no puuid anywhere): compared by those.
+        let me_id = json!({"summonerId": 11});
+        assert_eq!(in_roster(&me_id, &json!({"gameData": {"teamOne": [{"summonerId": 11}], "teamTwo": [{"summonerId": 5}]}})), Some(true));
+        assert_eq!(in_roster(&me_id, &json!({"gameData": {"teamOne": [{"summonerId": 12}], "teamTwo": [{"summonerId": 5}]}})), Some(false));
+        // Can't tell: no teams, empty teams, players without ids (bots), one player only, ids
+        // of another kind, an unknown account, the client's 404 answer.
+        assert_eq!(in_roster(&me, &json!({"gameData": {"queue": {"id": 420}}})), None);
+        assert_eq!(in_roster(&me, &json!({"gameData": {"teamOne": [], "teamTwo": []}})), None);
+        assert_eq!(in_roster(&me, &json!({"gameData": {"teamOne": [{"championId": 1}, {"championId": 2}], "teamTwo": []}})), None);
+        assert_eq!(in_roster(&me, &json!({"gameData": {"teamOne": [{"puuid": "p-x"}], "teamTwo": []}})), None);
+        assert_eq!(in_roster(&json!({"puuid": "p-me"}), &json!({"gameData": {"teamOne": [{"summonerId": 1}, {"summonerId": 2}]}})), None);
+        assert_eq!(in_roster(&json!({}), &friends), None);
+        assert_eq!(in_roster(&json!({"puuid": "", "summonerId": 0}), &friends), None);
+        assert_eq!(in_roster(&me, &json!({"errorCode": "RPC_ERROR", "httpStatus": 404})), None);
+        // Practice Tool with bots: you're there (bots carry no puuid).
+        let practice = json!({"gameData": {"teamOne": [{"puuid": "p-me", "summonerId": 11}], "teamTwo": [{"puuid": "", "summonerId": 0, "botDifficulty": "EASY"}]}});
+        assert_ne!(in_roster(&me, &practice), Some(false));
+
+        assert_eq!(refine_with_roster(SessionCheck::Playing, Some(false)), SessionCheck::Unsure(WatchKind::Spectate));
+        assert_eq!(refine_with_roster(SessionCheck::Playing, Some(true)), SessionCheck::Playing);
+        assert_eq!(refine_with_roster(SessionCheck::Playing, None), SessionCheck::Playing);
+        assert_eq!(refine_with_roster(SessionCheck::Watching(WatchKind::Replay), Some(false)), SessionCheck::Watching(WatchKind::Replay));
     }
 
     #[test]

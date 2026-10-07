@@ -1007,6 +1007,68 @@ after the game. Decision: **continue the code as is, no rewrite**; fix the maint
   against something already running on the PC that has taken the port. Not worth the risk of
   breaking detection.
 
+### Spectating: you're not one of the match's players (2026-10-07)
+The owner's check of v1.7.1 found that the League client reports a spectated friend's game
+exactly like your own match (phase "InProgress", a session with queue 420, `isPlayingReplay`
+false, no watch state), so it was recorded until the in-game API said spectator mode ~10 s
+later, then deleted.
+- **Now:** when the client says "a match of yours", `session_check` also reads
+  `/lol-summoner/v1/current-summoner` (your `puuid` / `summonerId`) and `/lol-gameflow/v1/session`
+  (`gameData.teamOne` / `teamTwo`), both read-only GETs at the game's start
+  (`watch::in_roster`). Compared by `puuid`, else `summonerId`; only a list with at least two
+  players carrying that id, none of them you, counts as "not one of the players".
+- **Then:** `SessionCheck::Unsure(Spectate)`: nothing is recorded until the in-game API says
+  spectator mode (not recorded, or recorded with "Record games you spectate") or your champion
+  (recording starts; a wrong guess loses only the loading screen). The status says "Checking
+  whether you're playing or spectating…". Can't tell (no list, no ids, bots only, the client
+  doesn't answer) → as before.
+- **Not captured:** the player list's format is the LCU's documented one (the app may not
+  launch League for a capture). If Riot's format differs, `in_roster` says "can't tell" and the
+  old safety net (delete after ~10 s) still works.
+- **Tests:** `watch.rs` unit tests (you in / not in the list, summoner ids only, no teams, bots,
+  one player, other id kinds, unknown account, the client's 404); the fake League client got
+  the match's players, your account and a "spectate-live" mode (the owner's observation:
+  `--simulate-watch=spectate-live`, Settings > Advanced > Simulate > "Spectating a friend",
+  and the `--ui-test` `watch` list); `watch_mock.rs` end to end over HTTP.
+
+### Owner test scripts (not run)
+The owner can't run these (2026-10-07); kept in case that changes.
+- **Owner, Practice Tool test of the ult kinds (v1.6, ~15 min):** see the steps in the v1.6
+  test report (also below). Practice Tool with cooldowns ON (not "No Cooldowns"; use the "Reset
+  cooldowns" button between ults), Settings > Game modes > Practice Tool on "Record". Level 16+
+  so R is rank 3. Then the helper job collects the recording; before/after per champion goes
+  into "Ult kinds", and real recast-icon crops replace the synthetic ones in `tests/hud/`.
+  1. Annie: R on a spot (Tibbers), then R 10 times on different spots, 1 s apart (commands).
+     Wait for Tibbers to vanish, press R once (on cooldown). Reset cooldowns, R, then R 3 more
+     times. Expected: 2 ults, 13 recasts, 1 no cast.
+  2. Ivern: R (Daisy), R 5 times. Reset, R once. Expected 2 ults, 5 recasts.
+  3. Shaco: R (clone), R 5 times. Expected 1 ult, 5 recasts.
+  4. Ahri: R and both recasts (3 dashes). Reset, again 3 dashes. Expected 2 ults, 4 recasts.
+  5. Jhin: R, then R 4 times (the 4 shots). Expected 1 ult, 4 recasts.
+  6. Jayce (or Nidalee): R 6 times, ~7 s apart (Nidalee ~4 s). Expected 6 form swaps.
+  7. Kog'Maw: R 5 times, 2-3 s apart. Expected 5 ults.
+  8. Caitlyn (control): R once. Expected 1 ult.
+- **Owner, Practice Tool test of the ability bubbles (v1.5.0, ~10 min):**
+  1. Clairvoyance on v1.5.0 (Settings > General & updates). Settings > Game modes: Practice Tool
+     on "Record" for this test (it's Off by default).
+  2. In League, before the game: rebind one ability, e.g. E (quick cast) to **T**
+     (Settings > Hotkeys). Start a Practice Tool game with a champion whose Q can be spammed
+     (e.g. Ezreal), turn on No Cooldowns, buy 2-3 actives (e.g. potions, a Control Ward).
+  3. Play this script, slowly enough to remember it: Q spam ~3 s while moving the mouse in a
+     circle, with one **W** in the middle; **T** (the rebound E) twice; **D** and **F**; the
+     item keys of 2 items; the trinket key (C on your settings); **Ctrl+Q** and **Ctrl+W** a few
+     times (level-ups); open chat, type "q w r", close it; R once. End the game.
+  4. Open the game, press **I**, overlay options: Ability bubbles on (all four), fade 1.0 s.
+     Step through the moments with **,** / **.** (one frame).
+  Expected: a bubble on the frame where each key went down (not a frame before), its dot exactly
+  on the cursor, staying there while the cursor moves on; Q spam = Q bubbles piled up along the
+  mouse path, the W in the middle readable (later Qs step aside, its dot stays on the path); T
+  shows **E** with a small "T"; D and F larger; items show their slot number 1-6 (no hint),
+  the trinket a ward icon with a small "C"; **nothing** for Ctrl+Q / Ctrl+W and nothing for the
+  chat; R solid purple (it says "Ult used" on the timeline), presses without a cast faded and only
+  with "Unconfirmed presses" on. Fade slider at 0.1 s and 3 s changes it at once. Then send
+  Settings > Advanced > Save test report (it has the game's session.json with the saved binds).
+
 ## Status log (detailed, per release)
 The "Current status" of PLAN.md up to v1.7.1, kept in full (measurements and owner tests).
 
