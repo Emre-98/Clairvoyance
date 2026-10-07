@@ -61,6 +61,9 @@ struct FakeRecorder {
     started: Mutex<bool>,
     game_clock: Arc<Mutex<f64>>,
     stops: Mutex<u32>,
+    /// Saving from the replay buffer works (otherwise it fails); the seconds asked for.
+    replay_ok: bool,
+    replays: Mutex<Vec<Option<u32>>>,
 }
 
 #[async_trait]
@@ -88,8 +91,15 @@ impl Recorder for FakeRecorder {
         let polls = *self.game_clock.lock().unwrap();
         Ok(Some(Duration::from_secs_f64(polls + 25.0)))
     }
-    async fn save_replay(&self, _secs: Option<u32>) -> anyhow::Result<PathBuf> {
-        anyhow::bail!("no")
+    async fn save_replay(&self, secs: Option<u32>) -> anyhow::Result<PathBuf> {
+        if !self.replay_ok {
+            anyhow::bail!("no")
+        }
+        let mut replays = self.replays.lock().unwrap();
+        replays.push(secs);
+        let p = self.dir.lock().unwrap().clone().unwrap().join(format!("Replay_{}.mp4", replays.len()));
+        std::fs::write(&p, b"clip")?;
+        Ok(p)
     }
     async fn finish(&self) -> anyhow::Result<()> {
         Ok(())
@@ -458,6 +468,55 @@ async fn new_modes_are_added_and_follow_the_unknown_rule() {
     assert!(m.entries["q31337"].is_new);
     assert_eq!(m.entries["q31337"].rule, ModeRule::ClipsOnly);
     handle.abort();
+    std::fs::remove_dir_all(root).ok();
+}
+
+#[tokio::test(start_paused = true)]
+async fn clips_only_saves_event_clips_from_the_replay_buffer() {
+    let root = std::env::temp_dir().join(format!("cv-engine-clips-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    // The kill comes at poll 5 (game time 2 s); the match ends at poll 9, before its clip is due.
+    let game = ModeGame { inner: FakeGame { polls: 0, end_after: 9 }, mode: mode("q31337", "Brand New Mode") };
+    let recorder = Arc::new(FakeRecorder { replay_ok: true, ..Default::default() });
+    let platform = Arc::new(FakePlatform { procs: Mutex::new(vec!["fake.exe".into()]), capture: Mutex::new(None) });
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let (ctx, crx) = tokio::sync::mpsc::unbounded_channel();
+    let (_itx, irx) = tokio::sync::mpsc::unbounded_channel();
+    let mut settings = Settings::default();
+    settings.save_dir = root.to_string_lossy().to_string();
+    settings.events.clip_kinds = vec![EventKind::Kill];
+    settings.events.clip_before_secs = 5.0;
+    settings.events.clip_after_secs = 30.0;
+    settings.modes.insert("fake".into(), crate::modes::GameModes { unknown_rule: ModeRule::ClipsOnly, ..Default::default() });
+    let engine = Engine::new(vec![Box::new(game)], recorder.clone(), platform.clone(), None, settings, root.clone(), tx);
+    let handle = tokio::spawn(engine.run(crx, irx));
+
+    let (mut ended, mut rules) = (None, Vec::new());
+    for _ in 0..60 {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        while let Ok(ev) = rx.try_recv() {
+            match ev {
+                EngineEvent::GameEnded { session_id } => ended = Some(session_id),
+                EngineEvent::Status(s) if s.state == EngineState::Recording => rules.push(s.mode_rule),
+                _ => {}
+            }
+        }
+        if ended.is_some() {
+            break;
+        }
+    }
+    let sid = ended.expect("game ended");
+    assert!(!rules.is_empty() && rules.iter().all(|r| *r == Some(ModeRule::ClipsOnly)), "status while recording: {rules:?}");
+    // Not due yet when the match ended: saved at the end, with 5 s before + 30 s after.
+    assert_eq!(*recorder.replays.lock().unwrap(), vec![Some(35)]);
+    let s = GameSession::load(&root.join(&sid)).unwrap();
+    assert_eq!(s.record_mode.as_deref(), Some("clips_only"));
+    assert_eq!(s.video_file, None, "no full video");
+    assert_eq!(s.clips.len(), 1);
+    assert_eq!((s.clips[0].source.as_str(), s.clips[0].title.as_str()), ("event", "Killed Ahri"));
+    assert!(root.join(&sid).join(CLIPS_DIR).join(&s.clips[0].file).exists());
+    ctx.send(EngineCommand::Shutdown).unwrap();
+    handle.await.unwrap();
     std::fs::remove_dir_all(root).ok();
 }
 
