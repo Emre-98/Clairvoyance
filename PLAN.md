@@ -206,8 +206,9 @@ Rules:
 - Ult check: tuned on the owner's HUD (4K, HUD scale 0, numeric cooldowns, HUD animations off);
   other HUD scales are found by the scale search (tested synthetically at 1.5×), but colour
   thresholds for very different settings (colour-blind mode, HUD animations on) are untested.
-  Auto clips are cut right after the game, before the check, so an auto-clip rule on ult events
-  still uses the live presses. Typing in the shop search can't be told apart live (the check
+  Auto clips are cut right after the game from the live presses; once the check has run, the
+  ones whose moment changed are re-cut (2026-10-07, `engine::recut_auto_clips`); their
+  thumbnails come with the next maintenance pass. Typing in the shop search can't be told apart live (the check
   marks it "no cast" afterwards).
 
 - Input tracking: the capture thread costs 0.27 % of one core at 250 Hz while the cursor moves

@@ -1031,6 +1031,18 @@ later, then deleted.
   `--simulate-watch=spectate-live`, Settings > Advanced > Simulate > "Spectating a friend",
   and the `--ui-test` `watch` list); `watch_mock.rs` end to end over HTTP.
 
+### Auto clips follow the recording check (2026-10-07)
+Automatic event clips are cut right after the game (stream copy, so the game is ready at once),
+from the live events. The check against the recording runs later in the maintenance pass and
+can change ult events ("Ult pressed" → "Ult used" on the cast frame, or "no cast", recasts).
+After a successful check, `engine::recut_plan` compares the auto-clip windows of the events
+before and after it: auto clips whose window is gone are deleted (unless marked "keep"), and
+only windows that are new are cut. Unchanged windows are left alone, so a clip the user deleted
+is never cut again; with the default auto-clip kinds (multikill, ace) nothing changes.
+Clips-only games keep theirs (saved from the replay buffer, nothing to re-cut). Generic: works
+for any game's `RecordingCheck`. Tests: `recut_plan_follows_the_corrected_events`,
+`recut_auto_clips_replaces_the_clips_of_corrected_events`.
+
 ### Owner test scripts (not run)
 The owner can't run these (2026-10-07); kept in case that changes.
 - **Owner, Practice Tool test of the ult kinds (v1.6, ~15 min):** see the steps in the v1.6

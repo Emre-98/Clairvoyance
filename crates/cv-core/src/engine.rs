@@ -1265,14 +1265,24 @@ pub async fn auto_clips(cutter: &dyn ClipCutter, dir: &Path, ev: &crate::setting
     if windows.is_empty() {
         return Ok(());
     }
+    let new_clips = cut_windows(cutter, &video, dir, session.video_offset, windows).await?;
+    // Reload in case the UI changed the session meanwhile (e.g. favorite).
+    let mut session = GameSession::load(dir)?;
+    session.clips.extend(new_clips);
+    session.save(dir)?;
+    Ok(())
+}
+
+/// Cuts one automatic event clip per window (stream copy) into the game's clips folder.
+async fn cut_windows(cutter: &dyn ClipCutter, video: &Path, dir: &Path, video_offset: f64, windows: Vec<(f64, f64, String)>) -> anyhow::Result<Vec<ClipInfo>> {
     let clips_dir = dir.join(CLIPS_DIR);
     std::fs::create_dir_all(&clips_dir)?;
     let ext = video.extension().and_then(|e| e.to_str()).unwrap_or("mp4").to_string();
     let mut new_clips = Vec::new();
     for (start, end, title) in windows {
-        let name = format!("{}_{}.{ext}", session::sanitize(&title), fmt_clock(start - session.video_offset).replace(':', "-"));
+        let name = format!("{}_{}.{ext}", session::sanitize(&title), fmt_clock(start - video_offset).replace(':', "-"));
         let out = session::unique_path(&clips_dir, &name);
-        cutter.cut(&video, start, end, &out, false).await?;
+        cutter.cut(video, start, end, &out, false).await?;
         new_clips.push(ClipInfo {
             file: out.file_name().unwrap().to_string_lossy().to_string(),
             title,
@@ -1283,11 +1293,63 @@ pub async fn auto_clips(cutter: &dyn ClipCutter, dir: &Path, ev: &crate::setting
             keep: false,
         });
     }
-    // Reload in case the UI changed the session meanwhile (e.g. favorite).
+    Ok(new_clips)
+}
+
+/// What changes in a game's automatic event clips when its events were corrected after the game
+/// (the check against the recording): the auto clips whose window is gone (file names; clips
+/// marked "keep" stay) and the windows that are new. Windows that didn't change are left alone,
+/// so a clip you deleted isn't cut again.
+#[derive(Debug, Default, PartialEq)]
+pub struct RecutPlan {
+    pub remove: Vec<String>,
+    pub add: Vec<(f64, f64, String)>,
+}
+
+pub fn recut_plan(before: &GameSession, after: &GameSession, ev: &crate::settings::EventSettings) -> RecutPlan {
+    let same = |a: &(f64, f64, String), b: &(f64, f64, String)| (a.0 - b.0).abs() < 0.01 && (a.1 - b.1).abs() < 0.01;
+    let old = clip_windows(before, ev);
+    let new = clip_windows(after, ev);
+    let gone: Vec<&(f64, f64, String)> = old.iter().filter(|o| !new.iter().any(|n| same(o, n))).collect();
+    let remove = after
+        .clips
+        .iter()
+        .filter(|c| c.source == "event" && !c.keep)
+        .filter(|c| match (c.video_start, c.video_end) {
+            (Some(s), Some(e)) => gone.iter().any(|g| same(g, &(s, e, String::new()))),
+            _ => false,
+        })
+        .map(|c| c.file.clone())
+        .collect();
+    let add = new.into_iter().filter(|n| !old.iter().any(|o| same(o, n))).collect();
+    RecutPlan { remove, add }
+}
+
+/// After the game's events were corrected (`before` = the session as it was before): removes the
+/// automatic clips whose window is gone and cuts the new ones. Clips-only games (no full video)
+/// keep theirs: they were saved from the replay buffer and can't be cut again. Returns how many
+/// clips were removed and added.
+pub async fn recut_auto_clips(cutter: &dyn ClipCutter, dir: &Path, before: &GameSession, ev: &crate::settings::EventSettings) -> anyhow::Result<(usize, usize)> {
+    let after = GameSession::load(dir)?;
+    let Some(video) = after.video_file.as_ref().map(|f| dir.join(f)) else { return Ok((0, 0)) };
+    if !video.exists() {
+        return Ok((0, 0));
+    }
+    let plan = recut_plan(before, &after, ev);
+    if plan.remove.is_empty() && plan.add.is_empty() {
+        return Ok((0, 0));
+    }
+    let added = cut_windows(cutter, &video, dir, after.video_offset, plan.add).await?;
+    for f in &plan.remove {
+        let _ = std::fs::remove_file(dir.join(CLIPS_DIR).join(f));
+    }
+    // Reload in case the UI changed the session meanwhile.
     let mut session = GameSession::load(dir)?;
-    session.clips.extend(new_clips);
+    session.clips.retain(|c| !plan.remove.contains(&c.file));
+    let counts = (plan.remove.len(), added.len());
+    session.clips.extend(added);
     session.save(dir)?;
-    Ok(())
+    Ok(counts)
 }
 
 /// (video start, video end, title) for each auto clip, overlapping windows merged.

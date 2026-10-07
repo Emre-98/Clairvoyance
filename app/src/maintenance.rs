@@ -363,6 +363,22 @@ fn recover_interrupted(st: &AppState) -> usize {
     n
 }
 
+/// The automatic event clips were cut right after the game from the live events; the check
+/// may have corrected those (League: "Ult pressed" became "Ult used" on the cast frame, or "no
+/// cast"). Re-cut the ones whose moment changed (`before` = the session before the check).
+fn recut_auto_clips(st: &AppState, dir: &Path, before: &cv_core::session::GameSession) {
+    let ev = st.settings().events.clone();
+    if ev.clip_kinds.is_empty() || busy(st) {
+        return;
+    }
+    // Runs on the maintenance pass's blocking thread, where waiting on the async cutter is fine.
+    match tauri::async_runtime::block_on(cv_core::engine::recut_auto_clips(st.ffmpeg.as_ref(), dir, before, &ev)) {
+        Ok((0, 0)) => {}
+        Ok((removed, added)) => log::info!("auto clips of {} follow the check: {removed} removed, {added} cut", dir.display()),
+        Err(e) => log::warn!("re-cutting the auto clips of {}: {e:#}", dir.display()),
+    }
+}
+
 /// Checks one game's live events against its recording if that wasn't done yet (or was done
 /// by an older version of the check). Stops as soon as a game starts (done again next run).
 fn verify_game(st: &AppState, game: &dyn cv_core::game::RecordingCheck, dir: &Path, video: &Path) -> bool {
@@ -400,6 +416,7 @@ fn verify_game(st: &AppState, game: &dyn cv_core::game::RecordingCheck, dir: &Pa
                             v.unconfirmed
                         );
                     }
+                    recut_auto_clips(st, dir, &s);
                     true
                 }
                 Err(e) => {

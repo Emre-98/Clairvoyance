@@ -899,3 +899,102 @@ async fn leaving_the_game_ends_the_session() {
     assert_eq!(r.ended.len(), 1);
     r.finish().await;
 }
+
+/// Writes a small file instead of cutting (records what it was asked for).
+#[derive(Default)]
+struct FakeCutter {
+    cuts: Mutex<Vec<(f64, f64)>>,
+}
+#[async_trait]
+impl ClipCutter for FakeCutter {
+    async fn cut(&self, _video: &Path, start: f64, end: f64, out: &Path, _precise: bool) -> anyhow::Result<()> {
+        self.cuts.lock().unwrap().push((start, end));
+        std::fs::write(out, b"clip")?;
+        Ok(())
+    }
+}
+
+fn ult_session(events: Vec<GameEvent>) -> GameSession {
+    let mut s = GameSession::new("x".into(), "g", "G", Local::now());
+    s.video_offset = 20.0;
+    s.video_duration = Some(900.0);
+    s.events = events;
+    s
+}
+
+#[test]
+fn recut_plan_follows_the_corrected_events() {
+    let ev = crate::settings::EventSettings { clip_kinds: vec![EventKind::Multikill, EventKind::UltUsed, EventKind::UltPressed], clip_before_secs: 10.0, clip_after_secs: 4.0, ..Default::default() };
+    // Live: a multikill and two ult presses; the check finds one press was no cast and puts the
+    // other on its exact cast frame 0.3 s later.
+    let before = ult_session(vec![
+        GameEvent::new("m", EventKind::Multikill, 100.0, "Double kill"),
+        GameEvent::new("u1", EventKind::UltPressed, 300.0, "Ult pressed"),
+        GameEvent::new("u2", EventKind::UltPressed, 500.0, "Ult pressed"),
+    ]);
+    let mut after = ult_session(vec![
+        GameEvent::new("m", EventKind::Multikill, 100.0, "Double kill"),
+        GameEvent::new("u1", EventKind::UltUnconfirmed, 300.0, "Ult pressed, no cast"),
+        GameEvent::new("u2", EventKind::UltUsed, 500.3, "Ult used"),
+    ]);
+    let clip = |file: &str, s: f64, e: f64, source: &str, keep: bool| ClipInfo {
+        file: file.into(),
+        title: String::new(),
+        video_start: Some(s),
+        video_end: Some(e),
+        created_at: Local::now(),
+        source: source.into(),
+        keep,
+    };
+    after.clips = vec![
+        clip("double.mp4", 110.0, 124.0, "event", false),
+        clip("ult1.mp4", 310.0, 324.0, "event", false),
+        clip("hotkey.mp4", 310.0, 324.0, "replay", false),
+        // ult2.mp4 (510-524) was deleted by the user: not cut again either.
+    ];
+    let p = recut_plan(&before, &after, &ev);
+    assert_eq!(p.remove, vec!["ult1.mp4".to_string()], "the no-cast press's clip goes; the multikill and the hotkey clip stay");
+    assert_eq!(p.add.len(), 1);
+    assert!((p.add[0].0 - 510.3).abs() < 1e-9 && (p.add[0].1 - 524.3).abs() < 1e-9 && p.add[0].2 == "Ult used", "{:?}", p.add);
+    // A clip marked "keep" is never removed.
+    after.clips[1].keep = true;
+    assert!(recut_plan(&before, &after, &ev).remove.is_empty());
+    // Ult events not among the auto-clip kinds (the default): nothing changes.
+    let ev = crate::settings::EventSettings::default();
+    assert_eq!(recut_plan(&before, &after, &ev), RecutPlan::default());
+}
+
+#[tokio::test]
+async fn recut_auto_clips_replaces_the_clips_of_corrected_events() {
+    let dir = std::env::temp_dir().join(format!("cv-recut-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join(CLIPS_DIR)).unwrap();
+    std::fs::write(dir.join("game.mp4"), b"video").unwrap();
+    let ev = crate::settings::EventSettings { clip_kinds: vec![EventKind::UltUsed, EventKind::UltPressed], clip_before_secs: 10.0, clip_after_secs: 4.0, ..Default::default() };
+    let before = ult_session(vec![GameEvent::new("u1", EventKind::UltPressed, 300.0, "Ult pressed")]);
+    let mut after = ult_session(vec![GameEvent::new("u1", EventKind::UltUnconfirmed, 300.0, "Ult pressed, no cast"), GameEvent::new("v", EventKind::UltUsed, 600.0, "Ult used")]);
+    after.video_file = Some("game.mp4".into());
+    std::fs::write(dir.join(CLIPS_DIR).join("ult1.mp4"), b"clip").unwrap();
+    after.clips.push(ClipInfo {
+        file: "ult1.mp4".into(),
+        title: "Ult pressed".into(),
+        video_start: Some(310.0),
+        video_end: Some(324.0),
+        created_at: Local::now(),
+        source: "event".into(),
+        keep: false,
+    });
+    after.save(&dir).unwrap();
+    let cutter = FakeCutter::default();
+    assert_eq!(recut_auto_clips(&cutter, &dir, &before, &ev).await.unwrap(), (1, 1));
+    assert_eq!(*cutter.cuts.lock().unwrap(), vec![(610.0, 624.0)]);
+    let s = GameSession::load(&dir).unwrap();
+    assert_eq!(s.clips.len(), 1);
+    assert_eq!(s.clips[0].title, "Ult used");
+    assert!(!dir.join(CLIPS_DIR).join("ult1.mp4").exists(), "the old clip's file is deleted");
+    assert!(dir.join(CLIPS_DIR).join(&s.clips[0].file).exists());
+    // Run again: nothing left to do.
+    let s_before = GameSession::load(&dir).unwrap();
+    assert_eq!(recut_auto_clips(&cutter, &dir, &s_before, &ev).await.unwrap(), (0, 0));
+    std::fs::remove_dir_all(dir).ok();
+}
