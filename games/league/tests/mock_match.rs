@@ -6,7 +6,7 @@ use cv_game_league::LeagueIntegration;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn full_mock_match() {
-    let opts = cv_mock_league::MockOptions { port: 29981, speed: 120.0, length: 600.0, loading_secs: 1.0, linger_secs: 2.0, ..Default::default() };
+    let opts = cv_mock_league::MockOptions { port: 29981, speed: 60.0, length: 600.0, loading_secs: 1.0, linger_secs: 2.0, ..Default::default() };
     let mock = cv_mock_league::spawn(opts).unwrap();
     let mut lol = LeagueIntegration::new();
     lol.configure(&serde_json::json!({ "api_base": mock.base_url, "riot_id": "" }));
@@ -18,7 +18,7 @@ async fn full_mock_match() {
     let mut player = None;
     let mut sb = cv_core::scoreboard::Scoreboard::default();
     let mut reads = 0;
-    for _ in 0..200 {
+    for _ in 0..400 {
         let u = lol.poll().await.unwrap();
         if let Some(r) = u.scoreboard {
             reads += 1;
