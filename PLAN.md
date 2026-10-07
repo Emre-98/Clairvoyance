@@ -124,7 +124,14 @@
   check misses in this sandbox for v1.7.1's unchanged code too: median 28.6 ms vs 22; redraw
   p95 unchanged, 5-6 ms with 623 markers). Needs a real game: see "Next steps". Details in
   "Richer timeline".
-- **Waiting for the owner**: the v1.8 part 1 real-game check (see "Next steps"), the Practice Tool test of the ult kinds (v1.6, see "Next steps"),
+- **v1.8 part 2 (2026-10-07): time-synced scoreboard.** All 10 players (champion, level, KDA,
+  CS, items, summoner spells) at the playback time: a card under the player that follows
+  playback and scrubbing, and over the video with O (Tab held in fullscreen, like League).
+  Saved as the first full state + only the changes at each player-list read (fake 10 min
+  match: 6 reads, 3 KB; worst-case 35 min synthetic game: 44 KB vs 296 KB for full
+  snapshots). Recordings before v1.8: "Final scoreboard" with your own final numbers.
+  Chromium 16/16 checks (scrubbing lag p95 6-10 ms). Details in "Time-synced scoreboard".
+- **Waiting for the owner**: the v1.8 real-game check (parts 1 and 2) (see "Next steps"), the Practice Tool test of the ult kinds (v1.6, see "Next steps"),
   the PC benchmark of the v1.6 player (`--bench-replays` with `"player": true`), and the older
   Practice Tool test of the ability bubbles.
 
@@ -1179,6 +1186,35 @@ like a match, so it was recorded as a game.
   a synthetic recording, `tests/mock_match.rs` shop script over HTTP (fake game:
   `cv_mock_league::SHOP`), `ui/tests/timelinechips.test.mjs` (23 checks, both themes).
 
+### Time-synced scoreboard (2026-10-07, owner's request, v1.8 part 2)
+- **Data** (`cv_core::scoreboard`, game-agnostic): `GameSession.scoreboard` = players (name,
+  champion + id, team, me), Data Dragon version, names of the item / spell ids that appeared,
+  and frames: the first read's full state, then per read only the players and fields that
+  changed (`{"i":0,"k":1}`), nothing when nothing changed. The game module reports full states
+  (`PollUpdate.scoreboard`); `Scoreboard::record` keeps the difference. A different roster
+  starts over; reads out of order are ignored.
+- **League:** every player-list read (every 10 s, at once when your gold jumps, and the final
+  one at GameEnd) becomes a read: items by inventory slot (6 + trinket), summoner spell ids
+  from `rawDescription`, level, KDA, CS. The fake game's other players now level, farm and buy.
+- **UI** (`Scoreboard.svelte`, `lib/scoreboard.ts`): every frame's full state is rebuilt once
+  when the game opens; the state at a time is a binary search, so scrubbing never replays
+  changes. Teams side by side from 900 px of card width, stacked below; your row highlighted;
+  item / spell icons from the game's Data Dragon version, names on hover. Card under the
+  player (game time = playback time − video offset); over the video with O, or Tab held in
+  fullscreen (outside fullscreen Tab keeps moving the focus). Old recordings: one row with
+  your final KDA / CS / level / gold and "recorded before v1.8".
+- **Tests:** `scoreboard.rs` (deltas, state at any time, roster change, size of a 35 min game),
+  `mock_match.rs` (10 players over HTTP, final KDA 4/2/2, others' items grow), Node
+  `scoreboard.unit.test.ts`, `ui/tests/scoreboard.test.mjs` (state at 0:05 / 1:25 / back to
+  0:40, follows a drag across the whole game, O overlay, Tab outside fullscreen, old recording,
+  940 px window), both themes.
+- Found while testing: in `Scoreboard.svelte` an `{#each Array.from({length: 7}, (_, k) =>
+  r.s.items[k] ?? 0)}` (the row read inside the closure) kept showing the first frame's items
+  after a seek while level / KDA updated; checked A/B: a plain helper `slots(r.s.items)` updates
+  (keying made no difference). The Playwright test checks the item count at two times.
+- Chromium suites with parts 1 + 2: scoreboard 16/16, timeline 23/23, fullscreen 94/94, overlay
+  20/20, bubbles 20/20, frame stepping 27/27, layout audit 504/504.
+
 ### Replay benchmark and end-to-end tests (developer tools)
 - `Clairvoyance.exe --bench-replays=<config.json>`: opens the given games N times in the real
   window and measures page / first frame / playable / marker jumps / "marker clicked right away"
@@ -1249,7 +1285,8 @@ like a match, so it was recorded as a game.
 - [x] 31. Replays and spectating aren't recorded: League client + in-game API detection before recording, late detection deletes the partial recording, "Record games you spectate" setting, simulator replay / spectate modes (v1.7.1)
 - [x] Owner's check of v1.7.1: replays not recorded, spectating deleted after 8 s, Practice Tool game ready at once
 - [x] 32. Richer timeline: tower / inhibitor / objective details + gold, completed-item chips (undo-safe), summoner spell chips (key + recording), APM chart behind the markers (v1.8 part 1)
-- [ ] Owner's real-game check of v1.8 part 1 (see "Next steps")
+- [x] 33. Time-synced scoreboard: all 10 players saved as changes only, card + overlay (O / Tab) following playback and scrubbing, final-only fallback for old recordings (v1.8 part 2)
+- [ ] Owner's real-game check of v1.8 parts 1 and 2 (see "Next steps")
 
 ## Known issues
 - v1.6 player: frame steps are seeks, so on recordings with long keyframe gaps (before v1.2:
@@ -1333,7 +1370,10 @@ like a match, so it was recorded as a game.
   at the purchase, none for the undone ones, the sale doesn't remove it; "Flash" / other spell
   chips at the cast frames (the clicked one too), none for the press on cooldown; the tower
   card says lane / tier / "Your gold ≈ +…"; a faint APM area behind the markers, hover shows
-  the APM. Then Settings > Advanced > Save test report.
+  the APM. Scoreboard (part 2): the card under the player shows all 10 players; drag along the
+  timeline and watch levels / items / KDA change with it (compare a moment with the in-game
+  Tab screen you remember, e.g. right after a purchase); press O over the video, and hold Tab
+  in fullscreen. Then Settings > Advanced > Save test report.
 - **Owner, Practice Tool test of the ult kinds (v1.6, ~15 min):** see the steps in the v1.6
   test report (also below). Practice Tool with cooldowns ON (not "No Cooldowns"; use the "Reset
   cooldowns" button between ults), Settings > Game modes > Practice Tool on "Record". Level 16+

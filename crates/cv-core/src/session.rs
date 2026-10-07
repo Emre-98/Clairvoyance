@@ -143,6 +143,10 @@ pub struct GameSession {
     /// bubbles. Binds can change between games; recordings without them use the game's defaults.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub action_keys: Option<Vec<crate::input::actions::ActionKey>>,
+    /// Every player's champion, level, KDA, CS, items and spells over the game (changes only),
+    /// for the time-synced scoreboard. Recordings before v1.8 have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scoreboard: Option<crate::scoreboard::Scoreboard>,
 }
 
 /// Outcome of the post-game check of key-press events against the recording (League: ult
@@ -192,6 +196,7 @@ impl GameSession {
             input_file: None,
             mechanics: None,
             action_keys: None,
+            scoreboard: None,
             video_file: None,
             video_offset: 0.0,
             video_duration: None,

@@ -260,11 +260,16 @@ impl Script {
             "summonerSpells": {"summonerSpellOne": spell_json("SummonerFlash", "Flash"), "summonerSpellTwo": spell_json("SummonerDot", "Ignite")}
         })];
         for (team, players) in [("ORDER", &ALLIES[..]), ("CHAOS", &ENEMIES[..])] {
-            for (riot, champ, raw) in players {
+            for (n, (riot, champ, raw)) in players.iter().enumerate() {
+                // The others level up, farm and buy over the game too (for the scoreboard).
+                let level = (1.0 + t / (80.0 + 10.0 * n as f64)).min(18.0) as u32;
+                let cs = (t / 60.0 * (5.0 + n as f64)) as u32;
+                let bought = (t / 150.0) as usize;
+                let items: Vec<Value> = [1055u32, 3006, 3031, 6672, 3089, 3157].iter().take(bought.min(6)).enumerate().map(|(i, id)| item_json(*id, i)).collect();
                 list.push(json!({
                     "riotId": riot, "riotIdGameName": riot.split('#').next().unwrap(), "summonerName": riot.split('#').next().unwrap(),
-                    "championName": champ, "rawChampionName": format!("game_character_displayname_{raw}"), "team": team, "level": 6,
-                    "scores": {"kills": 1, "deaths": 1, "assists": 1, "creepScore": 50, "wardScore": 3.0}, "items": [],
+                    "championName": champ, "rawChampionName": format!("game_character_displayname_{raw}"), "team": team, "level": level,
+                    "scores": {"kills": 1, "deaths": 1, "assists": 1, "creepScore": cs, "wardScore": 3.0}, "items": items,
                     "summonerSpells": {"summonerSpellOne": spell_json("SummonerFlash", "Flash"), "summonerSpellTwo": spell_json("SummonerTeleport", "Teleport")}
                 }));
             }

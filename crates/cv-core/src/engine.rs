@@ -788,6 +788,9 @@ impl Engine {
                 log::info!("events withdrawn by the game module: {:?}", u.removed);
                 a.session.events.retain(|e| !u.removed.contains(&e.id));
             }
+            if let Some(r) = u.scoreboard {
+                a.session.scoreboard.get_or_insert_with(Default::default).record(r);
+            }
             for ev in u.updated {
                 if let Some(e) = a.session.events.iter_mut().find(|e| e.id == ev.id) {
                     *e = ev;

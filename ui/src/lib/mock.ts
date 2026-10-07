@@ -2,7 +2,7 @@
 // Never included in the production build.
 import { synthetic } from "./inputoverlay";
 import { syntheticActions } from "./bubbles";
-import type { ClipEntry, GameEvent, GameSession, LiveStatus, SessionSummary, Settings } from "./types";
+import type { ClipEntry, GameEvent, GameSession, LiveStatus, Scoreboard, SessionSummary, Settings } from "./types";
 
 const listeners: Record<string, ((p: any) => void)[]> = {};
 export async function listen(name: string, cb: (p: any) => void) {
@@ -82,6 +82,53 @@ const detailEvents: GameEvent[] = [
   ev("16", "ace", 122, "Team ace", "Final kill by Garen"),
   ev("17", "game_end", 130, "Victory"),
 ];
+
+/** A scoreboard read every 10 s of the mock game (130 s): everyone levels, farms and buys; you
+ * (Ahri) get kills at 0:14 and 1:18-1:20 like the events. */
+export const MOCK_SB: Scoreboard = (() => {
+  const roster: [string, string, string, string][] = [
+    ["Tester#EUW", "Ahri", "Ahri", "ORDER"], ["Mate1#EUW", "Lee Sin", "LeeSin", "ORDER"], ["Mate2#EUW", "Jinx", "Jinx", "ORDER"], ["Mate3#EUW", "Thresh", "Thresh", "ORDER"], ["Mate4#EUW", "Garen", "Garen", "ORDER"],
+    ["Enemy1#NA1", "Zed", "Zed", "CHAOS"], ["Enemy2#NA1", "Vi", "Vi", "CHAOS"], ["Enemy3#NA1", "Caitlyn", "Caitlyn", "CHAOS"], ["Enemy4#NA1", "Lux", "Lux", "CHAOS"], ["Enemy5#NA1", "Darius", "Darius", "CHAOS"],
+  ];
+  const build = [1056, 6655, 3020, 3089, 3157, 3135];
+  const state = (i: number, t: number) => ({
+    level: Math.min(18, 1 + Math.floor(t / (12 + i))),
+    kills: i === 0 ? (t >= 14 ? 1 : 0) + (t >= 78 ? 1 : 0) + (t >= 79 ? 1 : 0) + (t >= 80 ? 1 : 0) : Math.floor(t / (40 + 7 * i)),
+    deaths: i === 0 ? (t >= 31 ? 1 : 0) + (t >= 92 ? 1 : 0) : Math.floor(t / (55 + 5 * i)),
+    assists: Math.floor(t / (30 + 4 * i)),
+    cs: Math.floor((t / 60) * (6 + (i % 4))),
+    // Bought items in slots 0.., the trinket (slot 6) after 1:00.
+    items: Array.from({ length: t > 60 ? 7 : 6 }, (_, k) => (k === 6 ? 3340 : k < 1 + Math.floor(t / (35 + 3 * i)) ? build[k] : 0)),
+    spells: i % 5 === 0 ? ["SummonerFlash", i === 0 ? "SummonerDot" : "SummonerTeleport"] : ["SummonerFlash", i % 5 === 1 ? "SummonerSmite" : "SummonerHeal"],
+  });
+  const frames: Scoreboard["frames"] = [];
+  let last: ReturnType<typeof state>[] = [];
+  for (let t = 0; t <= 130; t += 10) {
+    const cur = roster.map((_, i) => state(i, t));
+    const d = cur
+      .map((c, i) => {
+        const o = last[i];
+        const x: Scoreboard["frames"][number]["d"][number] = { i };
+        if (!o || o.level !== c.level) x.lv = c.level;
+        if (!o || o.kills !== c.kills) x.k = c.kills;
+        if (!o || o.deaths !== c.deaths) x.d = c.deaths;
+        if (!o || o.assists !== c.assists) x.a = c.assists;
+        if (!o || o.cs !== c.cs) x.cs = c.cs;
+        if (!o || JSON.stringify(o.items) !== JSON.stringify(c.items)) x.it = c.items;
+        if (!o || JSON.stringify(o.spells) !== JSON.stringify(c.spells)) x.sp = c.spells;
+        return x;
+      })
+      .filter((x) => Object.keys(x).length > 1);
+    frames.push({ t, d });
+    last = cur;
+  }
+  return {
+    version: "16.20.1",
+    players: roster.map(([name, character, character_id, team], i) => ({ name, character, character_id, team, me: i === 0 })),
+    names: { "1056": "Doran's Ring", "6655": "Luden's Echo", "3020": "Sorcerer's Shoes", "3089": "Rabadon's Deathcap", "3157": "Zhonya's Hourglass", "3135": "Void Staff", "3340": "Stealth Ward", SummonerFlash: "Flash", SummonerDot: "Ignite", SummonerTeleport: "Teleport", SummonerSmite: "Smite", SummonerHeal: "Heal" },
+    frames,
+  };
+})();
 
 /** APM per 10 s of the mock video (loading screen unfocused, a fight around 1:20). */
 export const MOCK_APM: (number | null)[] = [null, null, 96, 142, 168, 150, 131, 205, 262, 188, 140, 176, 159, 120, 84];
@@ -193,6 +240,8 @@ function session(id: string): GameSession {
     video_file: "sample.mp4",
     video_offset: 20,
     video_duration: 150,
+    // The third game is "recorded before v1.8": no scoreboard snapshots.
+    scoreboard: s.id === "s2" ? null : MOCK_SB,
     game_duration: 130,
     player: s.player,
     stats: { kills: 5, deaths: 2, assists: 3, cs: 108, gold: 11240, level: 13, vision_score: 14, extra: [] },

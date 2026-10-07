@@ -10,6 +10,7 @@ release notes on GitHub and in the in-app "Update available" card.
 - New summoner spell markers ('Flash', 'Ignite'...), checked against the recording after the game so presses on cooldown don't count
 - A faint APM chart behind the timeline markers; hover it to see your actions per minute at that moment
 - Items and Summoner spells have their own filter chips; icons show in the event list too
+- Scoreboard of all 10 players (champion, level, KDA, CS, items, summoner spells) under the player, showing the moment you're watching and following along while you scrub. Press O to see it over the video, or hold Tab in fullscreen. Games recorded before this version show your own final numbers
 
 ## [1.7.1] - 2026-10-03
 

@@ -16,8 +16,14 @@ async fn full_mock_match() {
     let mut events = Vec::new();
     let mut result = None;
     let mut player = None;
+    let mut sb = cv_core::scoreboard::Scoreboard::default();
+    let mut reads = 0;
     for _ in 0..200 {
         let u = lol.poll().await.unwrap();
+        if let Some(r) = u.scoreboard {
+            reads += 1;
+            sb.record(r);
+        }
         if u.phase == MatchPhase::Waiting {
             saw_loading_or_waiting = true;
         }
@@ -55,6 +61,22 @@ async fn full_mock_match() {
     ids.sort();
     ids.dedup();
     assert_eq!(ids.len(), events.len());
+    // The scoreboard: all 10 players, changes only, the state at any time.
+    assert_eq!(sb.players.len(), 10);
+    assert_eq!(sb.players.iter().filter(|p| p.me).count(), 1);
+    assert_eq!(sb.players.iter().find(|p| p.me).unwrap().character, "Ahri");
+    assert_eq!(sb.players[1].character_id, "LeeSin");
+    assert!(reads >= 5 && sb.frames.len() <= reads, "{reads} reads, {} frames", sb.frames.len());
+    let me = sb.players.iter().position(|p| p.me).unwrap();
+    let last = sb.last();
+    assert_eq!((last[me].kills, last[me].deaths, last[me].assists), (4, 2, 2), "final KDA");
+    assert_eq!(last[me].spells, vec!["SummonerFlash".to_string(), "SummonerDot".to_string()]);
+    assert_eq!(sb.names.get("SummonerFlash").map(|s| s.as_str()), Some("Flash"));
+    let early = sb.state_at(sb.frames[0].t);
+    assert!(early[5].items.len() < last[5].items.len() && early[5].level < last[5].level, "others buy and level over the game: {:?} -> {:?}", early[5], last[5]);
+    assert!(sb.state_at(300.0)[me].kills < last[me].kills, "mid-game KDA is smaller");
+    let json = serde_json::to_string(&sb).unwrap();
+    println!("scoreboard: {} reads, {} frames, {} bytes", reads, sb.frames.len(), json.len());
     mock.stop();
 }
 

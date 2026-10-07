@@ -8,6 +8,7 @@
   import type { GameEvent, SessionView } from "../lib/types";
   import Player from "../components/Player.svelte";
   import GameIcon from "../components/GameIcon.svelte";
+  import Scoreboard from "../components/Scoreboard.svelte";
   import ClipEditor from "../components/ClipEditor.svelte";
   import LineChart from "../components/LineChart.svelte";
   import Mechanics from "../components/Mechanics.svelte";
@@ -171,6 +172,9 @@
           {bubbleCats}
           {heatRange}
           apm={s?.mechanics?.apm_bins ?? null}
+          scoreboard={s?.scoreboard ?? null}
+          sbPlayer={s?.player ?? null}
+          sbStats={s?.stats ?? null}
         />
         {#if range && s}
           <ClipEditor sessionId={s.id} bind:range {current} {offset} duration={videoLen} onclose={() => (range = null)} onpreview={() => player?.seek(range![0], true)} />
@@ -217,6 +221,13 @@
         </div>
       </div>
     </div>
+
+    {#if s && (s.scoreboard || s.player)}
+      <div class="card sbcard">
+        <Scoreboard sb={s.scoreboard ?? null} t={current - offset} player={s.player} stats={s.stats} />
+        <div class="sbhint muted">Press <kbd>O</kbd> to show it over the video (or hold <kbd>Tab</kbd> in fullscreen).</div>
+      </div>
+    {/if}
 
     {#if s && view}
     <h2 class="sec">Summary</h2>
@@ -603,5 +614,13 @@
     gap: 6px;
     font-size: 11.5px;
     padding: 0 14px 8px;
+  }
+  .sbcard {
+    margin-top: 16px;
+    padding: 14px 16px;
+  }
+  .sbhint {
+    font-size: 11.5px;
+    margin-top: 8px;
   }
 </style>

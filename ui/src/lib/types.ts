@@ -194,6 +194,44 @@ export interface GameSession {
   verification?: Verification | null;
   input_file?: string | null;
   mechanics?: Mechanics | null;
+  /** Everyone's numbers over the game, changes only (v1.8+). */
+  scoreboard?: Scoreboard | null;
+}
+
+/** cv_core::scoreboard (time-synced scoreboard). */
+export interface SbPlayer {
+  name: string;
+  character: string;
+  character_id: string;
+  team: string;
+  me?: boolean;
+}
+export interface PlayerState {
+  level: number;
+  kills: number;
+  deaths: number;
+  assists: number;
+  cs: number;
+  /** Item ids by slot (0 = empty; 6 slots + trinket). */
+  items: number[];
+  /** Summoner spell ids, D then F. */
+  spells: string[];
+}
+export interface SbDelta {
+  i: number;
+  lv?: number;
+  k?: number;
+  d?: number;
+  a?: number;
+  cs?: number;
+  it?: number[];
+  sp?: string[];
+}
+export interface Scoreboard {
+  version: string;
+  players: SbPlayer[];
+  names: Record<string, string>;
+  frames: { t: number; d: SbDelta[] }[];
 }
 
 /** Live key presses checked against the recording after the game (League: ult casts). */

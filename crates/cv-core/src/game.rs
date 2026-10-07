@@ -137,6 +137,8 @@ pub struct PollUpdate {
     pub removed: Vec<String>,
     /// Events returned before, with more detail now (same id; e.g. the gold it gave).
     pub updated: Vec<GameEvent>,
+    /// Everyone's numbers right now (only when the game module read them this poll).
+    pub scoreboard: Option<crate::scoreboard::ScoreboardRead>,
     pub player: Option<PlayerInfo>,
     pub stats: Option<PlayerStats>,
     pub result: Option<GameResult>,

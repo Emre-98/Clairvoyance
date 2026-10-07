@@ -214,6 +214,8 @@ pub struct LeagueIntegration {
     /// Chips found in a player-list read, handed out with the next poll.
     new_items: Vec<GameEvent>,
     withdrawn: Vec<String>,
+    /// The last player-list read for the scoreboard, handed out with the next poll.
+    sb_read: Option<cv_core::scoreboard::ScoreboardRead>,
     /// Game time of the last inventory read.
     items_read: Option<f64>,
 }
@@ -270,6 +272,7 @@ impl LeagueIntegration {
             summ: summoners::SummonerTracker::new(),
             new_items: Vec::new(),
             withdrawn: Vec::new(),
+            sb_read: None,
             items_read: None,
         }
     }
@@ -319,6 +322,7 @@ impl LeagueIntegration {
         self.summ = summoners::SummonerTracker::new();
         self.new_items.clear();
         self.withdrawn.clear();
+        self.sb_read = None;
         self.items_read = None;
     }
 
@@ -498,9 +502,52 @@ impl LeagueIntegration {
                 self.items_read = Some(game_time);
             }
         }
+        self.sb_read = Some(self.scoreboard_read(game_time, &players, &me));
         self.ctx.me = me;
         self.ctx.champions = champions;
         self.ctx.ids = ids;
+    }
+
+    /// Everyone's numbers from one player-list read (the session keeps only what changed).
+    fn scoreboard_read(&self, game_time: f64, players: &[Player], me: &[String]) -> cv_core::scoreboard::ScoreboardRead {
+        use cv_core::scoreboard::{PlayerState, SbPlayer, ScoreboardRead};
+        let data = self.static_data();
+        let mut names = std::collections::BTreeMap::new();
+        let mut sb_players = Vec::new();
+        let mut states = Vec::new();
+        for p in players {
+            let character_id = p.raw_champion_name.rsplit('_').next().filter(|s| !s.is_empty()).unwrap_or(&p.champion_name).to_string();
+            sb_players.push(SbPlayer {
+                name: if p.riot_id.is_empty() { p.summoner_name.clone() } else { p.riot_id.clone() },
+                character: p.champion_name.clone(),
+                character_id,
+                team: p.team.clone(),
+                me: p.names().iter().any(|n| me.contains(n)),
+            });
+            // Items by inventory slot (6 slots + trinket).
+            let mut items = vec![0u32; 7];
+            for it in &p.items {
+                if (it.slot as usize) < items.len() && it.item_id > 0 {
+                    items[it.slot as usize] = it.item_id;
+                    if let Some(d) = data.as_ref().and_then(|d| d.item(it.item_id)) {
+                        names.insert(it.item_id.to_string(), d.name.clone());
+                    }
+                }
+            }
+            while items.last() == Some(&0) {
+                items.pop();
+            }
+            let mut spells = Vec::new();
+            for sp in [&p.summoner_spells.summoner_spell_one, &p.summoner_spells.summoner_spell_two] {
+                let s = sp.spell().unwrap_or_default();
+                if !s.id.is_empty() && !s.name.is_empty() {
+                    names.insert(s.id.clone(), s.name.clone());
+                }
+                spells.push(s.id);
+            }
+            states.push(PlayerState { level: p.level, kills: p.scores.kills, deaths: p.scores.deaths, assists: p.scores.assists, cs: p.scores.creep_score, items, spells });
+        }
+        ScoreboardRead { t: game_time, version: data.map(|d| d.version.clone()).unwrap_or_default(), players: sb_players, states, names }
     }
 }
 
@@ -861,6 +908,7 @@ impl GameIntegration for LeagueIntegration {
             }
             u.updated.extend(self.gold.settled());
         }
+        u.scoreboard = self.sb_read.take();
         u.events.append(&mut self.new_items);
         u.removed.append(&mut self.withdrawn);
         if self.result.is_some() {

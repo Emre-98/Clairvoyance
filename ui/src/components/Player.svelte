@@ -14,6 +14,8 @@
   import { loadPrefs, savePrefs } from "../lib/playerprefs";
   import { collapseLevel, COLLAPSE, type CollapseId } from "../lib/controlsfit";
   import { popfit } from "../lib/popfit";
+  import ScoreboardView from "./Scoreboard.svelte";
+  import type { PlayerInfo, PlayerStats, Scoreboard } from "../lib/types";
 
   let {
     src,
@@ -32,6 +34,9 @@
     bubbleCats = [],
     heatRange = null,
     apm = null,
+    scoreboard = null,
+    sbPlayer = null,
+    sbStats = null,
   }: {
     src: string | null;
     /** The video file (so the app doesn't replace it while it's open). */
@@ -56,7 +61,14 @@
     heatRange?: [number, number] | null;
     /** APM per 10 s of video (the chart behind the timeline). */
     apm?: (number | null)[] | null;
+    /** The time-synced scoreboard (O toggles it over the video; Tab held in fullscreen). */
+    scoreboard?: Scoreboard | null;
+    sbPlayer?: PlayerInfo | null;
+    sbStats?: PlayerStats | null;
   } = $props();
+  let sbOpen = $state(false);
+  let sbHold = $state(false);
+  const sbShown = $derived((sbOpen || sbHold) && !!(scoreboard || sbPlayer));
 
   // Input overlay: always off when a replay opens; the recording is only loaded the first time
   // it's switched on; its options are remembered between replays.
@@ -589,6 +601,17 @@
       step((back ? -1 : 1) * (e.shiftKey ? 10 : 1));
       return;
     }
+    if (k === "o" && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      e.preventDefault();
+      sbOpen = !sbOpen;
+      return;
+    }
+    // Like in League: hold Tab for the scoreboard (fullscreen only; Tab moves the focus otherwise).
+    if (e.key === "Tab" && isFs && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      sbHold = true;
+      return;
+    }
     if (k === "h" && !e.ctrlKey && !e.altKey && !e.metaKey) {
       if (isFs) {
         e.preventDefault();
@@ -608,7 +631,7 @@
   }
 </script>
 
-<svelte:window onkeydown={key} />
+<svelte:window onkeydown={key} onkeyup={(e) => e.key === "Tab" && (sbHold = false)} onblur={() => (sbHold = false)} />
 
 {#snippet stepBtn(dir: number)}
   {#if dir < 0}
@@ -670,6 +693,11 @@
       {/if}
       {#if overlayOn && overlay}
         <InputOverlay {overlay} {video} options={overlayOpts} {heatRange} showUnconfirmed={!hidden.has("unconfirmed")} {fit} insetBottom={isFs && !panelDown ? chromeH : 0} />
+      {/if}
+      {#if sbShown}
+        <div class="sbover" data-testid="scoreboard-overlay">
+          <ScoreboardView sb={scoreboard} t={current - offset} player={sbPlayer} stats={sbStats} overlay />
+        </div>
       {/if}
       {#if flash}<div class="flash">{flash}</div>{/if}
       {#if error}<div class="err"><Icon name="warn" size={18} />{error}</div>{/if}
@@ -1423,5 +1451,15 @@
     background: var(--surface-3);
     color: var(--text);
     font-weight: 600;
+  }
+  .sbover {
+    position: absolute;
+    left: 50%;
+    top: 12px;
+    transform: translateX(-50%);
+    width: min(1000px, calc(100% - 24px));
+    max-height: calc(100% - 24px - var(--chrome-h, 0px));
+    overflow: auto;
+    z-index: 4;
   }
 </style>

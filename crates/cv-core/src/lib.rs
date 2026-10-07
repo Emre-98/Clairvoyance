@@ -7,6 +7,7 @@ pub mod input;
 pub mod library;
 pub mod modes;
 pub mod recorder;
+pub mod scoreboard;
 pub mod session;
 pub mod settings;
 
