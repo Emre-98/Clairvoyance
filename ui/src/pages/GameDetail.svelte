@@ -167,7 +167,18 @@
           {heatRange}
         />
         {#if range && s}
-          <ClipEditor sessionId={s.id} bind:range {current} {offset} duration={videoLen} onclose={() => (range = null)} onpreview={() => player?.seek(range![0], true)} />
+          <ClipEditor
+            sessionId={s.id}
+            bind:range
+            {current}
+            {offset}
+            duration={videoLen}
+            onclose={() => (range = null)}
+            onpreview={() => player?.seek(range![0], true)}
+            inputId={hasInput ? id : null}
+            showUnconfirmed={!hidden.has("unconfirmed")}
+            {heatRange}
+          />
         {/if}
       </div>
 

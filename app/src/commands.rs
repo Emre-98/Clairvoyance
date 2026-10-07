@@ -18,7 +18,7 @@ fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
 
-fn session_dir(st: &AppState, id: &str) -> R<PathBuf> {
+pub(crate) fn session_dir(st: &AppState, id: &str) -> R<PathBuf> {
     if id.is_empty() || id.contains(['/', '\\']) || id.contains("..") {
         return Err("invalid game id".into());
     }
@@ -281,7 +281,7 @@ fn file_version(path: &Path) -> Option<(u64, u128)> {
 }
 
 /// Start times of every frame of a video (cached per file, size and modification time).
-fn frame_times_cached(path: &Path) -> Option<Arc<Vec<f64>>> {
+pub(crate) fn frame_times_cached(path: &Path) -> Option<Arc<Vec<f64>>> {
     use std::collections::HashMap;
     use std::sync::{Mutex, OnceLock};
     static CACHE: OnceLock<Mutex<HashMap<(PathBuf, (u64, u128)), Arc<Vec<f64>>>>> = OnceLock::new();
@@ -421,7 +421,7 @@ pub async fn set_clip_keep(app: AppHandle, st: St<'_>, id: String, file: String,
 }
 
 /// Something on disk changed because of the UI: re-read it on the next request and tell the UI.
-fn changed(app: &AppHandle, st: &AppState) {
+pub(crate) fn changed(app: &AppHandle, st: &AppState) {
     st.library_dirty.store(true, std::sync::atomic::Ordering::SeqCst);
     let _ = app.emit("library-changed", ());
 }
@@ -943,6 +943,10 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static 
         list_clips,
         delete_clip,
         export_clip,
+        crate::export::overlay_export_begin,
+        crate::export::overlay_export_frame,
+        crate::export::overlay_export_end,
+        crate::export::overlay_export_cancel,
         save_clip_now,
         add_marker_now,
         stop_session,

@@ -10,6 +10,7 @@
 mod autostart;
 mod bench;
 mod commands;
+mod export;
 mod ffmpeg;
 mod games;
 mod input;

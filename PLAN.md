@@ -32,6 +32,10 @@
   module stays as it is.
 - **Spectating found before recording (2026-10-07):** see "Spectating: you're not one of the
   match's players" in docs/DECISIONS.md.
+- **2026-10-07:** auto clips follow the ult check; the timeline shows kills / deaths / assists by
+  default (the rest are greyed chips, remembered); clips can be exported with the input overlay
+  burned in (docs/DECISIONS.md: "Auto clips follow the recording check", "Timeline: kills,
+  deaths, assists by default", "Clips with the input overlay").
 
 ## What we're building
 A lightweight, Ascent/Outplayed-style game recorder for Windows. It starts with League of Legends,
@@ -158,6 +162,7 @@ Rules:
 - [x] Owner's check of v1.7.1: replays not recorded, spectating deleted after 8 s, Practice Tool game ready at once
 - [x] 32. Engineering upkeep: Windows code compiled and linted in CI, rustfmt + clippy, engine `Stage`, `GameIntegration` capabilities, open / reveal limited to the app's files
 - [x] 33. Spectating a friend's game (the client calls it your match) found before recording: the match's players vs your account
+- [x] 34. Auto clips re-cut after the ult check; timeline decluttered (kills, deaths, assists by default); clip export with the input overlay burned in
 
 ## Known issues
 - v1.6 player: frame steps are seeks, so on recordings with long keyframe gaps (before v1.2:
@@ -228,6 +233,12 @@ Rules:
   WebView2 on Windows (no Node on the owner's PC); WebView2 is the same engine and Segoe UI
   Variable is narrower than Inter. The "More controls" level is decided from measured widths,
   so other fonts / scalings adapt by themselves.
+
+- Clip export with the input overlay: checked in Chromium (mock backend) and with the system
+  ffmpeg on Linux (frame alignment, sound, cancel), not yet inside the app on Windows. Rendering
+  is bound by PNG encoding in the page: ~18 ms per 1080p frame in headless Chromium, so a 30 s
+  clip at 60 fps takes ~45 s (progress bar, Cancel). Possible speed-up: encode the PNGs in
+  workers in parallel.
 
 ## Next steps
 - League only for now (no CS2 / Dota 2 work). Nice-to-haves: code-signing certificate for the installer;

@@ -1043,6 +1043,51 @@ Clips-only games keep theirs (saved from the replay buffer, nothing to re-cut). 
 for any game's `RecordingCheck`. Tests: `recut_plan_follows_the_corrected_events`,
 `recut_auto_clips_replaces_the_clips_of_corrected_events`.
 
+### Timeline: kills, deaths, assists by default (2026-10-07, owner's request)
+The timeline and the event list show kills, deaths and assists (`SHOWN_BY_DEFAULT` in
+`lib/eventmeta.ts`); every other group (ult, recasts, unconfirmed presses, towers, objectives,
+rounds, markers & clips, game) starts as a greyed chip with a "Show … on the timeline" tooltip.
+The choice is remembered (`lib/timelinefilters.ts`, localStorage `cv.timelineFilters`, storing
+what's *shown* so groups added later start hidden; no storage → the defaults). The ability
+bubbles' "unconfirmed" presses still follow the "Unconfirmed presses" chip. Test:
+`ui/tests/filters.test.mjs` (7/7).
+
+### Clips with the input overlay (2026-10-07, owner's request)
+Clip editor > **Input overlay**: the cursor trail, clicks, keys strip, heatmap and ability bubbles
+burned into the exported clip, exactly as the player's overlay options draw them.
+- **How:** the page draws the overlay with the player's own code (`Overlay.draw`, nothing
+  re-implemented) into a canvas of the video's size, one transparent PNG per output frame, and
+  streams them as raw bytes over IPC (`overlay_export_begin` / `_frame` / `_end` / `_cancel`,
+  `app/src/export.rs`); ffmpeg lays them over the clip and re-encodes it
+  (`cv_capture::overlay_export`): GPU H.264 encoder first, then Media Foundation, then x264 (each
+  tried once on 0.1 s of black, remembered), sound kept (all tracks, AAC). One export at a
+  time; Cancel kills ffmpeg and removes the file. Alternatives: porting the drawing to Rust (two
+  copies of 1,000+ lines to keep pixel-identical) or recording the player in real time with
+  MediaRecorder (real-time only, software VP8/9, not frame-exact). Rejected.
+- **Exact moments:** the output has a constant frame rate made from the recording's variable-rate
+  frames by ffmpeg's `fps` filter. Measured first (a recording whose frames show their index, 10
+  cases: 24/30/60 fps, odd starts, after dropped frames, 0 mismatches): with an absolute seek
+  (`-seek_timestamp 1 -ss start`) ffmpeg keeps the frames from `start`, puts frame j in slot
+  `floor((t_j - start) * fps + 0.5)` and output frame k shows the last frame with slot <= k.
+  `overlay_export::plan` returns that frame's time for every k, so each overlay frame is drawn
+  for exactly the picture under it (the bubble of a key-down appears on the frame the player
+  shows it on). Without the absolute seek ffmpeg adds the file's start time (one frame off on
+  ffmpeg-made files). The frame count is pinned (`-frames:v`), the sound runs half a frame longer.
+  The output frame rate is the recording's median frame interval (60 for 60 fps recordings with
+  dropped frames).
+- **Tests:** `cv-capture/tests/overlay_export.rs` with the real ffmpeg: a recording made like the
+  app's (our fragmented muxer, in-place index, variable frame rate, sound), the app's frame times
+  equal ffmpeg's (< 0.5 ms), 4 clips (60 / 30 fps, starts on / between / after dropped frames):
+  the overlay's index equals the video's on every output frame, sound kept, cancel, errors
+  reported; it fails with the rounding changed by half a slot (checked). Unit tests for the plan,
+  the frame rate and the arguments. `ui/tests/export.test.mjs` (Chromium, mock backend, 11/11):
+  the option, Exact cut locked on, one PNG per frame, the exported cursor dot 0.5-1.3 px from the
+  video's cursor at the same moment, transparent elsewhere, cancel. Layout audit: new state
+  "game-clip-editor" (24 sizes).
+- **Speed:** PNG encoding dominates: 9 ms (960x540), 18 ms (1080p), 37 ms (1440p) per frame in
+  headless Chromium; the next frame is drawn while the previous one is written. 900 frames of
+  960x540: 15 s (58 frames/s).
+
 ### Owner test scripts (not run)
 The owner can't run these (2026-10-07); kept in case that changes.
 - **Owner, Practice Tool test of the ult kinds (v1.6, ~15 min):** see the steps in the v1.6

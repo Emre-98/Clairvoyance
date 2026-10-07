@@ -2,10 +2,11 @@
 //! through Media Foundation) + per-process WASAPI loopback audio, written as crash-safe
 //! fragmented MP4, with an in-memory replay buffer. Implements `cv_core::Recorder`.
 //!
-//! `mp4` and `replay` are portable (tested anywhere); everything touching Windows lives in `win`.
+//! `mp4`, `remux`, `overlay_export` and `replay` are portable (tested anywhere); everything touching Windows lives in `win`.
 
 pub mod mp4;
 pub mod nv12;
+pub mod overlay_export;
 pub mod remux;
 pub mod replay;
 

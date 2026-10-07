@@ -52,8 +52,9 @@ games, clips and downloaded tools over; the Home page then offers to uninstall t
 - Afterwards open the game from **Games**: click any marker (or event in the list) to jump
   to 5 seconds before it; **N / P** = next / previous event, **Space** play/pause,
   **← / →** ±5 s, **, / .** one frame back / forward (Shift: 10 frames; hold to repeat; the
-  buttons next to play do the same), **F** or double-click fullscreen. Filter chips hide or
-  show event types. **Zoom the timeline** with Ctrl + mouse wheel over it (or the zoom slider /
+  buttons next to play do the same), **F** or double-click fullscreen. The timeline shows your
+  kills, deaths and assists; the other event types (ult, towers, objectives, markers...) are
+  greyed chips under it: click one to show it (remembered for the next games). **Zoom the timeline** with Ctrl + mouse wheel over it (or the zoom slider /
   + / − / "whole game" buttons) down to single frames, with a time ruler and frame numbers;
   Shift + wheel or dragging pans. **Fullscreen**: the video fills the screen and the controls sit
   over its bottom as a see-through panel; the small arrow (or **H**) slides it away for true
@@ -76,7 +77,9 @@ games, clips and downloaded tools over; the Home page then offers to uninstall t
   as key codes (never text), and stay on your PC. Nothing is shown during the game. Turn it
   off in Settings > Games > League.
 - **Create clip** opens the clip editor: drag the handles on the timeline and save. The first
-  export downloads ffmpeg (about 100 MB, once).
+  export downloads ffmpeg (about 100 MB, once). Tick **Input overlay** to burn your cursor
+  trail, clicks, keys and ability bubbles into the clip, exactly as the player's overlay options
+  show them (the clip is re-encoded on your GPU; a progress bar shows while it renders).
 - Files: `Videos\Clairvoyance\<date>_<time>_League\` holds the video
   (`2026-09-30_League_Ahri_Win.mp4`), `session.json` (the timeline) and `clips\`.
   Thumbnails are kept separately in `%LOCALAPPDATA%\Clairvoyance\Thumbnails\` (made after
