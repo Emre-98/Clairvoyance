@@ -307,7 +307,7 @@ impl Engine {
                     n += 1;
                     if self.active.is_some() {
                         self.tick_active(n).await;
-                    } else if n % 2 == 0 {
+                    } else if n.is_multiple_of(2) {
                         self.tick_idle().await;
                     }
                 }
@@ -711,7 +711,7 @@ impl Engine {
         }
         if self.active.as_ref().unwrap().rule == ModeRule::Off {
             // Mode switched off: just wait for the game to close (every 2 s).
-            if n % 2 == 0 {
+            if n.is_multiple_of(2) {
                 let running = self.game_running(idx);
                 let a = self.active.as_mut().unwrap();
                 a.missing_checks = if running { 0 } else { a.missing_checks + 1 };
@@ -830,7 +830,7 @@ impl Engine {
         let mut gone = false;
         // The process list every 2 s; every second while the game's API doesn't answer (it
         // stops answering the moment the game closes), so leaving the game is noticed fast.
-        if n % 2 == 0 || update_failed {
+        if n.is_multiple_of(2) || update_failed {
             let running = self.game_running(idx);
             let a = self.active.as_mut().unwrap();
             a.missing_checks = if running { 0 } else { a.missing_checks + 1 };
@@ -889,7 +889,7 @@ impl Engine {
                 return;
             }
         }
-        if n % 2 == 0 || update.is_none() {
+        if n.is_multiple_of(2) || update.is_none() {
             let running = self.game_running(idx);
             let a = self.active.as_mut().unwrap();
             a.missing_checks = if running { 0 } else { a.missing_checks + 1 };

@@ -4,6 +4,7 @@
 //!   1. Baseline: nothing recording.
 //!   2. Built-in recorder recording.
 //!   3. Recording + mouse/keyboard input recording (replay overlay).
+//!
 //! Measured per phase: League FPS and 1% lows (PresentMon, Intel's open-source frame-time tool,
 //! which reads Windows' present events: no game access), League CPU, whole-PC CPU,
 //! Clairvoyance's CPU and RAM, GPU 3D load and the video-encode engine load.

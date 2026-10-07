@@ -118,7 +118,7 @@ unsafe fn decode_inner(video: &Path, at_secs: f64) -> Result<Frame> {
             let mut data: *mut u8 = std::ptr::null_mut();
             let mut len = 0u32;
             buf.Lock(&mut data, None, Some(&mut len))?;
-            let stride = if fh > 0 { (len / fh).max(fw * 4) } else { fw * 4 } as usize;
+            let stride = len.checked_div(fh).map_or(fw * 4, |s| s.max(fw * 4)) as usize;
             if (stride * (h as usize - 1) + row) > len as usize {
                 let _ = buf.Unlock();
                 bail!("frame buffer too small");

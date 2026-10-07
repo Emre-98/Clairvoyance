@@ -400,7 +400,7 @@ pub fn ui_payload(an: &Analysis, heat: Option<&super::Heatmap>, rate: u32) -> Ve
     let u32le = |b: &mut Vec<u8>, v: u32| b.extend_from_slice(&v.to_le_bytes());
     let f32le = |b: &mut Vec<u8>, v: f64| b.extend_from_slice(&(v as f32).to_le_bytes());
     let pad = |b: &mut Vec<u8>| {
-        while b.len() % 4 != 0 {
+        while !b.len().is_multiple_of(4) {
             b.push(0)
         }
     };

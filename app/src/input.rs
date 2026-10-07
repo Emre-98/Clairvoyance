@@ -138,7 +138,7 @@ mod win {
             }
             if !is_down {
                 // Only releases of keys seen going down (no stray ups).
-                return s.down.remove(&vk).then(|| InputEvent { key: None, vk, down: false, at, qpc_hns });
+                return s.down.remove(&vk).then_some(InputEvent { key: None, vk, down: false, at, qpc_hns });
             }
             // Ignore auto-repeat while a key is held.
             if !s.down.insert(vk) {

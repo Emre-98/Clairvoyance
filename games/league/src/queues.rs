@@ -8,6 +8,7 @@
 //! - Riot's official **queues.json** (static data) names queues when the client isn't running.
 //! - The **Live Client Data API** only knows the coarse `gameMode` (CLASSIC, ARAM, CHERRY…); it's
 //!   the fallback when the client can't be reached.
+//!
 //! Both lists are cached on disk, so the settings list works offline. Nothing here hardcodes
 //! the list of modes: only a small table of well-known queue ids gives default groups/rules
 //! ([`KNOWN`], easy to extend), everything else is classified from the queue's own data.

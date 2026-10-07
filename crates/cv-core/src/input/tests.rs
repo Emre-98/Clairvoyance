@@ -204,7 +204,7 @@ fn gaps_break_the_trail_and_payload_layout() {
     assert_eq!((nm as usize, nc as usize, nk as usize, nw, hw, hh, rate), (an.moves.len(), an.clicks.len(), an.keys.len(), 1, 8, 4, 250));
     assert_eq!(ng, 2, "before focus, and 9.0-9.5");
     assert_eq!(nb as usize, an.moves.iter().filter(|m| m.brk).count());
-    let pad = |n: usize| (n + 3) / 4 * 4;
+    let pad = |n: usize| n.div_ceil(4) * 4;
     // First sample's x (0.2 + 0) in i16 units.
     let x0 = i16::from_le_bytes(b[44 + nm as usize * 4..44 + nm as usize * 4 + 2].try_into().unwrap());
     assert_eq!(x0, (0.2 * POS_SCALE).round() as i16);

@@ -8,6 +8,7 @@
 //!   point at the old folder instead, so nothing is ever lost. A custom save folder is kept as is;
 //! - app data (`%LOCALAPPDATA%\GameRecorder`: ffmpeg, PresentMon, logs) is moved or copied;
 //! - "Start with Windows" is re-registered under the new name.
+//!
 //! The old installation itself is left alone; the UI offers to uninstall it (`legacy_install`).
 
 use crate::state::Paths;

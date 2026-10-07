@@ -29,7 +29,7 @@ impl ReplayBuffer {
         if is_key {
             // Keep from the newest keyframe that is at least `window` old.
             let cutoff = now - self.window;
-            if let Some(k) = self.packets.iter().filter(|q| q.track == 0 && q.key && q.pts <= cutoff).map(|q| q.pts).last() {
+            if let Some(k) = self.packets.iter().filter(|q| q.track == 0 && q.key && q.pts <= cutoff).map(|q| q.pts).next_back() {
                 self.drop_before(k);
             }
         }
@@ -94,7 +94,7 @@ mod tests {
         assert_eq!(start, 18 * S); // latest 29.9 -> cutoff 19.9 -> keyframe at 18
                                    // Buffer never holds much more than the window + one GOP.
         let first = r.packets.front().unwrap().pts;
-        assert!(first >= 16 * S && first <= 20 * S, "first = {first}");
+        assert!((16 * S..=20 * S).contains(&first), "first = {first}");
     }
 
     #[test]

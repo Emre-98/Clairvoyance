@@ -146,7 +146,7 @@ fn fragmented_recording_and_clip() {
     let (packets, start) = rb.snapshot(3);
     let f = std::fs::File::create(&clip).unwrap();
     let d = write_clip(std::io::BufWriter::new(f), &vc, &acfg, &packets, start).unwrap();
-    assert!(d >= 3.0 && d <= 5.1, "clip {d}");
+    assert!((3.0..=5.1).contains(&d), "clip {d}");
     let errs = decode_errors(&clip);
     assert!(errs.trim().is_empty(), "clip decode errors: {errs}");
     let streams = probe(&clip, &["-show_entries", "stream=codec_name", "-of", "csv=p=0"]);

@@ -168,6 +168,9 @@ unsafe fn enum_hw(luid: Option<(i64, bool)>) -> Result<Vec<IMFActivate>> {
 
 /// Hardware H.264 encoders that can use the GPU at `gpu_luid`, best match first: same GPU,
 /// then the preferred vendor. Encoders of another GPU are left out: they refuse our device.
+///
+/// # Safety
+/// Media Foundation must be started (`MFStartup`) and COM initialized on this thread.
 pub unsafe fn list_encoders(gpu_luid: i64, gpu_vendor: u32, prefer: &str) -> Result<Vec<(IMFActivate, EncoderDesc)>> {
     let mut found = Vec::new();
     for as_blob in [true, false] {
@@ -204,7 +207,7 @@ pub unsafe fn list_encoders(gpu_luid: i64, gpu_vendor: u32, prefer: &str) -> Res
         let vid = u32::from_str_radix(ven.trim_start_matches("VEN_"), 16).unwrap_or(0);
         out.push((act, EncoderDesc { name, vendor: vendor_name(vid).to_string() }, score));
     }
-    out.sort_by(|a, b| b.2.cmp(&a.2));
+    out.sort_by_key(|a| std::cmp::Reverse(a.2));
     Ok(out.into_iter().map(|(a, d, _)| (a, d)).collect())
 }
 

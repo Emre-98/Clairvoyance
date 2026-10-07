@@ -296,8 +296,7 @@ fn parse(path: &Path) -> io::Result<Parsed> {
     let mut moofs: Vec<Hdr> = Vec::new();
     let mut mdat_first = false;
     let mut tops: Vec<Hdr> = Vec::new();
-    loop {
-        let Some(h) = read_hdr(&mut f, pos, len)? else { break };
+    while let Some(h) = read_hdr(&mut f, pos, len)? {
         if h.end() > len {
             // Cut off by a crash: whatever is complete before it is kept.
             if &h.kind == b"moof" {
@@ -374,10 +373,10 @@ fn parse(path: &Path) -> io::Result<Parsed> {
     }
     let mut chunks = Vec::new();
     // Samples already in the moov (regular files, or fragmented files that carry some).
-    for ti in 0..tracks.len() {
-        let stbl = find_path(&tracks[ti].trak[8..], &[b"mdia", b"minf", b"stbl"]).map(|b| b.body.to_vec());
+    for (ti, track) in tracks.iter_mut().enumerate() {
+        let stbl = find_path(&track.trak[8..], &[b"mdia", b"minf", b"stbl"]).map(|b| b.body.to_vec());
         if let Some(stbl) = stbl {
-            read_tables(&stbl, ti, &mut tracks[ti], &mut chunks)?;
+            read_tables(&stbl, ti, track, &mut chunks)?;
         }
     }
     let layout = if fragmented {
@@ -1161,7 +1160,7 @@ pub fn cut(src: &Path, dst: &Path, start: f64, secs: f64) -> io::Result<f64> {
         })
         .collect();
     let vts = p.tracks[vi].timescale as f64;
-    let t0 = orig[vi].iter().zip(&dts[vi]).filter(|(s, d)| s.sync && **d as f64 / vts <= start).map(|(_, d)| *d as f64 / vts).last().unwrap_or(0.0);
+    let t0 = orig[vi].iter().zip(&dts[vi]).filter(|(s, d)| s.sync && **d as f64 / vts <= start).map(|(_, d)| *d as f64 / vts).next_back().unwrap_or(0.0);
     let t1 = start + secs;
     let mut maps: Vec<Vec<Option<usize>>> = Vec::new();
     for (ti, t) in p.tracks.iter_mut().enumerate() {

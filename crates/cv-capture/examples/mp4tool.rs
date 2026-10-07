@@ -161,7 +161,7 @@ fn fake_input(dir: &Path, rate: u32) -> Result<String, String> {
     let (mut x, mut y, mut vx, mut vy) = (0.5f64, 0.5f64, 0.0f64, 0.0f64);
     let step = 1_000_000 / rate as i64;
     let n = (dur * rate as f64) as i64;
-    let keys = [b'Q', b'W', b'E', b'R', b'D', b'F', b'1', b'4', b'B'];
+    let keys = *b"QWERDF14B";
     for i in 0..n {
         let t = i * step;
         if rnd() < 0.01 {

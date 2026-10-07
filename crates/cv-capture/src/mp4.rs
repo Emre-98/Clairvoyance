@@ -11,7 +11,7 @@
 //! Tracks: H.264 video (AVCC samples, no B-frames) and any number of AAC audio tracks.
 //! Timestamps are in 100 ns units (Windows' QPC/`TimeSpan` unit) relative to the recording start.
 
-use std::io::{Seek, SeekFrom, Write};
+use std::io::{Seek, Write};
 
 pub const HNS: i64 = 10_000_000; // 100 ns ticks per second
 pub const VIDEO_TIMESCALE: u32 = 90_000;
@@ -653,7 +653,7 @@ pub fn write_clip<W: Write + Seek>(mut out: W, video: &VideoConfig, audio: &[Aud
         out.write_all(&per[*i][*j].data)?;
     }
     out.flush()?;
-    let _ = out.seek(SeekFrom::Current(0));
+    let _ = out.stream_position();
     Ok(durations[0] as f64 / VIDEO_TIMESCALE as f64)
 }
 

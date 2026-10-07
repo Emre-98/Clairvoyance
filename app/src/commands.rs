@@ -740,7 +740,7 @@ pub struct EncoderList {
 /// Hardware encoders the built-in recorder can use on this PC.
 #[tauri::command]
 pub async fn builtin_encoders() -> R<EncoderList> {
-    tauri::async_runtime::spawn_blocking(|| cv_capture::NativeRecorder::available_encoders())
+    tauri::async_runtime::spawn_blocking(cv_capture::NativeRecorder::available_encoders)
         .await
         .map_err(err)?
         .map(|(gpu, encoders)| EncoderList { gpu, encoders })

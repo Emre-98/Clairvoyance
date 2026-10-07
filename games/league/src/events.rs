@@ -69,7 +69,7 @@ pub struct Ctx {
 impl Ctx {
     pub fn is_me(&self, name: &str) -> bool {
         let n = name.trim().to_lowercase();
-        !n.is_empty() && self.me.iter().any(|m| *m == n)
+        !n.is_empty() && self.me.contains(&n)
     }
 
     pub fn is_me_any(&self, names: &[String]) -> bool {

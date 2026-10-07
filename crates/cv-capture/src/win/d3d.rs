@@ -63,7 +63,7 @@ pub fn adapters() -> Result<Vec<(IDXGIAdapter1, GpuInfo)>> {
             out.push((a, GpuInfo { vendor_id: d.VendorId, name: String::from_utf16_lossy(&d.Description[..end]), luid }, d.DedicatedVideoMemory));
         }
     }
-    out.sort_by(|a, b| b.2.cmp(&a.2));
+    out.sort_by_key(|a| std::cmp::Reverse(a.2));
     Ok(out.into_iter().map(|(a, i, _)| (a, i)).collect())
 }
 

@@ -661,7 +661,7 @@ pub fn compress_in_place(path: &Path, heatmap: Option<&Heatmap>) -> anyhow::Resu
             enc.push(r);
             n += 1;
             // Keep blocks self-contained (absolute time + position) every ~1M records.
-            if n % 1_000_000 == 0 {
+            if n.is_multiple_of(1_000_000) {
                 raw.push(enc.take());
             }
         }
