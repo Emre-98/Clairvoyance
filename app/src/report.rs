@@ -87,7 +87,11 @@ pub fn write(st: &AppState, ui: &serde_json::Value) -> anyhow::Result<PathBuf> {
             (Err(e), _) => format!("missing ({e})"),
             (_, Err(e)) => format!("can't read: {e}"),
         };
-        let mech = sess.mechanics.as_ref().map(|m| format!(" | APM {:.0}, {} clicks, {} keys, idle {:.0} s", m.apm, m.clicks, m.key_presses, m.idle_secs)).unwrap_or_default();
+        let mech = sess
+            .mechanics
+            .as_ref()
+            .map(|m| format!(" | APM {:.0}, {} clicks, {} keys, idle {:.0} s", m.apm, m.clicks, m.key_presses, m.idle_secs))
+            .unwrap_or_default();
         let _ = writeln!(t, "  {} | {line}{mech}", g.id);
     }
     let _ = writeln!(t, "\nWindow responsiveness (this run): {}", serde_json::to_string_pretty(ui).unwrap_or_default());
@@ -97,7 +101,12 @@ pub fn write(st: &AppState, ui: &serde_json::Value) -> anyhow::Result<PathBuf> {
     for (game, m) in &s.modes {
         let new = m.entries.values().filter(|e| e.is_new).count();
         let off: Vec<&str> = m.entries.values().filter(|e| e.rule == cv_core::modes::ModeRule::Off && e.available != Some(false)).map(|e| e.name.as_str()).collect();
-        let clips: Vec<&str> = m.entries.values().filter(|e| e.rule == cv_core::modes::ModeRule::ClipsOnly && e.available != Some(false)).map(|e| e.name.as_str()).collect();
+        let clips: Vec<&str> = m
+            .entries
+            .values()
+            .filter(|e| e.rule == cv_core::modes::ModeRule::ClipsOnly && e.available != Some(false))
+            .map(|e| e.name.as_str())
+            .collect();
         let _ = writeln!(t, "\nGame modes ({game}): {} known, {new} new, unknown rule {:?}, list from client {:?}", m.entries.len(), m.unknown_rule, m.catalog_updated_at);
         let _ = writeln!(t, "  off: {}", off.join(", "));
         let _ = writeln!(t, "  clips only: {}", clips.join(", "));

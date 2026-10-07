@@ -131,10 +131,8 @@ pub struct ModeDecision {
 impl GameModes {
     fn insert_new(&mut self, key: &str, name: &str, queue_id: Option<i64>, game_mode: Option<String>, group: &str, default_rule: Option<ModeRule>, available: Option<bool>) {
         let rule = default_rule.unwrap_or(self.unknown_rule);
-        self.entries.insert(
-            key.to_string(),
-            ModeEntry { name: name.to_string(), queue_id, game_mode, group: group.to_string(), rule, available, is_new: true, first_seen: Some(Local::now()) },
-        );
+        self.entries
+            .insert(key.to_string(), ModeEntry { name: name.to_string(), queue_id, game_mode, group: group.to_string(), rule, available, is_new: true, first_seen: Some(Local::now()) });
     }
 
     /// Decides for a match that is starting. A mode seen for the first time is added (with the
@@ -167,8 +165,7 @@ impl GameModes {
             // Only the coarse game type is known (e.g. ARAM without a queue id): use the most
             // permissive choice among modes of that type, so nothing wanted is missed.
             None => {
-                let same: Vec<ModeRule> =
-                    self.entries.values().filter(|e| e.game_mode.is_some() && e.game_mode == m.game_mode).map(|e| e.rule).collect();
+                let same: Vec<ModeRule> = self.entries.values().filter(|e| e.game_mode.is_some() && e.game_mode == m.game_mode).map(|e| e.rule).collect();
                 same.into_iter().max_by_key(|r| r.rank()).unwrap_or(self.unknown_rule)
             }
         };
@@ -292,7 +289,14 @@ mod tests {
     #[test]
     fn coarse_fallback_uses_most_permissive_rule_of_that_type() {
         let mut g = GameModes::default();
-        g.merge_catalog(&[cat("q420", "Ranked", "CLASSIC", "ranked", Some(ModeRule::Record), None), cat("q400", "Draft", "CLASSIC", "normal", Some(ModeRule::Off), None), cat("q450", "ARAM", "ARAM", "aram", Some(ModeRule::Off), None)], false);
+        g.merge_catalog(
+            &[
+                cat("q420", "Ranked", "CLASSIC", "ranked", Some(ModeRule::Record), None),
+                cat("q400", "Draft", "CLASSIC", "normal", Some(ModeRule::Off), None),
+                cat("q450", "ARAM", "ARAM", "aram", Some(ModeRule::Off), None),
+            ],
+            false,
+        );
         assert_eq!(g.decide(Some(&mm(None, "ARAM", "ARAM"))).rule, ModeRule::Off);
         assert_eq!(g.decide(Some(&mm(None, "Summoner's Rift", "CLASSIC"))).rule, ModeRule::Record);
         g.unknown_rule = ModeRule::Off;
@@ -318,7 +322,11 @@ mod tests {
     fn presets_and_groups() {
         let mut g = GameModes::default();
         g.merge_catalog(
-            &[cat("q420", "R", "CLASSIC", "ranked", Some(ModeRule::Record), None), cat("q400", "D", "CLASSIC", "normal", Some(ModeRule::Record), None), cat("q450", "A", "ARAM", "aram", Some(ModeRule::Record), None)],
+            &[
+                cat("q420", "R", "CLASSIC", "ranked", Some(ModeRule::Record), None),
+                cat("q400", "D", "CLASSIC", "normal", Some(ModeRule::Record), None),
+                cat("q450", "A", "ARAM", "aram", Some(ModeRule::Record), None),
+            ],
             false,
         );
         g.apply_preset("ranked");

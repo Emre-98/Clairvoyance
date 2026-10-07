@@ -164,9 +164,7 @@ fn steam_root() -> Option<PathBuf> {
         use windows::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_SZ};
         let mut buf = [0u16; 520];
         let mut len = (buf.len() * 2) as u32;
-        let ok = unsafe {
-            RegGetValueW(HKEY_CURRENT_USER, w!("Software\\Valve\\Steam"), w!("SteamPath"), RRF_RT_REG_SZ, None, Some(buf.as_mut_ptr() as *mut _), Some(&mut len)).is_ok()
-        };
+        let ok = unsafe { RegGetValueW(HKEY_CURRENT_USER, w!("Software\\Valve\\Steam"), w!("SteamPath"), RRF_RT_REG_SZ, None, Some(buf.as_mut_ptr() as *mut _), Some(&mut len)).is_ok() };
         if ok {
             let n = (len as usize / 2).saturating_sub(1);
             let s = String::from_utf16_lossy(&buf[..n.min(buf.len())]);

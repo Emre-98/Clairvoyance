@@ -253,11 +253,35 @@ pub fn session_folder_name(started: DateTime<Local>, short_game: &str) -> String
 pub fn sanitize(s: &str) -> String {
     let cleaned: String = s
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '.' { c } else if c == ' ' || c == '_' { '-' } else { '\0' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '.' {
+                c
+            } else if c == ' ' || c == '_' {
+                '-'
+            } else {
+                '\0'
+            }
+        })
         .filter(|c| *c != '\0')
         .collect();
     let trimmed = cleaned.trim_matches(|c| c == '.' || c == '-').to_string();
-    if trimmed.is_empty() { "Unknown".into() } else { trimmed }
+    if trimmed.is_empty() {
+        "Unknown".into()
+    } else {
+        trimmed
+    }
+}
+
+/// True if `path` exists and is `root` or inside it (links and `..` resolved first), for one of
+/// `roots`. The UI may only open / reveal files the app itself keeps.
+pub fn path_within(path: &Path, roots: &[&Path]) -> bool {
+    let Ok(p) = path.canonicalize() else { return false };
+    roots.iter().filter_map(|r| r.canonicalize().ok()).any(|r| p.starts_with(r))
+}
+
+/// Video files the UI may open in the default player (never anything executable).
+pub fn is_video_file(path: &Path) -> bool {
+    path.extension().and_then(|e| e.to_str()).is_some_and(|e| ["mp4", "mkv", "webm", "mov"].iter().any(|v| e.eq_ignore_ascii_case(v)))
 }
 
 /// Picks a path that doesn't exist yet by appending `_2`, `_3`, ...
@@ -282,6 +306,27 @@ pub fn unique_path(dir: &Path, name: &str) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn paths_the_ui_may_open() {
+        let root = std::env::temp_dir().join(format!("cv-within-{}", std::process::id()));
+        let videos = root.join("videos");
+        let other = root.join("other");
+        std::fs::create_dir_all(videos.join("game")).unwrap();
+        std::fs::create_dir_all(&other).unwrap();
+        std::fs::write(videos.join("game").join("a.mp4"), b"x").unwrap();
+        std::fs::write(other.join("b.mp4"), b"x").unwrap();
+        let roots = [videos.as_path()];
+        assert!(path_within(&videos.join("game").join("a.mp4"), &roots));
+        assert!(path_within(&videos, &roots), "the folder itself");
+        assert!(!path_within(&other.join("b.mp4"), &roots), "outside");
+        assert!(!path_within(&videos.join("..").join("other").join("b.mp4"), &roots), "`..` is resolved");
+        assert!(!path_within(&videos.join("missing.mp4"), &roots), "must exist");
+        assert!(!path_within(&root.join("videos2"), &roots), "a sibling with the same prefix");
+        assert!(is_video_file(Path::new("x/Game.MP4")) && is_video_file(Path::new("c.webm")));
+        assert!(!is_video_file(Path::new("x/setup.exe")) && !is_video_file(Path::new("x/mp4")));
+        std::fs::remove_dir_all(root).ok();
+    }
     use chrono::TimeZone;
 
     #[test]

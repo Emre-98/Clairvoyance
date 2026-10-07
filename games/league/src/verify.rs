@@ -159,10 +159,8 @@ fn keep_live_with(s: &mut GameSession, status: &str, reason: String, confidence:
         } else {
             (EventKind::UltPressed, "Ult pressed (unverified)")
         };
-        s.events.push(
-            GameEvent::new(format!("ult-{:.2}", m.game_time), k, m.game_time, title)
-                .with_details(format!("Ult key pressed ({}). Not checked against the recording: {reason}", m.key)),
-        );
+        s.events
+            .push(GameEvent::new(format!("ult-{:.2}", m.game_time), k, m.game_time, title).with_details(format!("Ult key pressed ({}). Not checked against the recording: {reason}", m.key)));
     }
     s.events.sort_by(|a, b| a.game_time.partial_cmp(&b.game_time).unwrap_or(std::cmp::Ordering::Equal));
     s.verification = Some(Verification {
@@ -361,10 +359,12 @@ pub fn verify(s: &mut GameSession, v: &mut dyn FrameSource, rules: &UltRules, ca
                 Outcome::NoCast { press } => {
                     unconfirmed += 1;
                     let m = &marks[press];
-                    s.events.push(
-                        GameEvent::new(format!("ultp-{:.2}", m.game_time), EventKind::UltUnconfirmed, m.game_time, "Ult pressed, no cast")
-                            .with_details(format!("{} pressed. {}", m.key, reason_text(m.reason.as_deref()))),
-                    );
+                    s.events
+                        .push(GameEvent::new(format!("ultp-{:.2}", m.game_time), EventKind::UltUnconfirmed, m.game_time, "Ult pressed, no cast").with_details(format!(
+                            "{} pressed. {}",
+                            m.key,
+                            reason_text(m.reason.as_deref())
+                        )));
                 }
             }
         }
@@ -430,11 +430,8 @@ pub fn verify(s: &mut GameSession, v: &mut dyn FrameSource, rules: &UltRules, ca
         // of the video (the HUD fades out): a lone change is a misread, not a video-only ult.
         let game_end = s.events.iter().filter(|e| e.kind == EventKind::GameEnd).map(|e| e.game_time + offset).fold(f64::INFINITY, f64::min);
         let alt_all = sig.alt.len();
-        sig.alt.retain(|&(st, en)| {
-            st < game_end - 1.0
-                && en < dur - 0.5
-                && pin.iter().any(|p| p.ok && p.t >= st - kind.cast_delay().max(delay) - 0.3 && p.t <= st + 0.5)
-        });
+        sig.alt
+            .retain(|&(st, en)| st < game_end - 1.0 && en < dur - 0.5 && pin.iter().any(|p| p.ok && p.t >= st - kind.cast_delay().max(delay) - 0.3 && p.t <= st + 0.5));
         sig.ready.retain(|&t| t < game_end);
         let ammo_ready = |t: f64| look_at(t).is_some_and(|l| !hud::dimmed(&l) && l.state() != hud::RState::Cooldown);
         let labels = ultkind::label(&kind, delay, &sig, &pin, &ammo_ready);
@@ -472,10 +469,12 @@ pub fn verify(s: &mut GameSession, v: &mut dyn FrameSource, rules: &UltRules, ca
                 Label::NoCast { press } => {
                     unconfirmed += 1;
                     let m = &marks[press];
-                    s.events.push(
-                        GameEvent::new(format!("ultp-{:.2}", m.game_time), EventKind::UltUnconfirmed, m.game_time, "Ult pressed, no cast")
-                            .with_details(format!("{} pressed. {}", m.key, reason_text(m.reason.as_deref()))),
-                    );
+                    s.events
+                        .push(GameEvent::new(format!("ultp-{:.2}", m.game_time), EventKind::UltUnconfirmed, m.game_time, "Ult pressed, no cast").with_details(format!(
+                            "{} pressed. {}",
+                            m.key,
+                            reason_text(m.reason.as_deref())
+                        )));
                 }
             }
         }
@@ -660,7 +659,8 @@ mod tests {
         let mut s = GameSession::new("x".into(), "league", "League of Legends", chrono::Local::now());
         s.player = Some(cv_core::game::PlayerInfo { name: "me".into(), character: Some(champ.into()), character_id: Some(champ.into()), team: None, mode: None });
         for &(t, reason) in presses {
-            s.key_presses.push(KeyMark { game_time: t, action: "ult".into(), key: "R".into(), accepted: reason.is_none() || reason == Some("recast"), reason: reason.map(|r| r.to_string()) });
+            s.key_presses
+                .push(KeyMark { game_time: t, action: "ult".into(), key: "R".into(), accepted: reason.is_none() || reason == Some("recast"), reason: reason.map(|r| r.to_string()) });
         }
         s
     }
@@ -673,7 +673,15 @@ mod tests {
     fn annie_in_a_synthetic_recording() {
         // Ready; Tibbers 100.2-145 (command icon), cooldown 145-245, ready; Tibbers again at 260.2.
         let icons = ["r-caitlyn-ready.ppm", "r-caitlyn-alt-synthetic.ppm", "r-caitlyn-cooldown.ppm"];
-        let mut v = Synth::new(300.0, &icons, |t| if (100.2..145.0).contains(&t) || (260.2..290.0).contains(&t) { 1 } else if (145.0..245.0).contains(&t) { 2 } else { 0 });
+        let mut v = Synth::new(300.0, &icons, |t| {
+            if (100.2..145.0).contains(&t) || (260.2..290.0).contains(&t) {
+                1
+            } else if (145.0..245.0).contains(&t) {
+                2
+            } else {
+                0
+            }
+        });
         let mut presses: Vec<(f64, Option<&str>)> = vec![(100.0, None)];
         presses.extend((0..10).map(|i| (102.0 + i as f64 * 2.0, Some("recast"))));
         presses.push((150.0, None));

@@ -329,7 +329,7 @@ impl LibraryIndex {
     pub fn summaries(&self) -> Vec<SessionSummary> {
         let st = self.state.read().unwrap();
         let mut v: Vec<SessionSummary> = st.entries.values().map(|e| e.summary.clone()).collect();
-        v.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+        v.sort_by_key(|s| std::cmp::Reverse(s.started_at));
         v
     }
 
@@ -341,7 +341,7 @@ impl LibraryIndex {
     pub fn clips(&self) -> Vec<ClipEntry> {
         let st = self.state.read().unwrap();
         let mut v: Vec<ClipEntry> = st.entries.values().flat_map(|e| e.clips.iter().cloned()).collect();
-        v.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        v.sort_by_key(|c| std::cmp::Reverse(c.created_at));
         v
     }
 
@@ -486,7 +486,7 @@ pub struct CleanupPlan {
 /// `limit_bytes` 0 = no size limit; `max_age_days` 0 = no age limit.
 pub fn plan_cleanup(games: &[SessionSummary], limit_bytes: u64, max_age_days: u32, now: DateTime<Local>, protect: Option<&str>) -> CleanupPlan {
     let mut oldest_first: Vec<&SessionSummary> = games.iter().collect();
-    oldest_first.sort_by(|a, b| a.started_at.cmp(&b.started_at));
+    oldest_first.sort_by_key(|a| a.started_at);
     let total_before: u64 = games.iter().map(|g| g.size_bytes).sum();
     let mut total = total_before;
     let mut steps: Vec<CleanupStep> = Vec::new();
@@ -618,7 +618,8 @@ mod tests {
         if kept_clip {
             std::fs::create_dir_all(dir.join(CLIPS_DIR)).unwrap();
             std::fs::write(dir.join(CLIPS_DIR).join("c.mp4"), vec![0u8; 10]).unwrap();
-            s.clips.push(ClipInfo { file: "c.mp4".into(), title: "c".into(), video_start: Some(1.0), video_end: Some(5.0), created_at: Local::now(), source: "replay".into(), keep: true });
+            s.clips
+                .push(ClipInfo { file: "c.mp4".into(), title: "c".into(), video_start: Some(1.0), video_end: Some(5.0), created_at: Local::now(), source: "replay".into(), keep: true });
         }
         s.save(&dir).unwrap();
         std::fs::write(dir.join("v.mp4"), vec![0u8; bytes]).unwrap();
@@ -667,7 +668,7 @@ mod tests {
         make(&games, "mid", 2, false, 100_000, false);
         make(&games, "new", 1, false, 100_000, false);
         idx.refresh(&games);
-        idx.thumbs().dir.exists().then_some(()).unwrap_or_else(|| std::fs::create_dir_all(&idx.thumbs().dir).unwrap());
+        std::fs::create_dir_all(&idx.thumbs().dir).unwrap();
         std::fs::write(idx.thumbs().session("old"), b"x").unwrap();
         std::fs::write(idx.thumbs().clip("old", "c.mp4"), b"x").unwrap();
 

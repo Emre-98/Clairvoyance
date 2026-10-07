@@ -25,15 +25,7 @@ pub struct VideoSettings {
 
 impl Default for VideoSettings {
     fn default() -> Self {
-        Self {
-            encoder: "auto".into(),
-            quality: "standard".into(),
-            fps: 60,
-            height: 1080,
-            replay_buffer_secs: 30,
-            record_mic: false,
-            display_capture: false,
-        }
+        Self { encoder: "auto".into(), quality: "standard".into(), fps: 60, height: 1080, replay_buffer_secs: 30, record_mic: false, display_capture: false }
     }
 }
 
@@ -213,7 +205,11 @@ impl Settings {
     }
 
     pub fn save_dir_or(&self, default: &Path) -> PathBuf {
-        if self.save_dir.trim().is_empty() { default.to_path_buf() } else { PathBuf::from(&self.save_dir) }
+        if self.save_dir.trim().is_empty() {
+            default.to_path_buf()
+        } else {
+            PathBuf::from(&self.save_dir)
+        }
     }
 
     pub fn game_config(&self, id: &str, default: serde_json::Value) -> serde_json::Value {
@@ -254,7 +250,11 @@ impl Hotkey {
                 _ => hk.key = normalize_key(part),
             }
         }
-        if hk.key.is_empty() { None } else { Some(hk) }
+        if hk.key.is_empty() {
+            None
+        } else {
+            Some(hk)
+        }
     }
 
     pub fn matches(&self, k: &KeyPress) -> bool {
@@ -304,11 +304,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("cv-settings-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("settings.json");
-        std::fs::write(
-            &path,
-            r#"{"hotkey_clip":"F7","recorder":"obs","obs":{"host":"127.0.0.1","port":4455,"password":"x"},"settings_version":2}"#,
-        )
-        .unwrap();
+        std::fs::write(&path, r#"{"hotkey_clip":"F7","recorder":"obs","obs":{"host":"127.0.0.1","port":4455,"password":"x"},"settings_version":2}"#).unwrap();
         let s = Settings::load(&path);
         assert_eq!(s.hotkey_clip, "F7");
         let raw: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();

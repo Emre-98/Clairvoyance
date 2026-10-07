@@ -6,6 +6,7 @@
 //!   × 100 / (100 + ability haste), 85 % of it; champions with recasts/charges/resets skip it),
 //! - nothing is thrown away: every press becomes a [`KeyMark`] with the reason it was filtered,
 //!   so the check against the recording after the game (layer 2, `verify.rs`) decides.
+//!
 //! No game memory, no injection: only the Live Client Data API, config files and Data Dragon.
 
 use crate::ultkind::{KindRule, LiveEpisodes, LivePress, UltKind};

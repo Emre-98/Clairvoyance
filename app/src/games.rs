@@ -37,8 +37,9 @@ pub fn meta() -> Vec<GameMeta> {
         .map(|g| {
             let mut fields = g.config_fields();
             let mut defaults = g.default_config();
+            let cursor = g.cursor_input();
             // Cursor-based games get the core's input-recording settings.
-            if g.input_tracking() {
+            if cursor.is_some() {
                 fields.extend(cv_core::input::config_fields());
                 if let (Some(d), Some(i)) = (defaults.as_object_mut(), cv_core::input::default_config().as_object()) {
                     for (k, v) in i {
@@ -51,8 +52,8 @@ pub fn meta() -> Vec<GameMeta> {
                 name: g.name(),
                 short_name: g.short_name(),
                 supports_events: g.supports_events(),
-                input_tracking: g.input_tracking(),
-                action_categories: g.action_categories(),
+                input_tracking: cursor.is_some(),
+                action_categories: cursor.map(|c| c.action_categories()).unwrap_or_default(),
                 config_fields: fields,
                 default_config: defaults,
             }

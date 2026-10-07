@@ -52,11 +52,7 @@ impl Ffmpeg {
             c.args(["-an", "-fps_mode", "passthrough", "-vf", &format!("crop={}:{}:{}:{},showinfo", b.w, b.h, b.x, b.y), "-f", "rawvideo", "-pix_fmt", "nv12", "-"]);
             let o = c.output().expect("ffmpeg");
             let err = String::from_utf8_lossy(&o.stderr);
-            let times: Vec<f64> = err
-                .lines()
-                .filter_map(|l| l.split("pts_time:").nth(1))
-                .filter_map(|x| x.split_whitespace().next()?.parse().ok())
-                .collect();
+            let times: Vec<f64> = err.lines().filter_map(|l| l.split("pts_time:").nth(1)).filter_map(|x| x.split_whitespace().next()?.parse().ok()).collect();
             let n = (b.w * b.h * 3 / 2) as usize;
             assert_eq!(o.stdout.len() / n, times.len());
             let ylen = (b.w * b.h) as usize;

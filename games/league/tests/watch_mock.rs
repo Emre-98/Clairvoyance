@@ -1,7 +1,7 @@
 //! v1.7.1: replays and spectating, end to end against the fake League (client + game API over
 //! real HTTP, answering like the real ones did in a captured replay).
 
-use cv_core::game::{GameIntegration, SessionCheck, WatchKind};
+use cv_core::game::{GameIntegration, SessionCheck, WatchDetection, WatchKind};
 use cv_game_league::LeagueIntegration;
 use cv_mock_league::{MockOptions, Watch};
 use std::time::Duration;
@@ -71,4 +71,14 @@ async fn a_normal_match_is_a_match() {
     assert_eq!(c, SessionCheck::Playing);
     assert_eq!(w, None);
     assert!(p, "the in-game API confirms your champion");
+}
+
+#[tokio::test]
+async fn spectating_a_friend_the_client_calls_a_match_waits_for_the_game() {
+    // The client reports it like your own match (owner's PC, 2026-10-03), but you aren't one of
+    // its players: nothing is recorded until the in-game API says spectator mode.
+    let (c, w, p) = run(Watch::SpectateLive, 3027, false).await;
+    assert_eq!(c, SessionCheck::Unsure(WatchKind::Spectate));
+    assert_eq!(w, Some(WatchKind::Spectate));
+    assert!(!p);
 }

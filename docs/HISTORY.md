@@ -1107,6 +1107,179 @@ like a match, so it was recorded as a game.
   without Riot ID, report.txt with file layout/keyframes of the latest recordings and the
   responsiveness numbers) in `<recordings>\test-reports\`. No videos.
 
+### Engineering upkeep (2026-10-07, after a full review of the code)
+A review of the whole repository (architecture, recorder pipeline, engine, app, UI, tests, CI)
+found the design sound: game-agnostic core behind traits, a recorder tested through a fake,
+dedicated capture / encode / mux threads that drop frames instead of queueing, heavy work only
+after the game. Decision: **continue the code as is, no rewrite**; fix the maintenance risks:
+- **CI compiled no Windows code:** `ci.yml` ran on Linux only, so the recorder pipeline and the
+  Tauri app were first compiled by the release build on a tag. New `windows` job
+  (windows-latest): UI build + `cargo clippy --workspace --all-targets -D warnings`. The Linux
+  job also checks `cargo fmt --check` and clippy on the portable crates. The Rust tests aren't
+  run on Windows yet (never tried there; compile + lint is the gap that mattered).
+- **Toolchain pinned in CI (Rust 1.99):** the first CI run on `stable` (1.99) failed on a clippy
+  lint newer than the local 1.97 (`chunks_exact_to_as_chunks`); each Rust release brings new
+  lints, so CI uses a fixed version, bumped on purpose (`.github/workflows/ci.yml`).
+- **rustfmt:** `rustfmt.toml` (max_width 200, small heuristics Max, chain_width 140) chosen for
+  the least churn against the existing long-line style; the code was formatted once.
+- **clippy:** `[workspace.lints.clippy]` allows four style lints that fight the code's shape
+  (too many arguments / complex types in the Win32 plumbing, field reassign after Default, large
+  enum variant); everything else is fixed. The whole workspace also builds from Linux for
+  `x86_64-pc-windows-gnu` with `gcc-mingw-w64-x86-64` installed (`cargo clippy --target
+  x86_64-pc-windows-gnu --workspace --all-targets`), which is how Claude checks Windows code.
+- **PLAN.md** (1,310 lines) split: done in parallel by PR #3 (PLAN.md + this file + CLAUDE.md),
+  which is the layout kept; this branch's own split (a docs/DECISIONS.md) was folded in here when
+  the two were merged.
+- **Engine session stage:** the active session's `hold` / `watch` / `rule` fields (one state,
+  kept consistent by convention) are one enum, `Stage::Hold(kind)` (probably a replay, waiting
+  for the game's API) / `Ignored(Option<kind>)` (replay, spectating or mode off: nothing
+  recorded) / `Live(rule)` (Record or ClipsOnly). New engine test for clips-only event clips
+  from the replay buffer (it had none).
+- **`GameIntegration` capabilities:** the trait had ~30 methods. The optional, League-shaped
+  ones are four traits behind accessors that return `Some(self)`: `cursor_input()` →
+  `CursorInput`, `recording_check()` → `RecordingCheck`, `watch_detection()` →
+  `WatchDetection`, `mode_rules()` → `ModeRules` (docs/ADDING_A_GAME.md).
+- **Poll vs hotkeys, checked:** the engine awaits the game's poll in its loop, so a key event
+  can wait for it: up to the 1.5 s HTTP timeout, only when the game's API hangs (it answers in
+  milliseconds otherwise). Key events carry their own timestamps, so the ult / input times are
+  exact anyway; the one place that used "now" (a hotkey clip's title and timeline event) now
+  uses the press time. Polling concurrently would need the game module shared between the poll
+  and `on_key` (it is one `&mut` state, e.g. the ult tracker): not worth it.
+- **Blocking file calls in the engine, checked:** a few `std::fs` calls run on the async
+  runtime (creating the session folder, saving `session.json` every 20 s, deleting a discarded
+  folder). They are small and rare; moving them to blocking threads would add code for no
+  measurable gain. Left as is.
+- **Open / reveal:** `open_path` only opens video files inside the recordings folder (it could
+  launch any file before); `reveal_path` only shows files inside the recordings, app-data or
+  settings folders (`cv_core::session::path_within`).
+- **Riot's certificate, checked and not pinned:** the Live Client Data API and League client
+  clients accept any certificate, but only ever connect to 127.0.0.1 (the LCU address is built
+  from the lockfile's port; the game API base is fixed, with a developer override
+  `GR_LEAGUE_API` used by the simulator and tests). Pinning Riot's root certificate would need
+  testing against a real League client (rustls is stricter about the certificate's names than
+  browsers) and League must never be launched for tests (owner's rule), while it protects only
+  against something already running on the PC that has taken the port. Not worth the risk of
+  breaking detection.
+
+### Spectating: you're not one of the match's players (2026-10-07)
+The owner's check of v1.7.1 found that the League client reports a spectated friend's game
+exactly like your own match (phase "InProgress", a session with queue 420, `isPlayingReplay`
+false, no watch state), so it was recorded until the in-game API said spectator mode ~10 s
+later, then deleted.
+- **Now:** when the client says "a match of yours", `session_check` also reads
+  `/lol-summoner/v1/current-summoner` (your `puuid` / `summonerId`) and `/lol-gameflow/v1/session`
+  (`gameData.teamOne` / `teamTwo`), both read-only GETs at the game's start
+  (`watch::in_roster`). Compared by `puuid`, else `summonerId`; only a list with at least two
+  players carrying that id, none of them you, counts as "not one of the players".
+- **Then:** `SessionCheck::Unsure(Spectate)`: nothing is recorded until the in-game API says
+  spectator mode (not recorded, or recorded with "Record games you spectate") or your champion
+  (recording starts; a wrong guess loses only the loading screen). The status says "Checking
+  whether you're playing or spectating…". Can't tell (no list, no ids, bots only, the client
+  doesn't answer) → as before.
+- **Not captured:** the player list's format is the LCU's documented one (the app may not
+  launch League for a capture). If Riot's format differs, `in_roster` says "can't tell" and the
+  old safety net (delete after ~10 s) still works.
+- **Tests:** `watch.rs` unit tests (you in / not in the list, summoner ids only, no teams, bots,
+  one player, other id kinds, unknown account, the client's 404); the fake League client got
+  the match's players, your account and a "spectate-live" mode (the owner's observation:
+  `--simulate-watch=spectate-live`, Settings > Advanced > Simulate > "Spectating a friend",
+  and the `--ui-test` `watch` list); `watch_mock.rs` end to end over HTTP.
+
+### Auto clips follow the recording check (2026-10-07)
+Automatic event clips are cut right after the game (stream copy, so the game is ready at once),
+from the live events. The check against the recording runs later in the maintenance pass and
+can change ult events ("Ult pressed" → "Ult used" on the cast frame, or "no cast", recasts).
+After a successful check, `engine::recut_plan` compares the auto-clip windows of the events
+before and after it: auto clips whose window is gone are deleted (unless marked "keep"), and
+only windows that are new are cut. Unchanged windows are left alone, so a clip the user deleted
+is never cut again; with the default auto-clip kinds (multikill, ace) nothing changes.
+Clips-only games keep theirs (saved from the replay buffer, nothing to re-cut). Generic: works
+for any game's `RecordingCheck`. Tests: `recut_plan_follows_the_corrected_events`,
+`recut_auto_clips_replaces_the_clips_of_corrected_events`.
+
+### Timeline: kills, deaths, assists by default (2026-10-07, owner's request)
+The timeline and the event list show kills, deaths and assists (`SHOWN_BY_DEFAULT` in
+`lib/eventmeta.ts`); every other group (ult, recasts, unconfirmed presses, towers, objectives,
+rounds, markers & clips, game) starts as a greyed chip with a "Show … on the timeline" tooltip.
+The choice is remembered (`lib/timelinefilters.ts`, localStorage `cv.timelineFilters`, storing
+what's *shown* so groups added later start hidden; no storage → the defaults). The ability
+bubbles' "unconfirmed" presses still follow the "Unconfirmed presses" chip. Test:
+`ui/tests/filters.test.mjs` (7/7).
+
+### Clips with the input overlay (2026-10-07, owner's request)
+Clip editor > **Input overlay**: the cursor trail, clicks, keys strip, heatmap and ability bubbles
+burned into the exported clip, exactly as the player's overlay options draw them.
+- **How:** the page draws the overlay with the player's own code (`Overlay.draw`, nothing
+  re-implemented) into a canvas of the video's size, one transparent PNG per output frame, and
+  streams them as raw bytes over IPC (`overlay_export_begin` / `_frame` / `_end` / `_cancel`,
+  `app/src/export.rs`); ffmpeg lays them over the clip and re-encodes it
+  (`cv_capture::overlay_export`): GPU H.264 encoder first, then Media Foundation, then x264 (each
+  tried once on 0.1 s of black, remembered), sound kept (all tracks, AAC). One export at a
+  time; Cancel kills ffmpeg and removes the file. Alternatives: porting the drawing to Rust (two
+  copies of 1,000+ lines to keep pixel-identical) or recording the player in real time with
+  MediaRecorder (real-time only, software VP8/9, not frame-exact). Rejected.
+- **Exact moments:** the output has a constant frame rate made from the recording's variable-rate
+  frames by ffmpeg's `fps` filter. Measured first (a recording whose frames show their index, 10
+  cases: 24/30/60 fps, odd starts, after dropped frames, 0 mismatches): with an absolute seek
+  (`-seek_timestamp 1 -ss start`) ffmpeg keeps the frames from `start`, puts frame j in slot
+  `floor((t_j - start) * fps + 0.5)` and output frame k shows the last frame with slot <= k.
+  `overlay_export::plan` returns that frame's time for every k, so each overlay frame is drawn
+  for exactly the picture under it (the bubble of a key-down appears on the frame the player
+  shows it on). Without the absolute seek ffmpeg adds the file's start time (one frame off on
+  ffmpeg-made files). The frame count is pinned (`-frames:v`), the sound runs half a frame longer.
+  The output frame rate is the recording's median frame interval (60 for 60 fps recordings with
+  dropped frames).
+- **Tests:** `cv-capture/tests/overlay_export.rs` with the real ffmpeg: a recording made like the
+  app's (our fragmented muxer, in-place index, variable frame rate, sound), the app's frame times
+  equal ffmpeg's (< 0.5 ms), 4 clips (60 / 30 fps, starts on / between / after dropped frames):
+  the overlay's index equals the video's on every output frame, sound kept, cancel, errors
+  reported; it fails with the rounding changed by half a slot (checked). Unit tests for the plan,
+  the frame rate and the arguments. `ui/tests/export.test.mjs` (Chromium, mock backend, 11/11):
+  the option, Exact cut locked on, one PNG per frame, the exported cursor dot 0.5-1.3 px from the
+  video's cursor at the same moment, transparent elsewhere, cancel. Layout audit: new state
+  "game-clip-editor" (24 sizes).
+- **Speed:** PNG encoding dominates: 9 ms (960x540), 18 ms (1080p), 37 ms (1440p) per frame in
+  headless Chromium; the next frame is drawn while the previous one is written. 900 frames of
+  960x540: 15 s (58 frames/s).
+
+### Owner test scripts (not run)
+The owner can't run these (2026-10-07); kept in case that changes.
+- **Owner, Practice Tool test of the ult kinds (v1.6, ~15 min):** see the steps in the v1.6
+  test report (also below). Practice Tool with cooldowns ON (not "No Cooldowns"; use the "Reset
+  cooldowns" button between ults), Settings > Game modes > Practice Tool on "Record". Level 16+
+  so R is rank 3. Then the helper job collects the recording; before/after per champion goes
+  into "Ult kinds", and real recast-icon crops replace the synthetic ones in `tests/hud/`.
+  1. Annie: R on a spot (Tibbers), then R 10 times on different spots, 1 s apart (commands).
+     Wait for Tibbers to vanish, press R once (on cooldown). Reset cooldowns, R, then R 3 more
+     times. Expected: 2 ults, 13 recasts, 1 no cast.
+  2. Ivern: R (Daisy), R 5 times. Reset, R once. Expected 2 ults, 5 recasts.
+  3. Shaco: R (clone), R 5 times. Expected 1 ult, 5 recasts.
+  4. Ahri: R and both recasts (3 dashes). Reset, again 3 dashes. Expected 2 ults, 4 recasts.
+  5. Jhin: R, then R 4 times (the 4 shots). Expected 1 ult, 4 recasts.
+  6. Jayce (or Nidalee): R 6 times, ~7 s apart (Nidalee ~4 s). Expected 6 form swaps.
+  7. Kog'Maw: R 5 times, 2-3 s apart. Expected 5 ults.
+  8. Caitlyn (control): R once. Expected 1 ult.
+- **Owner, Practice Tool test of the ability bubbles (v1.5.0, ~10 min):**
+  1. Clairvoyance on v1.5.0 (Settings > General & updates). Settings > Game modes: Practice Tool
+     on "Record" for this test (it's Off by default).
+  2. In League, before the game: rebind one ability, e.g. E (quick cast) to **T**
+     (Settings > Hotkeys). Start a Practice Tool game with a champion whose Q can be spammed
+     (e.g. Ezreal), turn on No Cooldowns, buy 2-3 actives (e.g. potions, a Control Ward).
+  3. Play this script, slowly enough to remember it: Q spam ~3 s while moving the mouse in a
+     circle, with one **W** in the middle; **T** (the rebound E) twice; **D** and **F**; the
+     item keys of 2 items; the trinket key (C on your settings); **Ctrl+Q** and **Ctrl+W** a few
+     times (level-ups); open chat, type "q w r", close it; R once. End the game.
+  4. Open the game, press **I**, overlay options: Ability bubbles on (all four), fade 1.0 s.
+     Step through the moments with **,** / **.** (one frame).
+  Expected: a bubble on the frame where each key went down (not a frame before), its dot exactly
+  on the cursor, staying there while the cursor moves on; Q spam = Q bubbles piled up along the
+  mouse path, the W in the middle readable (later Qs step aside, its dot stays on the path); T
+  shows **E** with a small "T"; D and F larger; items show their slot number 1-6 (no hint),
+  the trinket a ward icon with a small "C"; **nothing** for Ctrl+Q / Ctrl+W and nothing for the
+  chat; R solid purple (it says "Ult used" on the timeline), presses without a cast faded and only
+  with "Unconfirmed presses" on. Fade slider at 0.1 s and 3 s changes it at once. Then send
+  Settings > Advanced > Save test report (it has the game's session.json with the saved binds).
+
 ## Milestones (finished)
 - [x] 0. Project setup: solution, projects, core interfaces, this plan
 - [x] Choose the language/stack: Tauri 2 (see Decisions made)

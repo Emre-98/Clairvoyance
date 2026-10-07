@@ -177,12 +177,7 @@ fn frame_score(f: &Rgb, origin: (u32, u32), c: &Content, g: f64, dx: f64, dy: f6
             }
             best
         };
-        let edges = [
-            edge(&|t, d| (x + t, y + d)),
-            edge(&|t, d| (x + t, y + size - d)),
-            edge(&|t, d| (x + d, y + t)),
-            edge(&|t, d| (x + size - d, y + t)),
-        ];
+        let edges = [edge(&|t, d| (x + t, y + d)), edge(&|t, d| (x + t, y + size - d)), edge(&|t, d| (x + d, y + t)), edge(&|t, d| (x + size - d, y + t))];
         if edges.iter().any(|e| e.is_none()) {
             return -100.0;
         }
@@ -396,10 +391,7 @@ pub fn sig_dist(a: &IconSig, b: &IconSig) -> f32 {
 pub fn ready_reference(sigs: &[IconSig]) -> Option<IconSig> {
     let step = (sigs.len() / 200).max(1);
     let pool: Vec<&IconSig> = sigs.iter().step_by(step).collect();
-    pool.iter()
-        .map(|a| (pool.iter().filter(|b| sig_dist(a, b) < ALT_DIST * 0.6).count(), *a))
-        .max_by_key(|(n, _)| *n)
-        .map(|(_, s)| *s)
+    pool.iter().map(|a| (pool.iter().filter(|b| sig_dist(a, b) < ALT_DIST * 0.6).count(), *a)).max_by_key(|(n, _)| *n).map(|(_, s)| *s)
 }
 
 /// A cast between two samples: the cooldown overlay appears, or comes back over an icon that
@@ -462,7 +454,12 @@ mod tests {
 
     fn bands(prefix: &str) -> Vec<Rgb> {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/hud");
-        let mut names: Vec<String> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| n.starts_with(prefix) && n.ends_with(".ppm")).collect();
+        let mut names: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| n.starts_with(prefix) && n.ends_with(".ppm"))
+            .collect();
         names.sort();
         names.iter().map(|n| fixture(n)).collect()
     }
@@ -509,7 +506,13 @@ mod tests {
                         let rx = 960.0 + (vx - content.cx()) / s;
                         let ry = 1080.0 - (content.bottom as f64 - vy) / s;
                         let (lx, ly) = (rx as i64 - reg.x as i64, ry as i64 - reg.y as i64);
-                        let p = if vy >= content.bottom as f64 { [0, 0, 0] } else if lx < 0 || ly < 0 || lx >= f.w as i64 || ly >= f.h as i64 { [70, 80, 60] } else { f.px(lx as u32, ly as u32) };
+                        let p = if vy >= content.bottom as f64 {
+                            [0, 0, 0]
+                        } else if lx < 0 || ly < 0 || lx >= f.w as i64 || ly >= f.h as i64 {
+                            [70, 80, 60]
+                        } else {
+                            f.px(lx as u32, ly as u32)
+                        };
                         data.extend_from_slice(&p);
                     }
                 }

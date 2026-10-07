@@ -8,13 +8,18 @@ only for background on a feature.
 - Timeline UI: ui/src/components/Timeline.svelte, ui/src/lib/eventmeta.ts
 - Mechanics / APM: ui/src/components/Mechanics.svelte. Player: ui/src/components/Player.svelte
 - Encoder: crates/cv-capture/src/win/video_enc.rs. Settings: crates/cv-core/src/settings.rs
-- Mock game: crates/cv-mock-league. Game-integration trait: crates/cv-core/src/game.rs,
-  docs/ADDING_A_GAME.md
+- Mock game: crates/cv-mock-league. Game-integration trait: crates/cv-core/src/game.rs (optional
+  capabilities: CursorInput, RecordingCheck, WatchDetection, ModeRules), docs/ADDING_A_GAME.md
+- Clip export with the overlay: crates/cv-capture/src/overlay_export.rs, app/src/export.rs,
+  ui/src/components/ClipEditor.svelte. Timeline filters: ui/src/lib/timelinefilters.ts
 
 ## Rules
 - Core crates (crates/cv-core, cv-capture) contain no game-specific code; that lives in games/*.
-- Windows-only code (crates/cv-capture/src/win, app/) can't run in the Linux cloud container (app/
-  doesn't even compile here: needs GTK). It is only compiled/checked on the owner's PC.
+- Windows-only code (crates/cv-capture/src/win, app/) can't run in the Linux cloud container. It is
+  compiled and linted by CI's `windows` job, and here by cross-checking:
+  `apt-get install -y gcc-mingw-w64-x86-64`, `rustup target add x86_64-pc-windows-gnu`, then
+  `cargo clippy --target x86_64-pc-windows-gnu --workspace --all-targets -- -D warnings`
+  (needs `ui/dist`: run `npm --prefix ui run build` first). Running it needs the owner's PC.
 - Stay within the PLAN.md "Performance rules". Never launch anything Riot (see PLAN.md).
 
 ## Workflow
@@ -28,14 +33,18 @@ Fast (every small change):
 - Rust, per crate: `cargo test -p cv-core` (settings, library, modes, engine, session logic),
   `-p cv-game-league` (events, ult/HUD/verify, binds, queues; biggest suite), `-p cv-game-cs2`,
   `-p cv-capture` (portable parts: fragmented MP4 muxer), `-p cv-mock-league` (mock server)
-- Rust lint: `cargo check -p <crate>` (no clippy gate in CI)
+- Rust lint (CI gate, Rust 1.99 pinned in ci.yml): `cargo fmt --all --check` and
+  `cargo clippy -p cv-core -p cv-game-league -p cv-game-cs2 -p cv-capture -p cv-mock-league --all-targets -- -D warnings`;
+  run them with the CI version (`cargo +1.99 ...`): newer clippy versions add lints
 Slow (only before pushing, once):
 - `cargo test --workspace --exclude clairvoyance` (plain `--workspace` fails on Linux: app/ needs GTK)
-- `npm --prefix ui run build`, then what CI runs (.github/workflows/ci.yml): cargo test -p cv-core
-  -p cv-game-league -p cv-game-cs2 -p cv-capture + the UI check, build and unit tests above
+- `npm --prefix ui run build`, then what CI runs (.github/workflows/ci.yml): rustfmt, clippy, cargo
+  test -p cv-core -p cv-game-league -p cv-game-cs2 -p cv-capture, the UI check, build and unit
+  tests above, and the Windows clippy (cross-check above)
 - Browser e2e (playwright-core, Chromium, mock backend): `VITE_MOCK=1 npx vite` in ui/, then
   `node tests/layout.test.mjs http://localhost:5173 <outdir> --quick` (also bubbles, fullscreen,
-  framestep, overlay tests in ui/tests/). Needs `ln -s /opt/node-tools/node_modules/playwright-core
+  framestep, overlay, filters, export tests in ui/tests/; `python3 ui/tests/make-sample.py` makes
+  their sample videos first). Needs `ln -s /opt/node-tools/node_modules/playwright-core
   ui/node_modules/`. Here layout --quick passed 42/63; the other 21 page states time out (timing/
   network in the container), so treat failures there as unverified and check on the owner's PC.
 Can't run on Linux / need real League: everything under crates/cv-capture/src/win (capture, encoder,

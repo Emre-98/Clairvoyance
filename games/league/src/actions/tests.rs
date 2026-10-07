@@ -2,7 +2,7 @@ use super::*;
 use cv_core::game::KeyMark;
 use cv_core::input::actions::{presses, ActionPress, PressState};
 use cv_core::input::stats::Analysis;
-use cv_core::input::{Rect, Record, WindowInfo, UNIT};
+use cv_core::input::{Record, Rect, WindowInfo, UNIT};
 use cv_core::session::{GameSession, Verification};
 use cv_core::GameEvent;
 
@@ -55,7 +55,10 @@ fn defaults_when_nothing_is_set() {
     assert_eq!(labels(get(&a, "summoner1")), ["D", "Shift+D", "Alt+D"]);
     assert_eq!(labels(get(&a, "summoner2")), ["F", "Shift+F", "Alt+F"]);
     // Item slots 1 2 3 5 6 7, trinket 4; labels are the slots.
-    let items: Vec<(String, String)> = ["item1", "item2", "item3", "item4", "item5", "item6", "ward"].iter().map(|i| (get(&a, i).label.clone(), get(&a, i).binds[0].physical())).collect();
+    let items: Vec<(String, String)> = ["item1", "item2", "item3", "item4", "item5", "item6", "ward"]
+        .iter()
+        .map(|i| (get(&a, i).label.clone(), get(&a, i).binds[0].physical()))
+        .collect();
     assert_eq!(items, [("1", "1"), ("2", "2"), ("3", "3"), ("4", "5"), ("5", "6"), ("6", "7"), ("Ward", "4")].map(|(a, b)| (a.to_string(), b.to_string())));
     assert_eq!(get(&a, "ward").icon.as_deref(), Some("ward"));
     // Categories and sizes: R and summoners larger, items and ward smaller.

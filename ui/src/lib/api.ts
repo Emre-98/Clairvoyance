@@ -23,6 +23,8 @@ type Listen = (event: string, cb: (payload: any) => void) => Promise<() => void>
 export const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 let invokeImpl: Invoke;
+/** A command whose request body is raw bytes (binary IPC, no JSON), with headers. */
+let invokeRawImpl: (cmd: string, body: Uint8Array, headers: Record<string, string>) => Promise<unknown>;
 let listenImpl: Listen;
 let fileSrcImpl: (path: string) => string = (p) => p;
 
@@ -31,16 +33,21 @@ async function init() {
     const core = await import("@tauri-apps/api/core");
     const ev = await import("@tauri-apps/api/event");
     invokeImpl = core.invoke as Invoke;
+    invokeRawImpl = (cmd, body, headers) => core.invoke(cmd, body, { headers });
     listenImpl = async (name, cb) => ev.listen(name, (e) => cb(e.payload));
     fileSrcImpl = (p) => core.convertFileSrc(p);
   } else if (import.meta.env.DEV || import.meta.env.VITE_MOCK) {
     // Browser preview with fake data (npm run dev).
     const mock = await import("./mock");
     invokeImpl = mock.invoke as Invoke;
+    invokeRawImpl = (cmd, body, headers) => mock.invoke(cmd, { body, headers });
     listenImpl = mock.listen;
     fileSrcImpl = mock.fileSrc;
   } else {
     invokeImpl = async () => {
+      throw new Error("Not running inside the app");
+    };
+    invokeRawImpl = async () => {
       throw new Error("Not running inside the app");
     };
     listenImpl = async () => () => {};
@@ -81,6 +88,15 @@ export const api = {
   deleteClip: (id: string, file: string) => call<void>("delete_clip", { id, file }),
   exportClip: (id: string, start: number, end: number, title: string, precise: boolean) =>
     call<string>("export_clip", { id, start, end, title, precise }),
+  /** Clip with the input overlay burned in: begin (the moments to draw), one PNG per frame, end. */
+  overlayExportBegin: (id: string, start: number, end: number, title: string) =>
+    call<{ job: number; width: number; height: number; fps: number; times: number[] }>("overlay_export_begin", { id, start, end, title }),
+  overlayExportFrame: async (job: number, png: Uint8Array) => {
+    await ready;
+    await invokeRawImpl("overlay_export_frame", png, { "x-job": String(job) });
+  },
+  overlayExportEnd: (job: number) => call<string>("overlay_export_end", { job }),
+  overlayExportCancel: (job: number) => call<void>("overlay_export_cancel", { job }),
   saveClipNow: () => call<void>("save_clip_now"),
   addMarkerNow: () => call<void>("add_marker_now"),
   stopSession: () => call<void>("stop_session"),

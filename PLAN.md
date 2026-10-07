@@ -25,9 +25,23 @@
 - **Owner's check of v1.7.1 passed (2026-10-03):** replays not recorded, a spectated game
   caught by the in-game API and its 8 s partial recording deleted, a Practice Tool game ready at
   once.
-- **Waiting for the owner**: the Practice Tool test of the ult kinds (v1.6, see "Next steps"),
-  the PC benchmark of the v1.6 player (`--bench-replays` with `"player": true`), and the older
-  Practice Tool test of the ability bubbles.
+- **Owner tests not available (2026-10-07):** the owner can't run the Practice Tool tests of
+  the ult kinds and ability bubbles or the v1.6 player benchmark. They are dropped from the
+  plan; what stays unverified is under "Known issues" and the scripts are kept in
+  docs/HISTORY.md ("Owner test scripts (not run)") in case they become possible.
+- **Focus: League of Legends only** (owner, 2026-10-07). No CS2 or Dota 2 work for now; the CS2
+  module stays as it is.
+- **Engineering upkeep (2026-10-07, after a full review of the code):** the architecture is
+  sound and the project continues as is (no rewrite). Done: CI compiles and lints the Windows
+  code (`windows` job) and checks rustfmt + clippy (Rust pinned to 1.99); engine session states
+  made explicit (`Stage`); `GameIntegration` split into optional capability traits; open /
+  reveal limited to the app's own files. See "Engineering upkeep" in docs/HISTORY.md.
+- **League, 2026-10-07:** a spectated friend's game is found before anything is recorded (the
+  match's players vs your account); auto clips follow the ult check; the timeline shows kills /
+  deaths / assists by default (the rest are greyed chips, remembered); clips can be exported
+  with the input overlay burned in. Details in docs/HISTORY.md: "Spectating: you're not one of
+  the match's players", "Auto clips follow the recording check", "Timeline: kills, deaths,
+  assists by default", "Clips with the input overlay". Not yet tried inside the app on Windows.
 
 ## Performance rules (hard requirements)
 - Recording is done by GameRecorder's **built-in recorder** (see "Built-in recorder" below). No
@@ -43,8 +57,11 @@
 
 ## Milestones
 - [x] 0-31 finished: see docs/HISTORY.md ("Milestones (finished)")
-- [ ] Owner's Practice Tool test of the ability bubbles (see "Next steps")
-- [ ] Owner's Practice Tool test of the ult kinds (Annie, Ivern, Shaco, Ahri, Jhin, Jayce/Nidalee, Kog'Maw)
+- [-] Owner's Practice Tool test of the ability bubbles: not available (unverified: see "Known issues")
+- [-] Owner's Practice Tool test of the ult kinds: not available (unverified: see "Known issues")
+- [x] 32. Engineering upkeep: Windows code compiled and linted in CI, rustfmt + clippy, engine `Stage`, `GameIntegration` capabilities, open / reveal limited to the app's files
+- [x] 33. Spectating a friend's game (the client calls it your match) found before recording: the match's players vs your account
+- [x] 34. Auto clips re-cut after the ult check; timeline decluttered (kills, deaths, assists by default); clip export with the input overlay burned in
 
 ## Known issues
 - v1.6 player: frame steps are seeks, so on recordings with long keyframe gaps (before v1.2:
@@ -80,18 +97,23 @@
 - Replays: detected from the League client's state + the in-game API's spectator mode (captured
   on patch 16.19). If Riot changes those answers, a replay could be recorded again (the in-game
   check is the safety net; the log says "session check: ..." and "in-game API: spectator mode").
-  Spectating: the client reports a spectated game like your own match (owner's check), so it's
-  caught only by the in-game API ~10 s after the game process starts: those seconds are
-  recorded and then deleted, and the label says "Replay or spectating". Possible improvement:
-  compare the client's session players with the signed-in player (`/lol-summoner/v1/current-summoner`,
-  read-only) to decide before recording; needs one read-only capture while the owner spectates.
+  Spectating: the client reports a spectated game like your own match (owner's check). Since
+  2026-10-07 the match's players are compared with your account first, so it isn't recorded at
+  all; the player-list format comes from the LCU's documented shape, not a capture. If the
+  list can't be read, it falls back to the old way (recorded, then deleted when the in-game API
+  says spectator mode ~10 s in).
+- Unverified without the owner's tests: the ult kinds on real recast / command icons (Annie's
+  Tibbers, Ivern's Daisy...: the detector is calibrated on synthetic recast icons), the ability
+  bubbles on a real game with rebound keys, and the v1.6 player's numbers in WebView2 (they
+  were measured in Chromium).
 - Hovering a game card starts loading its video: a few MB read from disk per hovered game.
 - Ult check: tuned on the owner's HUD (4K, HUD scale 0, numeric cooldowns, HUD animations off);
   other HUD scales are found by the scale search (tested synthetically at 1.5×), but colour
   thresholds for very different settings (colour-blind mode, HUD animations on) are untested.
-  Auto clips are cut right after the game, before the check, so an auto-clip rule on ult events
-  still uses the live presses. Typing in the shop search can't be told apart live (the check
-  marks it "no cast" afterwards).
+  Auto clips are cut right after the game from the live presses; once the check has run, the
+  ones whose moment changed are re-cut (2026-10-07, `engine::recut_auto_clips`); their
+  thumbnails come with the next maintenance pass. Typing in the shop search can't be told apart
+  live (the check marks it "no cast" afterwards).
 
 - Input tracking: the capture thread costs 0.27 % of one core at 250 Hz while the cursor moves
   non-stop (0.18 % at 125 Hz, 0.10 % at rest), above the 0.1 % target: almost all of it is
@@ -111,46 +133,14 @@
   Variable is narrower than Inter. The "More controls" level is decided from measured widths,
   so other fonts / scalings adapt by themselves.
 
+- Clip export with the input overlay: checked in Chromium (mock backend) and with the system
+  ffmpeg on Linux (frame alignment, sound, cancel), not yet inside the app on Windows. Rendering
+  is bound by PNG encoding in the page: ~18 ms per 1080p frame in headless Chromium, so a 30 s
+  clip at 60 fps takes ~45 s (progress bar, Cancel). Possible speed-up: encode the PNGs in
+  workers in parallel.
+
 ## Next steps
-- **Owner, Practice Tool test of the ult kinds (v1.6, ~15 min):** see the steps in the v1.6
-  test report (also below). Practice Tool with cooldowns ON (not "No Cooldowns"; use the "Reset
-  cooldowns" button between ults), Settings > Game modes > Practice Tool on "Record". Level 16+
-  so R is rank 3. Then the helper job collects the recording; before/after per champion goes
-  into "Ult kinds", and real recast-icon crops replace the synthetic ones in `tests/hud/`.
-  1. Annie: R on a spot (Tibbers), then R 10 times on different spots, 1 s apart (commands).
-     Wait for Tibbers to vanish, press R once (on cooldown). Reset cooldowns, R, then R 3 more
-     times. Expected: 2 ults, 13 recasts, 1 no cast.
-  2. Ivern: R (Daisy), R 5 times. Reset, R once. Expected 2 ults, 5 recasts.
-  3. Shaco: R (clone), R 5 times. Expected 1 ult, 5 recasts.
-  4. Ahri: R and both recasts (3 dashes). Reset, again 3 dashes. Expected 2 ults, 4 recasts.
-  5. Jhin: R, then R 4 times (the 4 shots). Expected 1 ult, 4 recasts.
-  6. Jayce (or Nidalee): R 6 times, ~7 s apart (Nidalee ~4 s). Expected 6 form swaps.
-  7. Kog'Maw: R 5 times, 2-3 s apart. Expected 5 ults.
-  8. Caitlyn (control): R once. Expected 1 ult.
-- **Owner, Practice Tool test of the ability bubbles (v1.5.0, ~10 min):**
-  1. Clairvoyance on v1.5.0 (Settings > General & updates). Settings > Game modes: Practice Tool
-     on "Record" for this test (it's Off by default).
-  2. In League, before the game: rebind one ability, e.g. E (quick cast) to **T**
-     (Settings > Hotkeys). Start a Practice Tool game with a champion whose Q can be spammed
-     (e.g. Ezreal), turn on No Cooldowns, buy 2-3 actives (e.g. potions, a Control Ward).
-  3. Play this script, slowly enough to remember it: Q spam ~3 s while moving the mouse in a
-     circle, with one **W** in the middle; **T** (the rebound E) twice; **D** and **F**; the
-     item keys of 2 items; the trinket key (C on your settings); **Ctrl+Q** and **Ctrl+W** a few
-     times (level-ups); open chat, type "q w r", close it; R once. End the game.
-  4. Open the game, press **I**, overlay options: Ability bubbles on (all four), fade 1.0 s.
-     Step through the moments with **,** / **.** (one frame).
-  Expected: a bubble on the frame where each key went down (not a frame before), its dot exactly
-  on the cursor, staying there while the cursor moves on; Q spam = Q bubbles piled up along the
-  mouse path, the W in the middle readable (later Qs step aside, its dot stays on the path); T
-  shows **E** with a small "T"; D and F larger; items show their slot number 1-6 (no hint),
-  the trinket a ward icon with a small "C"; **nothing** for Ctrl+Q / Ctrl+W and nothing for the
-  chat; R solid purple (it says "Ult used" on the timeline), presses without a cast faded and only
-  with "Unconfirmed presses" on. Fade slider at 0.1 s and 3 s changes it at once. Then send
-  Settings > Advanced > Save test report (it has the game's session.json with the saved binds).
-- Owner: play a real game on v1.1.x (timeline, thumbnail after the game, storage page), and
-  test game modes: turn ARAM off and play an ARAM (nothing recorded, tray says why), play a
-  ranked or normal game (recorded, card shows the queue name).
-- Nice-to-haves: Dota 2 module (GSI, like CS2); code-signing certificate for the installer;
+- League only for now (no CS2 / Dota 2 work). Nice-to-haves: code-signing certificate for the installer;
   optional WebP thumbnails if a WebP encoder is added.
 
 After each milestone: explain how to test it and how to measure its performance impact.

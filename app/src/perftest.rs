@@ -4,6 +4,7 @@
 //!   1. Baseline: nothing recording.
 //!   2. Built-in recorder recording.
 //!   3. Recording + mouse/keyboard input recording (replay overlay).
+//!
 //! Measured per phase: League FPS and 1% lows (PresentMon, Intel's open-source frame-time tool,
 //! which reads Windows' present events: no game access), League CPU, whole-PC CPU,
 //! Clairvoyance's CPU and RAM, GPU 3D load and the video-encode engine load.
@@ -45,7 +46,16 @@ impl PerfReport {
         for p in &self.phases {
             s.push_str(&format!(
                 "{:<20} {:>8} {:>7} {:>7} {:>10.1}% {:>6.1}% {:>7.2}% {:>6.0}MB {:>6.1}% {:>9.1}%\n",
-                p.name, f(p.fps_avg), f(p.fps_1_low), f(p.frametime_p99_ms), p.game_cpu, p.total_cpu, p.app_cpu, p.app_ram_mb, p.gpu_3d, p.gpu_encode
+                p.name,
+                f(p.fps_avg),
+                f(p.fps_1_low),
+                f(p.frametime_p99_ms),
+                p.game_cpu,
+                p.total_cpu,
+                p.app_cpu,
+                p.app_ram_mb,
+                p.gpu_3d,
+                p.gpu_encode
             ));
         }
         if let (Some(base), true) = (self.phases.first(), self.phases.len() > 1) {
@@ -173,7 +183,6 @@ mod tests {
         let (avg, _, _, _) = fps_stats(&rows, 62.0, 98.0).unwrap();
         assert!((avg - 100.0).abs() < 0.5, "{avg}");
     }
-
 }
 
 // ---------------- running the test (Windows) ----------------
@@ -331,10 +340,8 @@ mod run {
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
         let total_min = ((phase_secs + 6) * 3 + 10) as f64 / 60.0;
-        st.platform.speak(
-            &format!("Performance test starts in 10 seconds. Keep playing for about {} minutes, until you hear: performance test finished.", total_min.ceil() as u64),
-            70,
-        );
+        st.platform
+            .speak(&format!("Performance test starts in 10 seconds. Keep playing for about {} minutes, until you hear: performance test finished.", total_min.ceil() as u64), 70);
         tokio::time::sleep(Duration::from_secs(10)).await;
 
         let settings = st.engine_settings(&st.settings());
@@ -352,8 +359,7 @@ mod run {
             full_video: true,
         };
         let rec: Arc<dyn Recorder> = st.recorder.clone();
-        let phases: Vec<(&str, Option<Arc<dyn Recorder>>, bool)> =
-            vec![("Not recording", None, false), ("Recording", Some(rec.clone()), false), ("Recording + input", Some(rec), true)];
+        let phases: Vec<(&str, Option<Arc<dyn Recorder>>, bool)> = vec![("Not recording", None, false), ("Recording", Some(rec.clone()), false), ("Recording + input", Some(rec), true)];
         let mut windows: Vec<(String, f64, f64, Acc)> = Vec::new();
         let mut encoder = String::new();
         for (name, rec, with_input) in phases {
@@ -424,9 +430,7 @@ mod run {
                         let _ = r.finish().await;
                     }
                     let _ = std::fs::remove_dir_all(&rec_dir);
-                    anyhow::bail!(
-                        "You left the game during the \"{name}\" phase, before the test finished. Run it again and keep playing until you hear \"Performance test finished\"."
-                    );
+                    anyhow::bail!("You left the game during the \"{name}\" phase, before the test finished. Run it again and keep playing until you hear \"Performance test finished\".");
                 }
                 if let Some(p) = pc.as_mut() {
                     let x = p.sample("League of Legends", pids.first().copied());
@@ -541,14 +545,8 @@ mod run {
                 game_gpu_3d: a.s.game_gpu_3d / n,
             });
         }
-        let report = PerfReport {
-            started_at: started.format("%Y-%m-%d %H:%M").to_string(),
-            gpu: st.gpu.as_ref().map(|g| g.name.clone()).unwrap_or_default(),
-            encoder,
-            fps_source,
-            phases: phases_out,
-            notes,
-        };
+        let report =
+            PerfReport { started_at: started.format("%Y-%m-%d %H:%M").to_string(), gpu: st.gpu.as_ref().map(|g| g.name.clone()).unwrap_or_default(), encoder, fps_source, phases: phases_out, notes };
         let text = report.to_text();
         let base = out_dir.join(format!("perf-test_{}", started.format("%Y-%m-%d_%H-%M-%S")));
         std::fs::write(base.with_extension("json"), serde_json::to_vec_pretty(&report)?)?;

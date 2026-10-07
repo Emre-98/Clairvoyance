@@ -215,11 +215,7 @@ pub fn presses(an: &Analysis, actions: &[ActionKey], rate: u32, frames: &[f64]) 
                 continue;
             }
         }
-        let m = Mods {
-            ctrl: [0x11, 0xA2, 0xA3].iter().any(|&k| held[k]),
-            shift: [0x10, 0xA0, 0xA1].iter().any(|&k| held[k]),
-            alt: [0x12, 0xA4, 0xA5].iter().any(|&k| held[k]),
-        };
+        let m = Mods { ctrl: [0x11, 0xA2, 0xA3].iter().any(|&k| held[k]), shift: [0x10, 0xA0, 0xA1].iter().any(|&k| held[k]), alt: [0x12, 0xA4, 0xA5].iter().any(|&k| held[k]) };
         let found = actions.iter().enumerate().find_map(|(i, a)| a.binds.iter().find(|b| b.matches(vk, button, m)).map(|b| (i, b)));
         let Some((ai, bind)) = found else { continue };
         if !an.focus.is_empty() && !an.focus.iter().any(|&(s, e)| t >= s && t <= e) {
