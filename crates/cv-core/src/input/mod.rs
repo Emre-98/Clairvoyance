@@ -2,7 +2,7 @@
 //! clicks, keys, heatmap) and the post-game "Mechanics" stats.
 //!
 //! Game-agnostic: a game module only says whether its game is played with the cursor
-//! ([`crate::GameIntegration::input_tracking`]). The Windows capture lives in `cv-capture`
+//! ([`crate::GameIntegration::cursor_input`]). The Windows capture lives in `cv-capture`
 //! (cursor polling + Raw Input, never a hook); keys come through the engine so the game's chat
 //! state can be respected (no keys are recorded while the chat is open, key codes only).
 //!

@@ -321,15 +321,21 @@ pub async fn input_actions(st: St<'_>, id: String) -> R<ActionsView> {
         let t = std::time::Instant::now();
         let s = GameSession::load(&dir).map_err(err)?;
         let (an, _, rate) = input_cached(&dir)?;
-        let game = crate::games::by_id(&s.game_id);
-        let (keys, saved) = actions::session_actions(s.action_keys.as_deref(), || game.map(|g| g.default_action_keys()).unwrap_or_default());
+        let cursor = crate::games::by_id(&s.game_id).and_then(|g| g.cursor_input());
+        let (keys, saved) = actions::session_actions(s.action_keys.as_deref(), || cursor.map(|c| c.default_action_keys()).unwrap_or_default());
         let frames = s.video_file.as_ref().map(|f| dir.join(f)).and_then(|p| frame_times_cached(&p));
         let mut presses = actions::presses(&an, &keys, rate, frames.as_deref().map(|f| f.as_slice()).unwrap_or(&[]));
-        if let Some(g) = game {
-            g.action_press_states(&s, &keys, &mut presses);
+        if let Some(c) = cursor {
+            c.action_press_states(&s, &keys, &mut presses);
         }
         log::debug!("ability bubbles for {}: {} presses, {} ms", dir.display(), presses.len(), t.elapsed().as_millis());
-        Ok(ActionsView { categories: game.map(|g| g.action_categories()).unwrap_or_default(), actions: keys, saved_binds: saved, frame_exact: frames.is_some(), presses: actions::to_arrays(&presses) })
+        Ok(ActionsView {
+            categories: cursor.map(|c| c.action_categories()).unwrap_or_default(),
+            actions: keys,
+            saved_binds: saved,
+            frame_exact: frames.is_some(),
+            presses: actions::to_arrays(&presses),
+        })
     })
     .await
     .map_err(err)?

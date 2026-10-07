@@ -21,8 +21,10 @@ pub fn view(st: &AppState) -> Vec<GameModesView> {
     let s = st.settings();
     crate::games::all()
         .into_iter()
-        .filter(|g| !g.mode_groups().is_empty())
-        .map(|g| GameModesView { game_id: g.id().to_string(), game_name: g.name().to_string(), groups: g.mode_groups(), modes: s.modes.get(g.id()).cloned().unwrap_or_default() })
+        .filter_map(|mut g| {
+            let groups = g.mode_rules()?.mode_groups();
+            Some(GameModesView { game_id: g.id().to_string(), game_name: g.name().to_string(), groups, modes: s.modes.get(g.id()).cloned().unwrap_or_default() })
+        })
         .collect()
 }
 
@@ -48,11 +50,12 @@ pub async fn refresh_catalog(st: &Arc<AppState>) -> bool {
     let settings = st.settings();
     let mut changed = false;
     for mut g in crate::games::all() {
-        if g.mode_groups().is_empty() || settings.disabled_games.iter().any(|d| d == g.id()) {
+        if settings.disabled_games.iter().any(|d| d == g.id()) {
             continue;
         }
         g.configure(&settings.game_config(g.id(), g.default_config()));
-        let (catalog, authoritative) = g.mode_catalog(&cache).await;
+        let Some(rules) = g.mode_rules() else { continue };
+        let (catalog, authoritative) = rules.mode_catalog(&cache).await;
         if catalog.is_empty() {
             continue;
         }

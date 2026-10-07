@@ -380,9 +380,18 @@ impl GameIntegration for ModeGame {
     async fn poll(&mut self) -> anyhow::Result<PollUpdate> {
         self.inner.poll().await
     }
+
+    fn mode_rules(&mut self) -> Option<&mut dyn crate::game::ModeRules> {
+        Some(self)
+    }
+}
+
+#[async_trait]
+impl crate::game::ModeRules for ModeGame {
     fn mode_groups(&self) -> Vec<crate::modes::ModeGroupInfo> {
         vec![crate::modes::ModeGroupInfo { id: "aram", label: "ARAM", help: "" }]
     }
+
     async fn detect_mode(&mut self) -> Option<crate::modes::MatchMode> {
         Some(self.mode.clone())
     }
@@ -558,12 +567,17 @@ impl GameIntegration for InputGame {
         }
         self.inner.on_key(key, gt)
     }
-    fn input_tracking(&self) -> bool {
-        true
+
+    fn cursor_input(&self) -> Option<&dyn crate::game::CursorInput> {
+        Some(self)
     }
+}
+
+impl crate::game::CursorInput for InputGame {
     fn chat_open(&self) -> bool {
         self.chat
     }
+
     fn action_keys(&self) -> Vec<crate::input::actions::ActionKey> {
         vec![crate::input::actions::ActionKey {
             id: "spell1".into(),
@@ -576,6 +590,7 @@ impl GameIntegration for InputGame {
             binds: vec![crate::input::actions::ActionBind::key(b'A')],
         }]
     }
+
     fn mouse_marks(&self, presses: &[(f64, u8)]) -> Vec<crate::game::KeyMark> {
         presses
             .iter()
@@ -697,12 +712,6 @@ impl GameIntegration for WatchGame {
     fn end_grace(&self) -> Duration {
         Duration::from_millis(0)
     }
-    async fn session_check(&mut self) -> SessionCheck {
-        self.check
-    }
-    fn record_spectating(&self) -> bool {
-        self.spectate_setting
-    }
     async fn poll(&mut self) -> anyhow::Result<PollUpdate> {
         self.polls += 1;
         if self.polls <= 2 {
@@ -714,6 +723,21 @@ impl GameIntegration for WatchGame {
         u.watching = self.api_watching;
         u.playing = self.api_watching.is_none();
         Ok(u)
+    }
+
+    fn watch_detection(&mut self) -> Option<&mut dyn crate::game::WatchDetection> {
+        Some(self)
+    }
+}
+
+#[async_trait]
+impl crate::game::WatchDetection for WatchGame {
+    async fn session_check(&mut self) -> SessionCheck {
+        self.check
+    }
+
+    fn record_spectating(&self) -> bool {
+        self.spectate_setting
     }
 }
 

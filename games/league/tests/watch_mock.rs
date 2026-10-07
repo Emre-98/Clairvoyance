@@ -1,7 +1,7 @@
 //! v1.7.1: replays and spectating, end to end against the fake League (client + game API over
 //! real HTTP, answering like the real ones did in a captured replay).
 
-use cv_core::game::{GameIntegration, SessionCheck, WatchKind};
+use cv_core::game::{GameIntegration, SessionCheck, WatchDetection, WatchKind};
 use cv_game_league::LeagueIntegration;
 use cv_mock_league::{MockOptions, Watch};
 use std::time::Duration;

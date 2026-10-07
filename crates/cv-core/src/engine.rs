@@ -377,6 +377,16 @@ impl Engine {
         }
     }
 
+    /// The game records spectated games (its setting); replays are never recorded.
+    fn records_spectating(&mut self, idx: usize) -> bool {
+        self.games[idx].watch_detection().is_some_and(|w| w.record_spectating())
+    }
+
+    /// The game's chat is open (no keys are recorded meanwhile).
+    fn chat_open(&self, idx: usize) -> bool {
+        self.games[idx].cursor_input().is_some_and(|c| c.chat_open())
+    }
+
     /// Returns the index of a running, enabled game.
     fn detect_game(&self) -> Option<usize> {
         let procs = self.platform.running_processes();
@@ -497,10 +507,14 @@ impl Engine {
 
         // A replay or spectating? Decided before anything is recorded (v1.7.1).
         let t0 = Instant::now();
-        let check = self.games[idx].session_check().await;
+        let check = match self.games[idx].watch_detection() {
+            Some(w) => w.session_check().await,
+            None => SessionCheck::Unknown,
+        };
+        let record_spectating = self.records_spectating(idx);
         log::info!("session check: {check:?} in {} ms", t0.elapsed().as_millis());
         match check {
-            SessionCheck::Watching(WatchKind::Spectate) if self.games[idx].record_spectating() => {
+            SessionCheck::Watching(WatchKind::Spectate) if record_spectating => {
                 log::info!("spectating a live game: recorded (setting \"Record games you spectate\" is on)");
                 active.spectating = true;
             }
@@ -551,9 +565,9 @@ impl Engine {
         // Which mode is this, and is it recorded? Decided once, before recording starts.
         let mut rule = ModeRule::Record;
         let mut reason: Option<String> = None;
-        if !self.games[idx].mode_groups().is_empty() {
+        if let Some(rules) = self.games[idx].mode_rules() {
             let t0 = Instant::now();
-            let mode = self.games[idx].detect_mode().await;
+            let mode = rules.detect_mode().await;
             match &mode {
                 Some(m) => log::info!(
                     "mode: {} (queue {}, key {}, game mode {}) via {} in {} ms",
@@ -677,9 +691,7 @@ impl Engine {
     /// at once, so a crash keeps it linked.
     fn start_input(&self, idx: usize, session: &mut GameSession, dir: &Path) -> Option<Arc<crate::input::InputWriter>> {
         let g = &self.games[idx];
-        if !g.input_tracking() {
-            return None;
-        }
+        let cursor = g.cursor_input()?;
         let mut def = crate::input::default_config();
         if let (Some(d), Some(o)) = (def.as_object_mut(), g.default_config().as_object()) {
             for (k, v) in o {
@@ -703,7 +715,7 @@ impl Engine {
                 session.input_file = Some(name);
                 // The binds in effect for this game (read by the module at `start()`), so the
                 // replay's ability bubbles show the right actions even if they change later.
-                let keys = g.action_keys();
+                let keys = cursor.action_keys();
                 session.action_keys = (!keys.is_empty()).then_some(keys);
                 let _ = session.save(dir);
                 self.platform
@@ -745,7 +757,7 @@ impl Engine {
         };
         // Spectator mode found by the game's API after recording started: delete it all.
         if let Some(k) = update.as_ref().and_then(|u| u.watching) {
-            let spectating_ok = k == WatchKind::Spectate && self.games[idx].record_spectating();
+            let spectating_ok = k == WatchKind::Spectate && self.records_spectating(idx);
             if !spectating_ok {
                 self.abort_watch(k).await;
                 return;
@@ -894,7 +906,8 @@ impl Engine {
         let idx = self.active.as_ref().unwrap().game;
         let update = self.games[idx].poll().await.ok();
         if let Some(u) = &update {
-            let watching = u.watching.filter(|k| !(*k == WatchKind::Spectate && self.games[idx].record_spectating()));
+            let record_spectating = self.records_spectating(idx);
+            let watching = u.watching.filter(|k| !(*k == WatchKind::Spectate && record_spectating));
             if let Some(k) = watching {
                 let mut a = self.active.take().unwrap();
                 self.enter_watch(&mut a, k);
@@ -964,7 +977,7 @@ impl Engine {
         let Some(a) = &self.active else { return };
         let idx = a.game;
         let writer = a.input.clone();
-        let chat_before = writer.is_some() && self.games[idx].chat_open();
+        let chat_before = writer.is_some() && self.chat_open(idx);
         // Hotkeys, game keys (ult): key-downs with a name, exactly as before input recording.
         if ev.down {
             if let Some(key) = &ev.key {
@@ -974,7 +987,7 @@ impl Engine {
         // Input recording: every key down/up while the game window is focused, except while
         // the chat is open (key codes only, never text).
         let Some(w) = writer else { return };
-        let chat_after = self.games[idx].chat_open();
+        let chat_after = self.chat_open(idx);
         let t = w.video_us(ev.qpc_hns);
         if chat_after != chat_before {
             w.push(crate::input::Record::Chat { t, open: chat_after });
@@ -1158,7 +1171,7 @@ impl Engine {
             }
             // Mouse buttons bound to a tracked game key (League: ult on a side button).
             let presses: Vec<(f64, u8)> = w.button_downs().into_iter().map(|(t, b)| (t - a.session.video_offset, b)).collect();
-            let marks = self.games[idx].mouse_marks(&presses);
+            let marks = self.games[idx].cursor_input().map(|c| c.mouse_marks(&presses)).unwrap_or_default();
             if !marks.is_empty() {
                 log::info!("{} mouse presses on tracked binds", marks.len());
                 a.session.key_presses.extend(marks);

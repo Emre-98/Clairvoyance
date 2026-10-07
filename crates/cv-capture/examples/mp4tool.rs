@@ -366,8 +366,8 @@ fn league_binds(dir: &str) -> Result<String, String> {
 
 /// The ability bubbles of a recorded game, as the overlay gets them (`input_actions`).
 fn bubbles(dir: &Path, detail: bool) -> Result<String, String> {
+    use cv_core::game::CursorInput;
     use cv_core::input::{actions, stats};
-    use cv_core::GameIntegration;
     let s = cv_core::session::GameSession::load(dir).map_err(|e| e.to_string())?;
     let t = Instant::now();
     let f = cv_core::input::read(&dir.join(s.input_file.as_deref().ok_or("no input file")?)).map_err(|e| e.to_string())?;

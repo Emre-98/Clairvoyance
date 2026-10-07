@@ -1,6 +1,6 @@
 //! Plays a scripted match against the fake Live Client API over real HTTP.
 
-use cv_core::game::{GameIntegration, GameResult, MatchPhase};
+use cv_core::game::{GameIntegration, GameResult, MatchPhase, ModeRules};
 use cv_core::EventKind;
 use cv_game_league::LeagueIntegration;
 

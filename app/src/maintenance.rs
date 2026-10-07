@@ -276,11 +276,11 @@ fn run_blocking(st: &Arc<AppState>, forced: bool) -> RunReport {
             break;
         }
         let Some(video) = &g.video_path else { continue };
-        let Some(game) = games.iter().find(|x| x.id() == g.game_id) else { continue };
-        if game.verify_version() == 0 || st.maintenance.verify_failed.lock().unwrap().contains(&g.dir) {
+        let Some(check) = games.iter().find(|x| x.id() == g.game_id).and_then(|x| x.recording_check()) else { continue };
+        if st.maintenance.verify_failed.lock().unwrap().contains(&g.dir) {
             continue;
         }
-        if verify_game(st, game.as_ref(), &g.dir, video) {
+        if verify_game(st, check, &g.dir, video) {
             report.verified += 1;
         }
     }
@@ -365,7 +365,7 @@ fn recover_interrupted(st: &AppState) -> usize {
 
 /// Checks one game's live events against its recording if that wasn't done yet (or was done
 /// by an older version of the check). Stops as soon as a game starts (done again next run).
-fn verify_game(st: &AppState, game: &dyn cv_core::game::GameIntegration, dir: &Path, video: &Path) -> bool {
+fn verify_game(st: &AppState, game: &dyn cv_core::game::RecordingCheck, dir: &Path, video: &Path) -> bool {
     use cv_core::session::GameSession;
     let Ok(s) = GameSession::load(dir) else { return false };
     if s.verification.as_ref().is_some_and(|v| v.version >= game.verify_version()) {
@@ -377,10 +377,7 @@ fn verify_game(st: &AppState, game: &dyn cv_core::game::GameIntegration, dir: &P
     }
     let t = std::time::Instant::now();
     let mut checked = s.clone();
-    let r = open_frames(video).and_then(|mut frames| match game.verify_recording(&mut checked, frames.as_mut(), &|| busy(st)) {
-        Some(r) => r,
-        None => Err(anyhow::anyhow!("not supported")),
-    });
+    let r = open_frames(video).and_then(|mut frames| game.verify_recording(&mut checked, frames.as_mut(), &|| busy(st)));
     match r {
         Ok(()) => {
             // Re-read just before saving: keep anything the user changed meanwhile (favorite,

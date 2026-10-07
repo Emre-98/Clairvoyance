@@ -488,6 +488,138 @@ impl GameIntegration for LeagueIntegration {
         Duration::from_secs(2)
     }
 
+    async fn stop(&mut self) {
+        self.reset_match();
+    }
+
+    async fn poll(&mut self) -> anyhow::Result<PollUpdate> {
+        let mut u = PollUpdate::default();
+        let stats: GameStats = match self.get("gamestats").await {
+            Ok(s) => s,
+            Err(e) => {
+                // No match data: client, loading screen, or the game just closed.
+                u.phase = if self.result.is_some() { MatchPhase::Ended } else { MatchPhase::Waiting };
+                u.result = self.result;
+                if self.in_progress && self.result.is_none() {
+                    return Err(e);
+                }
+                return Ok(u);
+            }
+        };
+        // Once the in-game API answers: spectator mode (replay / spectating) or your champion?
+        // Asked once per match (until it answers either way).
+        if !self.live_decided && self.live_checks < 60 {
+            self.live_checks += 1;
+            if let Ok((status, body)) = self.get_raw("activeplayer").await {
+                match watch::classify_active_player(status, &body) {
+                    watch::LiveVerdict::Spectator => {
+                        self.live_decided = true;
+                        let k = self.watch_hint.unwrap_or(WatchKind::Unknown);
+                        log::info!("in-game API: spectator mode ({})", k.label().to_lowercase());
+                        u.watching = Some(k);
+                        u.game_time = Some(stats.game_time);
+                        u.phase = if stats.game_time > 0.0 { MatchPhase::InProgress } else { MatchPhase::Loading };
+                        return Ok(u);
+                    }
+                    watch::LiveVerdict::Playing => {
+                        self.live_decided = true;
+                        u.playing = true;
+                    }
+                    watch::LiveVerdict::Undecided => {}
+                }
+            }
+        }
+        if self.mode.is_none() && !stats.game_mode.is_empty() {
+            self.mode = Some(events::mode_name(&stats.game_mode));
+        }
+        u.game_time = Some(stats.game_time);
+        u.phase = if stats.game_time > 0.0 { MatchPhase::InProgress } else { MatchPhase::Loading };
+        if u.phase == MatchPhase::InProgress {
+            self.in_progress = true;
+        }
+
+        let refresh = match self.players_checked {
+            None => true,
+            Some(t) => !self.me_found || t.elapsed() >= Duration::from_secs(10),
+        };
+        if refresh {
+            self.refresh_players().await;
+        }
+
+        // Handle events only once we know who we are (or tried to), so no kill gets lost.
+        if self.players_checked.is_some() {
+            if let Ok(list) = self.get::<EventList>("eventdata").await {
+                for raw in &list.events {
+                    // The API returns ALL events every time: never handle one twice.
+                    if !self.seen.insert(raw.event_id) {
+                        continue;
+                    }
+                    if raw.event_name == "GameEnd" {
+                        self.result = match raw.result.as_deref() {
+                            Some("Win") => Some(GameResult::Win),
+                            Some("Lose") => Some(GameResult::Loss),
+                            _ => self.result,
+                        };
+                        // Final scoreboard.
+                        self.refresh_players().await;
+                    }
+                    u.events.extend(translate(raw, &self.ctx));
+                }
+            }
+        }
+        if u.phase == MatchPhase::InProgress && self.result.is_none() {
+            self.update_ult_state(&stats.game_mode, &u.events, stats.game_time).await;
+        }
+        if self.result.is_some() {
+            u.phase = MatchPhase::Ended;
+        }
+        u.result = self.result;
+        u.player = self.player.clone().map(|mut p| {
+            p.mode = self.mode.clone();
+            p
+        });
+        u.stats = self.stats.clone();
+        Ok(u)
+    }
+
+    fn on_key(&mut self, key: &KeyPress, game_time: f64) -> Option<GameEvent> {
+        use ultkind::LivePress;
+        let (kind, title, details) = match self.ult.press_live(key, game_time) {
+            LivePress::None => return None,
+            LivePress::Used => (EventKind::UltPressed, "Ult pressed", "Ult key pressed. Checked against the recording after the game."),
+            LivePress::Recast => (EventKind::UltRecast, "Ult recast", "The same ult pressed again (command, second part or early end). Checked after the game."),
+            LivePress::FormSwap => (EventKind::FormSwap, "Form swap", "Form / stance swap. Checked against the recording after the game."),
+        };
+        Some(GameEvent::new(format!("ult-{:.2}", game_time), kind, game_time, title).with_details(details))
+    }
+
+    fn take_key_marks(&mut self) -> Vec<cv_core::game::KeyMark> {
+        let mut m = self.ult.take_marks();
+        if let Some(g) = self.ult_kind_mark.take() {
+            m.push(cv_core::game::KeyMark { game_time: 0.0, action: "ult_kind".into(), key: g.as_str().into(), accepted: false, reason: Some("ddragon".into()) });
+        }
+        m
+    }
+
+    fn watch_detection(&mut self) -> Option<&mut dyn cv_core::game::WatchDetection> {
+        Some(self)
+    }
+
+    fn mode_rules(&mut self) -> Option<&mut dyn cv_core::game::ModeRules> {
+        Some(self)
+    }
+
+    fn cursor_input(&self) -> Option<&dyn cv_core::game::CursorInput> {
+        Some(self)
+    }
+
+    fn recording_check(&self) -> Option<&dyn cv_core::game::RecordingCheck> {
+        Some(self)
+    }
+}
+
+#[async_trait]
+impl cv_core::game::WatchDetection for LeagueIntegration {
     /// Replay / spectating / your match, from the League client (before anything is recorded).
     async fn session_check(&mut self) -> SessionCheck {
         self.watch_hint = None;
@@ -528,7 +660,10 @@ impl GameIntegration for LeagueIntegration {
     fn record_spectating(&self) -> bool {
         self.record_spectating
     }
+}
 
+#[async_trait]
+impl cv_core::game::ModeRules for LeagueIntegration {
     fn mode_groups(&self) -> Vec<ModeGroupInfo> {
         vec![
             ModeGroupInfo { id: "ranked", label: "Ranked", help: "Solo/Duo and Flex" },
@@ -656,124 +791,9 @@ impl GameIntegration for LeagueIntegration {
         }
         (out, authoritative)
     }
+}
 
-    async fn stop(&mut self) {
-        self.reset_match();
-    }
-
-    async fn poll(&mut self) -> anyhow::Result<PollUpdate> {
-        let mut u = PollUpdate::default();
-        let stats: GameStats = match self.get("gamestats").await {
-            Ok(s) => s,
-            Err(e) => {
-                // No match data: client, loading screen, or the game just closed.
-                u.phase = if self.result.is_some() { MatchPhase::Ended } else { MatchPhase::Waiting };
-                u.result = self.result;
-                if self.in_progress && self.result.is_none() {
-                    return Err(e);
-                }
-                return Ok(u);
-            }
-        };
-        // Once the in-game API answers: spectator mode (replay / spectating) or your champion?
-        // Asked once per match (until it answers either way).
-        if !self.live_decided && self.live_checks < 60 {
-            self.live_checks += 1;
-            if let Ok((status, body)) = self.get_raw("activeplayer").await {
-                match watch::classify_active_player(status, &body) {
-                    watch::LiveVerdict::Spectator => {
-                        self.live_decided = true;
-                        let k = self.watch_hint.unwrap_or(WatchKind::Unknown);
-                        log::info!("in-game API: spectator mode ({})", k.label().to_lowercase());
-                        u.watching = Some(k);
-                        u.game_time = Some(stats.game_time);
-                        u.phase = if stats.game_time > 0.0 { MatchPhase::InProgress } else { MatchPhase::Loading };
-                        return Ok(u);
-                    }
-                    watch::LiveVerdict::Playing => {
-                        self.live_decided = true;
-                        u.playing = true;
-                    }
-                    watch::LiveVerdict::Undecided => {}
-                }
-            }
-        }
-        if self.mode.is_none() && !stats.game_mode.is_empty() {
-            self.mode = Some(events::mode_name(&stats.game_mode));
-        }
-        u.game_time = Some(stats.game_time);
-        u.phase = if stats.game_time > 0.0 { MatchPhase::InProgress } else { MatchPhase::Loading };
-        if u.phase == MatchPhase::InProgress {
-            self.in_progress = true;
-        }
-
-        let refresh = match self.players_checked {
-            None => true,
-            Some(t) => !self.me_found || t.elapsed() >= Duration::from_secs(10),
-        };
-        if refresh {
-            self.refresh_players().await;
-        }
-
-        // Handle events only once we know who we are (or tried to), so no kill gets lost.
-        if self.players_checked.is_some() {
-            if let Ok(list) = self.get::<EventList>("eventdata").await {
-                for raw in &list.events {
-                    // The API returns ALL events every time: never handle one twice.
-                    if !self.seen.insert(raw.event_id) {
-                        continue;
-                    }
-                    if raw.event_name == "GameEnd" {
-                        self.result = match raw.result.as_deref() {
-                            Some("Win") => Some(GameResult::Win),
-                            Some("Lose") => Some(GameResult::Loss),
-                            _ => self.result,
-                        };
-                        // Final scoreboard.
-                        self.refresh_players().await;
-                    }
-                    u.events.extend(translate(raw, &self.ctx));
-                }
-            }
-        }
-        if u.phase == MatchPhase::InProgress && self.result.is_none() {
-            self.update_ult_state(&stats.game_mode, &u.events, stats.game_time).await;
-        }
-        if self.result.is_some() {
-            u.phase = MatchPhase::Ended;
-        }
-        u.result = self.result;
-        u.player = self.player.clone().map(|mut p| {
-            p.mode = self.mode.clone();
-            p
-        });
-        u.stats = self.stats.clone();
-        Ok(u)
-    }
-
-    fn on_key(&mut self, key: &KeyPress, game_time: f64) -> Option<GameEvent> {
-        use ultkind::LivePress;
-        let (kind, title, details) = match self.ult.press_live(key, game_time) {
-            LivePress::None => return None,
-            LivePress::Used => (EventKind::UltPressed, "Ult pressed", "Ult key pressed. Checked against the recording after the game."),
-            LivePress::Recast => (EventKind::UltRecast, "Ult recast", "The same ult pressed again (command, second part or early end). Checked after the game."),
-            LivePress::FormSwap => (EventKind::FormSwap, "Form swap", "Form / stance swap. Checked against the recording after the game."),
-        };
-        Some(GameEvent::new(format!("ult-{:.2}", game_time), kind, game_time, title).with_details(details))
-    }
-
-    fn take_key_marks(&mut self) -> Vec<cv_core::game::KeyMark> {
-        let mut m = self.ult.take_marks();
-        if let Some(g) = self.ult_kind_mark.take() {
-            m.push(cv_core::game::KeyMark { game_time: 0.0, action: "ult_kind".into(), key: g.as_str().into(), accepted: false, reason: Some("ddragon".into()) });
-        }
-        m
-    }
-
-    fn input_tracking(&self) -> bool {
-        true
-    }
-
+impl cv_core::game::CursorInput for LeagueIntegration {
     fn chat_open(&self) -> bool {
         self.ult.chat_open
     }
@@ -797,9 +817,11 @@ impl GameIntegration for LeagueIntegration {
     fn action_press_states(&self, session: &cv_core::session::GameSession, keys: &[cv_core::input::actions::ActionKey], presses: &mut [cv_core::input::actions::ActionPress]) {
         actions::press_states(session, keys, presses)
     }
+}
 
-    fn verify_recording(&self, session: &mut cv_core::session::GameSession, video: &mut dyn cv_core::game::FrameSource, cancel: &dyn Fn() -> bool) -> Option<anyhow::Result<()>> {
-        Some(verify::verify(session, video, &ult::UltRules::load(data_dir()), cancel))
+impl cv_core::game::RecordingCheck for LeagueIntegration {
+    fn verify_recording(&self, session: &mut cv_core::session::GameSession, video: &mut dyn cv_core::game::FrameSource, cancel: &dyn Fn() -> bool) -> anyhow::Result<()> {
+        verify::verify(session, video, &ult::UltRules::load(data_dir()), cancel)
     }
 
     fn verify_version(&self) -> u32 {
