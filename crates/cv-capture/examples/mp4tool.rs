@@ -130,7 +130,7 @@ fn from_es(h264: &str, aac: &str, fps: i64, w: u32, h: u32, out: &str) -> Result
         p += len;
     }
     pk.sort_by_key(|p| p.pts);
-    let vc = VideoConfig { width: w, height: h, sps: sps.ok_or("no SPS")?, pps: pps.ok_or("no PPS")?, fps: fps as u32 };
+    let vc = VideoConfig { width: w, height: h, sps: sps.ok_or("no SPS")?, pps: pps.ok_or("no PPS")?, fps: fps as u32, ..Default::default() };
     let f = std::fs::File::create(out).map_err(|e| e.to_string())?;
     let mut wr = FragmentedWriter::new(std::io::BufWriter::new(f), vc, vec![AudioConfig::aac_lc(48000, 2, "Game audio")]).map_err(|e| e.to_string())?;
     let mut next = HNS;

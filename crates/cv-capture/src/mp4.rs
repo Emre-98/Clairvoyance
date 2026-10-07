@@ -8,7 +8,8 @@
 //!   the file becomes a "faststart" MP4 within a fraction of a second, without copying the media.
 //! - [`write_clip`]: a normal MP4 (index at the front) for replay-buffer clips.
 //!
-//! Tracks: H.264 video (AVCC samples, no B-frames) and any number of AAC audio tracks.
+//! Tracks: one video track (H.264 `avc1`, HEVC `hvc1` or AV1 `av01`; no B-frames) and any
+//! number of AAC audio tracks.
 //! Timestamps are in 100 ns units (Windows' QPC/`TimeSpan` unit) relative to the recording start.
 
 use std::io::{Seek, SeekFrom, Write};
@@ -16,12 +17,45 @@ use std::io::{Seek, SeekFrom, Write};
 pub const HNS: i64 = 10_000_000; // 100 ns ticks per second
 pub const VIDEO_TIMESCALE: u32 = 90_000;
 
-#[derive(Debug, Clone)]
+/// The video codec of a recording.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Codec {
+    #[default]
+    H264,
+    Hevc,
+    Av1,
+}
+
+impl Codec {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Codec::H264 => "h264",
+            Codec::Hevc => "hevc",
+            Codec::Av1 => "av1",
+        }
+    }
+    pub fn parse(s: &str) -> Option<Codec> {
+        match s.to_ascii_lowercase().as_str() {
+            "h264" | "avc" | "h.264" => Some(Codec::H264),
+            "hevc" | "h265" | "h.265" => Some(Codec::Hevc),
+            "av1" => Some(Codec::Av1),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct VideoConfig {
+    pub codec: Codec,
     pub width: u32,
     pub height: u32,
+    /// H.264 / HEVC sequence parameter set (NAL unit without start code).
     pub sps: Vec<u8>,
     pub pps: Vec<u8>,
+    /// HEVC video parameter set.
+    pub vps: Vec<u8>,
+    /// AV1 sequence header OBU (with its header and size field).
+    pub seq: Vec<u8>,
     /// Nominal frame rate, used for the last frame's duration.
     pub fps: u32,
 }
@@ -93,11 +127,177 @@ pub fn split_annexb(data: &[u8]) -> Vec<&[u8]> {
 /// Result of converting one encoder output buffer.
 #[derive(Debug, Default)]
 pub struct AccessUnit {
-    /// Length-prefixed (4 byte) NAL units, parameter sets and AUDs removed.
+    /// The MP4 sample: length-prefixed (4 byte) NAL units without parameter sets and AUDs
+    /// (H.264 / HEVC), or the OBUs without temporal delimiters (AV1).
     pub avcc: Vec<u8>,
     pub key: bool,
     pub sps: Option<Vec<u8>>,
     pub pps: Option<Vec<u8>>,
+    pub vps: Option<Vec<u8>>,
+    pub seq: Option<Vec<u8>>,
+}
+
+/// Parameter sets seen so far in a stream (they come with keyframes).
+#[derive(Debug, Clone, Default)]
+pub struct ParamSets {
+    pub sps: Option<Vec<u8>>,
+    pub pps: Option<Vec<u8>>,
+    pub vps: Option<Vec<u8>>,
+    pub seq: Option<Vec<u8>>,
+}
+
+impl ParamSets {
+    pub fn update(&mut self, au: &AccessUnit) {
+        for (dst, src) in [(&mut self.sps, &au.sps), (&mut self.pps, &au.pps), (&mut self.vps, &au.vps), (&mut self.seq, &au.seq)] {
+            if src.is_some() {
+                *dst = src.clone();
+            }
+        }
+    }
+    /// Everything the codec's sample entry needs is known.
+    pub fn ready(&self, codec: Codec) -> bool {
+        match codec {
+            Codec::H264 => self.sps.is_some() && self.pps.is_some(),
+            Codec::Hevc => self.vps.is_some() && self.sps.is_some() && self.pps.is_some(),
+            Codec::Av1 => self.seq.is_some(),
+        }
+    }
+    pub fn config(&self, codec: Codec, width: u32, height: u32, fps: u32) -> VideoConfig {
+        let g = |v: &Option<Vec<u8>>| v.clone().unwrap_or_default();
+        VideoConfig { codec, width, height, sps: g(&self.sps), pps: g(&self.pps), vps: g(&self.vps), seq: g(&self.seq), fps }
+    }
+}
+
+/// One encoder output buffer (Annex B for H.264 / HEVC, low-overhead OBUs for AV1) as an MP4
+/// sample plus the parameter sets it carried.
+pub fn to_sample(codec: Codec, data: &[u8]) -> AccessUnit {
+    match codec {
+        Codec::H264 => annexb_to_avcc(data),
+        Codec::Hevc => annexb_to_hvcc(data),
+        Codec::Av1 => obus_to_sample(data),
+    }
+}
+
+/// HEVC: like [`annexb_to_avcc`]; NAL type = bits 1-6 of the first byte; VPS 32, SPS 33,
+/// PPS 34, AUD 35; IRAP pictures (types 16-23: BLA / IDR / CRA) are keyframes.
+pub fn annexb_to_hvcc(data: &[u8]) -> AccessUnit {
+    let mut au = AccessUnit::default();
+    for nal in split_annexb(data) {
+        if nal.len() < 2 {
+            continue;
+        }
+        match (nal[0] >> 1) & 0x3F {
+            32 => au.vps = Some(nal.to_vec()),
+            33 => au.sps = Some(nal.to_vec()),
+            34 => au.pps = Some(nal.to_vec()),
+            35 => {}
+            t => {
+                if (16..=23).contains(&t) {
+                    au.key = true;
+                }
+                au.avcc.extend_from_slice(&(nal.len() as u32).to_be_bytes());
+                au.avcc.extend_from_slice(nal);
+            }
+        }
+    }
+    au
+}
+
+/// One OBU of a low-overhead AV1 stream: (type, the whole OBU with header, payload).
+fn obus(data: &[u8]) -> Vec<(u8, &[u8], &[u8])> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < data.len() {
+        let h = data[i];
+        let kind = (h >> 3) & 0x0F;
+        let ext = (h >> 2) & 1 == 1;
+        let has_size = (h >> 1) & 1 == 1;
+        let mut p = i + 1 + ext as usize;
+        let size = if has_size {
+            let mut v: u64 = 0;
+            let mut k = 0;
+            loop {
+                let Some(&b) = data.get(p) else { return out };
+                v |= ((b & 0x7F) as u64) << (7 * k);
+                p += 1;
+                k += 1;
+                if b & 0x80 == 0 || k == 8 {
+                    break;
+                }
+            }
+            v as usize
+        } else {
+            data.len() - p
+        };
+        let end = (p + size).min(data.len());
+        out.push((kind, &data[i..end], &data[p.min(end)..end]));
+        i = end;
+    }
+    out
+}
+
+/// AV1: the sample keeps every OBU except temporal delimiters (2) and padding (15); the
+/// sequence header (1) is also remembered for `av1C`. A sequence header marks a keyframe
+/// (encoders repeat it there); the encoder's own keyframe flag is OR-ed in by the caller.
+pub fn obus_to_sample(data: &[u8]) -> AccessUnit {
+    let mut au = AccessUnit::default();
+    for (kind, whole, _) in obus(data) {
+        match kind {
+            2 | 15 => {}
+            1 => {
+                au.seq = Some(whole.to_vec());
+                au.key = true;
+                au.avcc.extend_from_slice(whole);
+            }
+            _ => au.avcc.extend_from_slice(whole),
+        }
+    }
+    au
+}
+
+/// Big-endian bit reader over an RBSP (emulation prevention bytes removed by the caller).
+struct Bits<'a> {
+    d: &'a [u8],
+    pos: usize,
+}
+
+impl Bits<'_> {
+    fn bit(&mut self) -> u32 {
+        let b = self.d.get(self.pos / 8).map(|v| (v >> (7 - self.pos % 8)) & 1).unwrap_or(0);
+        self.pos += 1;
+        b as u32
+    }
+    fn bits(&mut self, n: u32) -> u64 {
+        let mut v = 0u64;
+        for _ in 0..n {
+            v = (v << 1) | self.bit() as u64;
+        }
+        v
+    }
+    fn uvlc(&mut self) -> u64 {
+        let mut zeros = 0;
+        while self.bit() == 0 && zeros < 32 {
+            zeros += 1;
+        }
+        if zeros >= 32 {
+            return u64::MAX;
+        }
+        self.bits(zeros) + (1u64 << zeros) - 1
+    }
+}
+
+fn unescape(nal: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(nal.len());
+    let mut zeros = 0;
+    for &b in nal {
+        if zeros >= 2 && b == 3 {
+            zeros = 0;
+            continue;
+        }
+        zeros = if b == 0 { zeros + 1 } else { 0 };
+        out.push(b);
+    }
+    out
 }
 
 pub fn annexb_to_avcc(data: &[u8]) -> AccessUnit {
@@ -250,6 +450,105 @@ fn avc1(v: &VideoConfig) -> Vec<u8> {
     name[1..1 + n.len()].copy_from_slice(n);
     b.bytes(&name).u16(0x18).u16(0xFFFF).bytes(&avcc);
     boxed(b"avc1", &b.0)
+}
+
+/// The visual sample entry shared by all codecs, with the codec's config box.
+fn visual_entry(kind: &[u8; 4], v: &VideoConfig, config: &[u8]) -> Vec<u8> {
+    let mut b = B::new();
+    b.zeros(6).u16(1).zeros(16).u16(v.width as u16).u16(v.height as u16).u32(0x0048_0000).u32(0x0048_0000).u32(0).u16(1);
+    let mut name = [0u8; 32];
+    let n = b"Clairvoyance";
+    name[0] = n.len() as u8;
+    name[1..1 + n.len()].copy_from_slice(n);
+    b.bytes(&name).u16(0x18).u16(0xFFFF).bytes(config);
+    boxed(kind, &b.0)
+}
+
+fn video_entry(v: &VideoConfig) -> Vec<u8> {
+    match v.codec {
+        Codec::H264 => avc1(v),
+        Codec::Hevc => visual_entry(b"hvc1", v, &boxed(b"hvcC", &hvcc(v))),
+        Codec::Av1 => visual_entry(b"av01", v, &boxed(b"av1C", &av1c(&v.seq))),
+    }
+}
+
+/// HEVCDecoderConfigurationRecord (ISO/IEC 14496-15 8.3.3): profile / tier / level copied from
+/// the SPS's profile_tier_level, 4:2:0 8-bit (the recorder feeds NV12), 4-byte NAL lengths,
+/// one array each for VPS, SPS and PPS.
+pub fn hvcc(v: &VideoConfig) -> Vec<u8> {
+    let sps = unescape(&v.sps);
+    // After the 2-byte NAL header: vps_id(4) max_sub_layers_minus1(3) temporal_id_nesting(1),
+    // then 12 bytes: profile_space/tier/profile_idc, 32 compatibility flags, 48 constraint
+    // flags, level_idc.
+    let b0 = sps.get(2).copied().unwrap_or(1);
+    let sub_layers = ((b0 >> 1) & 7) + 1;
+    let nesting = b0 & 1;
+    let mut ptl = [0u8; 12];
+    for (k, x) in ptl.iter_mut().enumerate() {
+        *x = sps.get(3 + k).copied().unwrap_or(0);
+    }
+    let mut c = B::new();
+    c.u8(1).bytes(&ptl[..11]);
+    c.u8(ptl[11]); // level
+    c.u16(0xF000).u8(0xFC).u8(0xFC | 1).u8(0xF8).u8(0xF8).u16(0);
+    c.u8((sub_layers << 3) | (nesting << 2) | 3);
+    c.u8(3);
+    for (t, nal) in [(32u8, &v.vps), (33, &v.sps), (34, &v.pps)] {
+        c.u8(0x80 | t).u16(1).u16(nal.len() as u16).bytes(nal);
+    }
+    c.0
+}
+
+/// AV1CodecConfigurationRecord (AV1-ISOBMFF 2.3): profile, level and tier of operating point 0
+/// read from the sequence header OBU, 8-bit 4:2:0, then the sequence header itself.
+pub fn av1c(seq: &[u8]) -> Vec<u8> {
+    let payload = obus(seq).into_iter().find(|o| o.0 == 1).map(|o| o.2).unwrap_or(&[]);
+    let mut r = Bits { d: payload, pos: 0 };
+    let profile = r.bits(3) as u8;
+    let _still = r.bit();
+    let reduced = r.bit() == 1;
+    let mut tier = 0u8;
+    let level: u8;
+    if reduced {
+        level = r.bits(5) as u8;
+    } else {
+        let timing = r.bit() == 1;
+        let mut decoder_model = false;
+        let mut buffer_delay_len = 0;
+        if timing {
+            r.bits(32);
+            r.bits(32);
+            if r.bit() == 1 {
+                r.uvlc();
+            }
+            decoder_model = r.bit() == 1;
+            if decoder_model {
+                buffer_delay_len = r.bits(5) as u32 + 1;
+                r.bits(32);
+                r.bits(5);
+                r.bits(5);
+            }
+        }
+        let initial_display = r.bit() == 1;
+        let _ops = r.bits(5);
+        let _idc = r.bits(12);
+        level = r.bits(5) as u8;
+        if level > 7 {
+            tier = r.bit() as u8;
+        }
+        if decoder_model && r.bit() == 1 {
+            r.bits(buffer_delay_len);
+            r.bits(buffer_delay_len);
+            r.bit();
+        }
+        if initial_display && r.bit() == 1 {
+            r.bits(4);
+        }
+    }
+    let mut c = B::new();
+    c.u8(0x81).u8((profile << 5) | (level & 0x1F)).u8((tier << 7) | 0b0000_1100).u8(0);
+    c.bytes(seq);
+    c.0
 }
 
 fn descr(tag: u8, body: &[u8]) -> Vec<u8> {
@@ -408,7 +707,7 @@ impl<W: Write + Seek> FragmentedWriter<W> {
 
     /// `reserve` = size of the empty `free` box after the header (0 = none, the pre-v1.7.1 layout).
     pub fn with_reserve(mut out: W, video: VideoConfig, audio: Vec<AudioConfig>, reserve: u64) -> std::io::Result<Self> {
-        let mut traks = vec![trak(1, false, avc1(&video), VIDEO_TIMESCALE, 0, video.width, video.height, "Video", &Tables::default())];
+        let mut traks = vec![trak(1, false, video_entry(&video), VIDEO_TIMESCALE, 0, video.width, video.height, "Video", &Tables::default())];
         let mut trex = Vec::new();
         for (i, a) in audio.iter().enumerate() {
             traks.push(trak(2 + i as u32, true, mp4a(a), a.sample_rate, 0, 0, 0, &a.name, &Tables::default()));
@@ -619,7 +918,7 @@ pub fn write_clip<W: Write + Seek>(mut out: W, video: &VideoConfig, audio: &[Aud
     }
     let build = |tables: &[Tables]| -> Vec<u8> {
         let mut parts = vec![mvhd(durations[0] * 1000 / VIDEO_TIMESCALE as u64, n as u32 + 1)];
-        parts.push(trak(1, false, avc1(video), VIDEO_TIMESCALE, durations[0], video.width, video.height, "Video", &tables[0]));
+        parts.push(trak(1, false, video_entry(video), VIDEO_TIMESCALE, durations[0], video.width, video.height, "Video", &tables[0]));
         for (i, a) in audio.iter().enumerate() {
             parts.push(trak(2 + i as u32, true, mp4a(a), a.sample_rate, durations[i + 1], 0, 0, &a.name, &tables[i + 1]));
         }

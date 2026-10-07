@@ -38,6 +38,8 @@ pub fn bitrate(quality: &str, w: u32, h: u32, fps: u32) -> u32 {
     (base * scale.powf(0.75)).clamp(3_000_000.0, 60_000_000.0) as u32
 }
 
+pub use crate::encopts::{codec_factor, pick_codec, quality_value};
+
 struct Active {
     rec_start: i64,
     capture: Arc<Mutex<Option<Capture>>>,
@@ -165,13 +167,19 @@ impl NativeRecorder {
         let (src_w, src_h) = capture::target_size(cap_target)?;
         let (out_w, out_h) = capture::output_size(src_w, src_h, opts.height);
         let fps = opts.fps.clamp(10, 240);
-        let rate = bitrate(&opts.quality, out_w, out_h, fps);
+        let h264_rate = bitrate(&opts.quality, out_w, out_h, fps);
+        let (codec, note) = pick_codec(&opts.codec, &opts.playable, video_enc::decoder_available);
+        if let Some(n) = &note {
+            log::warn!("recorder: {n}");
+        }
+        let rate = (h264_rate as f64 * codec_factor(codec)) as u32;
+        let rc = if opts.rate_control == "quality" { video_enc::RateControl::Quality(quality_value(&opts.quality)) } else { video_enc::RateControl::Bitrate };
 
         log::info!("recorder: capturing {} ({src_w}x{src_h}) -> {out_w}x{out_h}@{fps}", match cap_target { Target::Window(_) => "window", Target::Monitor(_) => "monitor" });
         let (mux_tx, mux_rx) = channel::<MuxMsg>();
         let encoder = video_enc::start(
             gpu.clone(),
-            video_enc::EncodeParams { width: out_w, height: out_h, fps, bitrate: rate, prefer: opts.encoder.clone() },
+            video_enc::EncodeParams { width: out_w, height: out_h, fps, bitrate: rate, prefer: opts.encoder.clone(), codec, rate: rc, h264_bitrate: h264_rate },
             mux_tx.clone(),
         )?;
         let rec_start = qpc_hns();
@@ -213,8 +221,10 @@ impl NativeRecorder {
             fps,
             audio: audio_cfgs,
             replay_secs: opts.replay_buffer_secs,
-            replay_max_bytes: (rate as usize / 8) * (opts.replay_buffer_secs as usize + 4) + 32 * 1024 * 1024,
+            // Quality-based mode can run above the average in fights: room for twice H.264's rate.
+            replay_max_bytes: (if matches!(rc, video_enc::RateControl::Quality(_)) { h264_rate as usize * 2 } else { rate as usize } / 8) * (opts.replay_buffer_secs as usize + 4) + 32 * 1024 * 1024,
             full_video: opts.full_video,
+            codec: encoder.desc.codec,
         };
         if !opts.full_video {
             log::info!("recorder: clips only (replay buffer, no full video)");
@@ -295,7 +305,7 @@ impl NativeRecorder {
             s.recording = true;
             s.replay_buffer = true;
             s.connected = true;
-            s.encoder = Some(format!("{} ({})", desc.name, desc.vendor));
+            s.encoder = Some(format!("{} ({}, {})", desc.name, desc.vendor, desc.codec.as_str().to_uppercase()));
             s.hardware_encoder = true;
             s.error = None;
         });
@@ -427,6 +437,9 @@ pub fn start_test_recording(out_dir: &Path, exe: &str) -> Result<NativeRecorder>
         record_mic: false,
         display_capture: false,
         full_video: true,
+        codec: "h264".into(),
+        rate_control: "bitrate".into(),
+        playable: Vec::new(),
     };
     *rec.inner.prepared.lock().unwrap() = Some((target, opts));
     rec.start_blocking()?;
@@ -443,7 +456,15 @@ impl NativeRecorder {
     }
 }
 
-pub fn self_test(out_dir: &Path, secs: u64, exe: Option<&str>, mic: bool) -> Result<(PathBuf, u64, u64)> {
+/// Video settings for the self-test (the in-app test uses the user's own).
+#[derive(Debug, Clone, Default)]
+pub struct TestVideo {
+    pub codec: String,
+    pub rate_control: String,
+    pub playable: Vec<String>,
+}
+
+pub fn self_test(out_dir: &Path, secs: u64, exe: Option<&str>, mic: bool, video: TestVideo) -> Result<(PathBuf, u64, u64)> {
     let rec = NativeRecorder::new();
     let target = CaptureTarget { exe: exe.unwrap_or("explorer.exe").to_string(), display_capture_only: exe.is_none() };
     let opts = RecordOptions {
@@ -456,6 +477,9 @@ pub fn self_test(out_dir: &Path, secs: u64, exe: Option<&str>, mic: bool) -> Res
         record_mic: mic,
         display_capture: exe.is_none(),
         full_video: true,
+        codec: video.codec,
+        rate_control: video.rate_control,
+        playable: video.playable,
     };
     *rec.inner.prepared.lock().unwrap() = Some((target, opts));
     rec.start_blocking()?;

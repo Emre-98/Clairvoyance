@@ -1,7 +1,7 @@
 //! Writer thread: turns encoder output into the crash-safe recording and keeps the replay buffer.
 
 use super::video_enc::EncodedFrame;
-use crate::mp4::{annexb_to_avcc, write_clip, AudioConfig, FragmentedWriter, Packet, VideoConfig};
+use crate::mp4::{to_sample, write_clip, AudioConfig, Codec, FragmentedWriter, Packet, ParamSets, VideoConfig};
 use crate::replay::ReplayBuffer;
 use anyhow::{anyhow, Result};
 use std::fs::File;
@@ -28,12 +28,14 @@ pub struct MuxParams {
     /// false = "clips only": keep the in-memory replay buffer (hotkey and event clips) but
     /// don't write the full recording to disk.
     pub full_video: bool,
+    /// The encoder's codec (H.264, HEVC or AV1).
+    pub codec: Codec,
 }
 
 pub fn run(p: MuxParams, rx: Receiver<MuxMsg>) {
     let mut writer: Option<FragmentedWriter<BufWriter<File>>> = None;
     let mut vcfg: Option<VideoConfig> = None;
-    let (mut sps, mut pps): (Option<Vec<u8>>, Option<Vec<u8>>) = (None, None);
+    let mut params = ParamSets::default();
     let mut pending_audio: Vec<Packet> = Vec::new();
     let mut replay = ReplayBuffer::new(p.replay_secs.max(5), p.replay_max_bytes);
     let mut last_flush = Instant::now();
@@ -48,21 +50,16 @@ pub fn run(p: MuxParams, rx: Receiver<MuxMsg>) {
         };
         match msg {
             Some(MuxMsg::Video(f)) => {
-                let au = annexb_to_avcc(&f.annexb);
-                if au.sps.is_some() {
-                    sps = au.sps.clone();
-                }
-                if au.pps.is_some() {
-                    pps = au.pps.clone();
-                }
+                let au = to_sample(p.codec, &f.annexb);
+                params.update(&au);
                 let key = au.key || f.key;
                 if !p.full_video {
                     // Clips only: the replay buffer starts at the first keyframe.
                     if vcfg.is_none() {
-                        if !(key && sps.is_some() && pps.is_some()) {
+                        if !(key && params.ready(p.codec)) {
                             continue;
                         }
-                        vcfg = Some(VideoConfig { width: p.width, height: p.height, sps: sps.clone().unwrap(), pps: pps.clone().unwrap(), fps: p.fps });
+                        vcfg = Some(params.config(p.codec, p.width, p.height, p.fps));
                         for a in pending_audio.drain(..) {
                             replay.push(a);
                         }
@@ -73,11 +70,11 @@ pub fn run(p: MuxParams, rx: Receiver<MuxMsg>) {
                     continue;
                 }
                 if writer.is_none() && error.is_none() {
-                    // The file starts at the first keyframe, when SPS/PPS are known.
-                    if !(key && sps.is_some() && pps.is_some()) {
+                    // The file starts at the first keyframe, when the parameter sets are known.
+                    if !(key && params.ready(p.codec)) {
                         continue;
                     }
-                    let cfg = VideoConfig { width: p.width, height: p.height, sps: sps.clone().unwrap(), pps: pps.clone().unwrap(), fps: p.fps };
+                    let cfg: VideoConfig = params.config(p.codec, p.width, p.height, p.fps);
                     match File::create(&p.path).and_then(|f| FragmentedWriter::new(BufWriter::with_capacity(1 << 20, f), cfg.clone(), p.audio.clone())) {
                         Ok(w) => {
                             writer = Some(w);

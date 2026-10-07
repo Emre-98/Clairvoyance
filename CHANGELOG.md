@@ -11,6 +11,7 @@ release notes on GitHub and in the in-app "Update available" card.
 - A faint APM chart behind the timeline markers; hover it to see your actions per minute at that moment
 - Items and Summoner spells have their own filter chips; icons show in the event list too
 - Scoreboard of all 10 players (champion, level, KDA, CS, items, summoner spells) under the player, showing the moment you're watching and following along while you scrub. Press O to see it over the video, or hold Tab in fullscreen. Games recorded before this version show your own final numbers
+- Settings > Recording: new Video codec (H.264, HEVC, AV1) and Bitrate (fixed or quality-based) options. HEVC / AV1 make smaller files on GPUs that support them and are only used when this PC can play them; otherwise recordings stay H.264. Defaults are unchanged
 
 ## [1.7.1] - 2026-10-03
 

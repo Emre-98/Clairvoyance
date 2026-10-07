@@ -198,7 +198,7 @@ const settings: Settings = {
   show_perf: true,
   theme: (localStorage.getItem("cv-theme") as any) ?? "system",
   auto_update_check: true,
-  video: { encoder: "auto", quality: "standard", fps: 60, height: 1080, replay_buffer_secs: 30, record_mic: false, display_capture: false },
+  video: { encoder: "auto", quality: "standard", fps: 60, height: 1080, replay_buffer_secs: 30, record_mic: false, display_capture: false, codec: "h264", rate_control: "bitrate", playable_codecs: [] },
   events: { clip_kinds: ["multikill", "ace"], clip_before_secs: 10, clip_after_secs: 4, tts_enabled: false, tts_kinds: ["kill", "death", "multikill", "clip"], tts_volume: 70 },
   games: { league: { riot_id: "Tester#EUW", ult_key: "R" } },
   disabled_games: [],

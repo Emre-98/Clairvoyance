@@ -13,6 +13,11 @@ fn main() {
     let secs: u64 = args.iter().find_map(|a| a.parse().ok()).unwrap_or(10);
     let exe = args.iter().position(|a| a == "--exe").and_then(|i| args.get(i + 1)).cloned();
     let mic = args.iter().any(|a| a == "--mic");
+    // --codec hevc|av1 and --quality-rc: try the v1.8 encoder options (the tool can't ask the
+    // app's player, so every codec counts as playable here).
+    let codec = args.iter().position(|a| a == "--codec").and_then(|i| args.get(i + 1)).cloned().unwrap_or_else(|| "h264".into());
+    let rate_control = if args.iter().any(|a| a == "--quality-rc") { "quality" } else { "bitrate" }.to_string();
+    let video = cv_capture::win::TestVideo { codec, rate_control, playable: vec!["h264".into(), "hevc".into(), "av1".into()] };
     // Results go next to this program, in "selftest-output".
     let out = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("selftest-output"))).unwrap_or_else(|| "selftest-output".into());
     let _ = std::fs::remove_dir_all(&out);
@@ -60,7 +65,7 @@ fn main() {
         (samples, t0.elapsed())
     });
     let t = Instant::now();
-    let r = cv_capture::win::self_test(&out, secs, exe.as_deref(), mic);
+    let r = cv_capture::win::self_test(&out, secs, exe.as_deref(), mic, video);
     stop.store(true, std::sync::atomic::Ordering::SeqCst);
     let (samples, _) = sampler.join().unwrap();
     match r {

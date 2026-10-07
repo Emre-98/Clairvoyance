@@ -211,6 +211,22 @@
           </select>
           <small>About 1.5–3 GB/hour at 1080p60 on Standard.</small>
         </label>
+        <label>Video codec
+          <select class="input" bind:value={draft.video.codec} data-testid="codec-select">
+            <option value="h264">H.264 (plays everywhere)</option>
+            {#each [["hevc", "HEVC / H.265 (smaller files)"], ["av1", "AV1 (smallest, newest GPUs)"]] as [c, label]}
+              <option value={c} disabled={!(draft.video.playable_codecs ?? []).includes(c) && draft.video.codec !== c}>{label}{(draft.video.playable_codecs ?? []).includes(c) ? "" : " – not playable in this app here"}</option>
+            {/each}
+          </select>
+          <small>HEVC and AV1 need a GPU that encodes them and Windows' free / store decoder (HEVC Video Extensions, AV1 Video Extension); otherwise games are recorded in H.264. Clips you export keep the codec; "Exact cut" makes H.264 for sharing.</small>
+        </label>
+        <label>Bitrate
+          <select class="input" bind:value={draft.video.rate_control} data-testid="ratecontrol-select">
+            <option value="bitrate">Fixed average (steady file size)</option>
+            <option value="quality">Quality-based (smaller in calm moments, more for fights)</option>
+          </select>
+          <small>Quality-based sizes vary with the game; try the 5 s recorder test after changing it.</small>
+        </label>
         <label>Resolution
           <select class="input" bind:value={draft.video.height}>
             <option value={0}>Same as screen</option>

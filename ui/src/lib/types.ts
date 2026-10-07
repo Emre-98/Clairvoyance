@@ -302,6 +302,12 @@ export interface VideoSettings {
   replay_buffer_secs: number;
   record_mic: boolean;
   display_capture: boolean;
+  /** "h264" | "hevc" | "av1" (v1.8). */
+  codec?: string;
+  /** "bitrate" | "quality" (v1.8). */
+  rate_control?: string;
+  /** Codecs the in-app player can play (reported by the UI). */
+  playable_codecs?: string[];
 }
 
 export interface EventSettings {

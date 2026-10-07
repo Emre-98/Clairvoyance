@@ -39,6 +39,15 @@ pub struct RecordOptions {
     /// false = "clips only": keep the replay buffer (hotkey + event clips), no full video file.
     #[serde(default = "yes")]
     pub full_video: bool,
+    /// "h264", "hevc" or "av1" (see `VideoSettings::codec`).
+    #[serde(default)]
+    pub codec: String,
+    /// "bitrate" or "quality".
+    #[serde(default)]
+    pub rate_control: String,
+    /// Codecs the in-app player can play.
+    #[serde(default)]
+    pub playable: Vec<String>,
 }
 
 fn yes() -> bool {

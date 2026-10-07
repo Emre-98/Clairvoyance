@@ -131,7 +131,17 @@
   match: 6 reads, 3 KB; worst-case 35 min synthetic game: 44 KB vs 296 KB for full
   snapshots). Recordings before v1.8: "Final scoreboard" with your own final numbers.
   Chromium 16/16 checks (scrubbing lag p95 6-10 ms). Details in "Time-synced scoreboard".
-- **Waiting for the owner**: the v1.8 real-game check (parts 1 and 2) (see "Next steps"), the Practice Tool test of the ult kinds (v1.6, see "Next steps"),
+- **v1.8 part 3 (2026-10-07): smaller files, measured first.** Measured on Claude's machine
+  with software stand-ins (x264 / x265 / SVT-AV1 set up like the recorder) on a game-like
+  1080p60 test clip: no candidate reached the current quality (H.264 VBR 12 Mbps) at a smaller
+  size except B-frames (12 Mbps + B ≈ 16 Mbps without, ~25 % smaller at the same SSIM); x265 at
+  equal bitrate was *worse* than x264 on this clip. So **no default changed**: the GPU encoders
+  decide, with `scripts/encoder-compare.ps1` on the owner's PC (VMAF + SSIM + size on a real
+  Practice Tool capture). Built meanwhile (opt-in, Settings > Recording): HEVC and AV1
+  recording (muxer `hvc1`/`av01`, tested through recording, in-place index, finalize, replay
+  clip and stream-copied export; AV1 plays and seeks in Chromium), quality-based rate control,
+  with H.264 as the automatic fallback. Details in "Smaller files (v1.8 part 3)".
+- **Waiting for the owner**: the v1.8 real-game check (parts 1 and 2), `encoder-compare.ps1` (part 3) (see "Next steps"), the Practice Tool test of the ult kinds (v1.6, see "Next steps"),
   the PC benchmark of the v1.6 player (`--bench-replays` with `"player": true`), and the older
   Practice Tool test of the ability bubbles.
 
@@ -1215,6 +1225,67 @@ like a match, so it was recorded as a game.
 - Chromium suites with parts 1 + 2: scoreboard 16/16, timeline 23/23, fullscreen 94/94, overlay
   20/20, bubbles 20/20, frame stepping 27/27, layout audit 504/504.
 
+### Smaller files (v1.8 part 3, 2026-10-07, owner's request)
+- **How others do it:** Medal's guidance for 1080p: H.264 15-20, HEVC 10-15, AV1 7-10 Mbps
+  for the same quality, GPU encoder recommended; Overwolf's recorder (Outplayed / Ascent) exposes
+  NVENC / AMF / QSV in H.264, HEVC and AV1.
+- **Sandbox measurement** (no GPU, no VMAF here): `scripts/encoder-test/make_gamelike.py`
+  (30 s 1080p60: detailed panning map, units with health bars, particle "spells", a fight at
+  15-22 s, the owner's real HUD crops, minimap, text) → near-lossless reference →
+  `compare_sw.py` (software encoders with the recorder's setup: keyframe every 60 frames,
+  low latency, no B-frames). Full table: `scripts/encoder-test/results-sandbox-2026-10-07.txt`.
+
+  | Candidate | Mbps | SSIM (dB) | fight SSIM |
+  |---|---|---|---|
+  | **H.264 VBR 12 (current)** | 12.6 | 0.9769 (16.37) | 0.9686 |
+  | H.264 VBR 8 / 16 / 20 | 8.5 / 16.7 / 20.7 | 15.90 / 16.64 / 16.83 dB | 0.9645 / 0.9705 / 0.9717 |
+  | H.264 quality (CRF 20 / 23) | 8.8 / 6.4 | 16.06 / 15.64 dB | 0.9666 / 0.9625 |
+  | H.264 12 + 3 B-frames | 12.6 | 16.70 dB | 0.9718 |
+  | HEVC VBR 8 / 12 | 8.0 / 12.3 | 15.29 / 15.85 dB | 0.9553 / 0.9610 |
+  | HEVC quality (CRF 24) | 9.0 | 15.79 dB | 0.9623 |
+  | AV1 VBR 6 / 9 | 6.0 / 9.0 | 15.40 / 15.93 dB | 0.9529 / 0.9595 |
+  | AV1 quality (CRF 32) | 6.3 | 16.00 dB | 0.9674 |
+
+  Reading: quality-based rate control is worth ~0.1 dB at equal size on this always-moving clip
+  (its gain is in calm moments, which real games have more of); fast x265 is weaker than x264
+  here; B-frames are the only clear win. Software encoders are a stand-in: NVENC's HEVC / AV1
+  are generally stronger relative to its H.264 than x265 / SVT at these speeds, which is why the
+  owner's run decides.
+- **Owner's measurement:** `scripts/encoder-compare.ps1` (Windows PowerShell 5.1+): captures
+  60 s of the screen while he plays (desktop duplication, CUDA scaling, lossless NVENC; nothing
+  Riot is started), encodes it with the GPU's own encoders through ffmpeg (the app's download)
+  with the recorder's settings — H.264 VBR 12 / 20 / 8, H.264 / HEVC / AV1 quality ladders,
+  HEVC VBR 4-12, AV1 VBR 3-10, B-frame variants — and writes size, VMAF (mean and worst 1 %),
+  SSIM, PSNR, encode speed and "same quality or better, smallest first" to
+  `Videos\Clairvoyance\perf-tests\encoder-compare-<date>\results.txt`. Its whole flow was run
+  here with software encoders (`-Vendor software`, SSIM only).
+- **Defaults: unchanged** (H.264, fixed average bitrate, B-frames off, keyframe every second,
+  AAC 160 kbps) until the owner's numbers show a candidate at the same quality or better.
+  Audio is ~1.3 % of a recording (160 kbps vs 12 Mbps): 128 kbps would save ~0.3 %, not worth
+  any audible risk. Clip export already copies the stream (no re-encode); "Exact cut" re-encodes
+  to H.264 12 Mbps on the GPU (also the way to share HEVC / AV1 clips with anyone).
+- **Built (opt-in):** Settings > Recording > Video codec (H.264 / HEVC / AV1) and Bitrate (fixed
+  average / quality-based = Media Foundation's Quality mode, 70 Standard / 80 High).
+  - The recorder uses HEVC / AV1 only if the in-app player can play it (the UI reports
+    `canPlayType` per codec at start-up → `video.playable_codecs`), Windows has a decoder for it
+    (thumbnails and the ult / summoner check read the recording through Media Foundation: HEVC
+    Video Extensions / AV1 Video Extension) and the GPU has an encoder; otherwise H.264 at its
+    own bitrate, with the reason in the log. Bitrate mode uses H.264's rate × 0.75 (HEVC) / ×
+    0.6 (AV1) (Medal's ratios, on the safe side) until measured.
+  - Muxer: `hvc1` + `hvcC` (profile / tier / level from the SPS, VPS / SPS / PPS arrays) and
+    `av01` + `av1C` (from the sequence header OBU; temporal delimiters dropped); the AV1 encoder's
+    `MF_MT_MPEG_SEQUENCE_HEADER` may be an av1C record (its OBUs are used). Finalize / in-place
+    index / replay clips are codec-agnostic (box level). `recorder-selftest --codec hevc|av1
+    [--quality-rc]` and the in-app 5 s test (uses the chosen settings) show the encoder + codec.
+  - B-frames not built: they reorder frames (composition offsets), which the muxer, replay
+    buffer, frame stepping and the ult check assume never happens; only worth it if the owner's
+    NVENC numbers show a big gain.
+- **Tests:** `tests/mux_codecs.rs` (x265 / SVT-AV1 streams through the recorder's writer, in-place
+  index, finalize, replay clip, stream-copy cut: every frame decodes, keyframes 1.00 s; hvcC /
+  av1C levels equal ffprobe's), `encopts.rs` (codec choice + fallbacks), Node
+  `codecs.unit.test.ts`, AV1 recording / finalized / clip / cut play and seek in Chromium
+  (29-88 ms). H.264 / HEVC playback isn't in this Chromium build: WebView2 on the owner's PC.
+
 ### Replay benchmark and end-to-end tests (developer tools)
 - `Clairvoyance.exe --bench-replays=<config.json>`: opens the given games N times in the real
   window and measures page / first frame / playable / marker jumps / "marker clicked right away"
@@ -1286,7 +1357,9 @@ like a match, so it was recorded as a game.
 - [x] Owner's check of v1.7.1: replays not recorded, spectating deleted after 8 s, Practice Tool game ready at once
 - [x] 32. Richer timeline: tower / inhibitor / objective details + gold, completed-item chips (undo-safe), summoner spell chips (key + recording), APM chart behind the markers (v1.8 part 1)
 - [x] 33. Time-synced scoreboard: all 10 players saved as changes only, card + overlay (O / Tab) following playback and scrubbing, final-only fallback for old recordings (v1.8 part 2)
+- [x] 34. Smaller files: measured (software stand-ins + PC script), HEVC / AV1 recording and quality-based rate control as options with H.264 fallback; defaults unchanged until the owner's GPU numbers (v1.8 part 3)
 - [ ] Owner's real-game check of v1.8 parts 1 and 2 (see "Next steps")
+- [ ] Owner's `scripts/encoder-compare.ps1` run, then switch defaults where the numbers allow
 
 ## Known issues
 - v1.6 player: frame steps are seeks, so on recordings with long keyframe gaps (before v1.2:
@@ -1361,6 +1434,14 @@ like a match, so it was recorded as a game.
   (else no item chips that game, logged).
 
 ## Next steps
+- **Owner, encoder measurement (v1.8 part 3, ~10 min):** Clairvoyance's ffmpeg downloaded
+  (Settings > Clips). Start a Practice Tool game, then in PowerShell in the repo folder:
+  `powershell -ExecutionPolicy Bypass -File scripts\encoder-compare.ps1`, switch to League within
+  10 s and play a normal minute (walk, fight, move the camera, open the shop). It beeps when the
+  capture ends; measuring takes a few minutes more. Send `results.txt`. Then: Settings >
+  Recording > Video codec HEVC (and AV1 if offered), run the 5 s recorder test, play a short
+  Practice Tool game and check the replay opens, seeks, steps frames, makes a thumbnail, the
+  ult check runs, a hotkey clip and an exported clip play.
 - **Owner, v1.8 part 1 in a real game (Practice Tool is enough, ~10 min):** Practice Tool on
   "Record". In base: buy a component, then a finished item and press UNDO right away; buy it
   again and wait 10 s; buy a second finished item, wait 10 s, then UNDO it; sell the first one.

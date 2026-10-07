@@ -1,4 +1,5 @@
-//! Hardware H.264 encoding through Media Foundation. The GPU vendors ship their encoders as
+//! Hardware video encoding (H.264, or HEVC / AV1 when chosen and available) through Media
+//! Foundation. The GPU vendors ship their encoders as
 //! Media Foundation transforms: NVIDIA NVENC, AMD AMF and Intel Quick Sync all appear here,
 //! so one code path covers all three. CPU (software) encoders are never used.
 
@@ -32,6 +33,18 @@ pub struct EncodedFrame {
 pub struct EncoderDesc {
     pub name: String,
     pub vendor: String,
+    /// The codec it encodes (H.264 when the chosen one wasn't available).
+    pub codec: crate::mp4::Codec,
+}
+
+/// How the bitrate is decided.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum RateControl {
+    /// A fixed average (unconstrained VBR): `EncodeParams::bitrate`.
+    Bitrate,
+    /// Quality-based (Media Foundation's "Quality" mode, 0-100): fewer bits in calm moments,
+    /// more in fights; `bitrate` is only a hint.
+    Quality(u32),
 }
 
 pub struct VideoEncoder {
@@ -71,6 +84,7 @@ impl VideoEncoder {
     }
 }
 
+#[derive(Clone)]
 pub struct EncodeParams {
     pub width: u32,
     pub height: u32,
@@ -78,6 +92,40 @@ pub struct EncodeParams {
     pub bitrate: u32,
     /// "nvenc", "amd", "qsv" or "auto".
     pub prefer: String,
+    pub codec: crate::mp4::Codec,
+    pub rate: RateControl,
+    /// The bitrate to use if the chosen codec falls back to H.264.
+    pub h264_bitrate: u32,
+}
+
+fn subtype(c: crate::mp4::Codec) -> GUID {
+    match c {
+        crate::mp4::Codec::H264 => MFVideoFormat_H264,
+        crate::mp4::Codec::Hevc => MFVideoFormat_HEVC,
+        crate::mp4::Codec::Av1 => MFVideoFormat_AV1,
+    }
+}
+
+/// Windows can decode this codec (Media Foundation decoder, hardware or software): needed for
+/// thumbnails and the ult / summoner check after the game. HEVC needs Microsoft's "HEVC Video
+/// Extensions", AV1 the "AV1 Video Extension" (both from the Microsoft Store).
+pub fn decoder_available(c: crate::mp4::Codec) -> bool {
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+        let _ = MFStartup(MF_VERSION, MFSTARTUP_FULL);
+        let input = MFT_REGISTER_TYPE_INFO { guidMajorType: MFMediaType_Video, guidSubtype: subtype(c) };
+        let mut ptr: *mut Option<IMFActivate> = std::ptr::null_mut();
+        let mut count = 0u32;
+        let ok = MFTEnumEx(MFT_CATEGORY_VIDEO_DECODER, MFT_ENUM_FLAG_ALL, Some(&input), None, &mut ptr, &mut count).is_ok();
+        if !ptr.is_null() {
+            let slice = std::slice::from_raw_parts_mut(ptr, count as usize);
+            for a in slice.iter_mut() {
+                drop(a.take());
+            }
+            CoTaskMemFree(Some(ptr as _));
+        }
+        ok && count > 0
+    }
 }
 
 fn vendor_code(prefer: &str) -> Option<&'static str> {
@@ -135,9 +183,9 @@ unsafe fn adapter_luid(a: &IMFAttributes) -> Option<i64> {
 /// Hardware H.264 encoders of one GPU (MFTEnum2), or with `luid: None` the plain MFTEnumEx
 /// list, which only covers the GPU driving the display: on hybrid laptops that's the Intel
 /// one, so the NVIDIA/AMD encoder of the GPU we record on would be missing.
-unsafe fn enum_hw(luid: Option<(i64, bool)>) -> Result<Vec<IMFActivate>> {
+unsafe fn enum_hw(luid: Option<(i64, bool)>, codec: crate::mp4::Codec) -> Result<Vec<IMFActivate>> {
     let input = MFT_REGISTER_TYPE_INFO { guidMajorType: MFMediaType_Video, guidSubtype: MFVideoFormat_NV12 };
-    let output = MFT_REGISTER_TYPE_INFO { guidMajorType: MFMediaType_Video, guidSubtype: MFVideoFormat_H264 };
+    let output = MFT_REGISTER_TYPE_INFO { guidMajorType: MFMediaType_Video, guidSubtype: subtype(codec) };
     let flags = MFT_ENUM_FLAG_HARDWARE | MFT_ENUM_FLAG_SORTANDFILTER;
     let mut ptr: *mut Option<IMFActivate> = std::ptr::null_mut();
     let mut count = 0u32;
@@ -169,9 +217,14 @@ unsafe fn enum_hw(luid: Option<(i64, bool)>) -> Result<Vec<IMFActivate>> {
 /// Hardware H.264 encoders that can use the GPU at `gpu_luid`, best match first: same GPU,
 /// then the preferred vendor. Encoders of another GPU are left out: they refuse our device.
 pub unsafe fn list_encoders(gpu_luid: i64, gpu_vendor: u32, prefer: &str) -> Result<Vec<(IMFActivate, EncoderDesc)>> {
+    unsafe { list_encoders_for(gpu_luid, gpu_vendor, prefer, crate::mp4::Codec::H264) }
+}
+
+/// Hardware encoders of one codec on the recording GPU, best match first.
+pub unsafe fn list_encoders_for(gpu_luid: i64, gpu_vendor: u32, prefer: &str, codec: crate::mp4::Codec) -> Result<Vec<(IMFActivate, EncoderDesc)>> {
     let mut found = Vec::new();
     for as_blob in [true, false] {
-        match unsafe { enum_hw(Some((gpu_luid, as_blob))) } {
+        match unsafe { enum_hw(Some((gpu_luid, as_blob)), codec) } {
             Ok(l) if !l.is_empty() => {
                 found = l;
                 break;
@@ -181,7 +234,7 @@ pub unsafe fn list_encoders(gpu_luid: i64, gpu_vendor: u32, prefer: &str) -> Res
         }
     }
     if found.is_empty() {
-        found = unsafe { enum_hw(None) }?;
+        found = unsafe { enum_hw(None, codec) }?;
     }
     let mut out: Vec<(IMFActivate, EncoderDesc, i32)> = Vec::new();
     let want_vendor = vendor_code(prefer).map(str::to_string).unwrap_or_else(|| format!("VEN_{gpu_vendor:04X}"));
@@ -202,7 +255,7 @@ pub unsafe fn list_encoders(gpu_luid: i64, gpu_vendor: u32, prefer: &str) -> Res
             score += 1;
         }
         let vid = u32::from_str_radix(ven.trim_start_matches("VEN_"), 16).unwrap_or(0);
-        out.push((act, EncoderDesc { name, vendor: vendor_name(vid).to_string() }, score));
+        out.push((act, EncoderDesc { name, vendor: vendor_name(vid).to_string(), codec }, score));
     }
     out.sort_by(|a, b| b.2.cmp(&a.2));
     Ok(out.into_iter().map(|(a, d, _)| (a, d)).collect())
@@ -211,8 +264,16 @@ pub unsafe fn list_encoders(gpu_luid: i64, gpu_vendor: u32, prefer: &str) -> Res
 unsafe fn codec_settings(mft: &IMFTransform, p: &EncodeParams) {
     if let Ok(codec) = mft.cast::<ICodecAPI>() {
         unsafe {
-            let _ = codec.SetValue(&CODECAPI_AVEncCommonRateControlMode, &var_u32(eAVEncCommonRateControlMode_UnconstrainedVBR.0 as u32));
-            let _ = codec.SetValue(&CODECAPI_AVEncCommonMeanBitRate, &var_u32(p.bitrate));
+            match p.rate {
+                RateControl::Bitrate => {
+                    let _ = codec.SetValue(&CODECAPI_AVEncCommonRateControlMode, &var_u32(eAVEncCommonRateControlMode_UnconstrainedVBR.0 as u32));
+                    let _ = codec.SetValue(&CODECAPI_AVEncCommonMeanBitRate, &var_u32(p.bitrate));
+                }
+                RateControl::Quality(q) => {
+                    let _ = codec.SetValue(&CODECAPI_AVEncCommonRateControlMode, &var_u32(eAVEncCommonRateControlMode_Quality.0 as u32));
+                    let _ = codec.SetValue(&CODECAPI_AVEncCommonQuality, &var_u32(q.min(100)));
+                }
+            }
             // A keyframe every second: seeking (timeline markers) only decodes <1 s of video.
             let _ = codec.SetValue(&CODECAPI_AVEncMPVGOPSize, &var_u32(p.fps.max(1)));
             let _ = codec.SetValue(&CODECAPI_AVEncMPVDefaultBPictureCount, &var_u32(0));
@@ -244,14 +305,19 @@ unsafe fn configure(mft: &IMFTransform, gpu: &Gpu, p: &EncodeParams) -> Result<I
         let rate = ((p.fps as u64) << 32) | 1;
         let ot = MFCreateMediaType()?;
         ot.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)?;
-        ot.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_H264)?;
+        ot.SetGUID(&MF_MT_SUBTYPE, &subtype(p.codec))?;
         ot.SetUINT32(&MF_MT_AVG_BITRATE, p.bitrate)?;
         ot.SetUINT64(&MF_MT_FRAME_SIZE, size)?;
         ot.SetUINT64(&MF_MT_FRAME_RATE, rate)?;
         ot.SetUINT64(&MF_MT_PIXEL_ASPECT_RATIO, (1u64 << 32) | 1)?;
         ot.SetUINT32(&MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive.0 as u32)?;
-        ot.SetUINT32(&MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_High.0 as u32)?;
-        mft.SetOutputType(0, &ot, 0).context("encoder rejected the H.264 output format")?;
+        let profile = match p.codec {
+            crate::mp4::Codec::H264 => eAVEncH264VProfile_High.0 as u32,
+            crate::mp4::Codec::Hevc => eAVEncH265VProfile_Main_420_8.0 as u32,
+            crate::mp4::Codec::Av1 => eAVEncAV1VProfile_Main_420_8.0 as u32,
+        };
+        ot.SetUINT32(&MF_MT_MPEG2_PROFILE, profile)?;
+        mft.SetOutputType(0, &ot, 0).with_context(|| format!("encoder rejected the {} output format", p.codec.as_str()))?;
 
         let mut set = false;
         for i in 0..32 {
@@ -304,7 +370,7 @@ unsafe fn sequence_header(mft: &IMFTransform) -> Option<Vec<u8>> {
     }
 }
 
-unsafe fn pull_output(mft: &IMFTransform, provides: bool, out_size: u32, tx: &Sender<super::mux::MuxMsg>, in_flight: &AtomicUsize, fed: &mut std::collections::VecDeque<i64>, last_key: &mut i64) -> Result<()> {
+unsafe fn pull_output(mft: &IMFTransform, codec: crate::mp4::Codec, provides: bool, out_size: u32, tx: &Sender<super::mux::MuxMsg>, in_flight: &AtomicUsize, fed: &mut std::collections::VecDeque<i64>, last_key: &mut i64) -> Result<()> {
     unsafe {
         let own = if provides {
             None
@@ -324,9 +390,18 @@ unsafe fn pull_output(mft: &IMFTransform, provides: bool, out_size: u32, tx: &Se
                     let (pts, mut data, key) = read_sample(&s)?;
                     // Some encoders only put SPS/PPS in the output format, not in the stream:
                     // add them in front of keyframes so the file can start.
-                    let has_sps = crate::mp4::split_annexb(&data).iter().any(|n| n.first().is_some_and(|b| b & 0x1f == 7));
-                    if !has_sps && (key || fed.len() <= 1) {
-                        if let Some(h) = sequence_header(mft) {
+                    let au = crate::mp4::to_sample(codec, &data);
+                    let has_params = match codec {
+                        crate::mp4::Codec::H264 => au.sps.is_some(),
+                        crate::mp4::Codec::Hevc => au.sps.is_some() && au.vps.is_some(),
+                        crate::mp4::Codec::Av1 => au.seq.is_some(),
+                    };
+                    if !has_params && (key || fed.len() <= 1) {
+                        if let Some(mut h) = sequence_header(mft) {
+                            // AV1 encoders may publish an av1C record there: keep its OBUs.
+                            if codec == crate::mp4::Codec::Av1 && h.first() == Some(&0x81) && h.len() > 4 {
+                                h.drain(..4);
+                            }
                             let mut v = h;
                             v.extend_from_slice(&data);
                             data = v;
@@ -361,7 +436,7 @@ unsafe fn pull_output(mft: &IMFTransform, provides: bool, out_size: u32, tx: &Se
 /// Longest time between keyframes (100 ns units).
 const KEYFRAME_EVERY: i64 = 10_000_000;
 
-fn run(mft: IMFTransform, _mgr: IMFDXGIDeviceManager, fps: u32, rx: Receiver<EncIn>, tx: Sender<super::mux::MuxMsg>, in_flight: Arc<AtomicUsize>) {
+fn run(mft: IMFTransform, _mgr: IMFDXGIDeviceManager, vcodec: crate::mp4::Codec, fps: u32, rx: Receiver<EncIn>, tx: Sender<super::mux::MuxMsg>, in_flight: Arc<AtomicUsize>) {
     unsafe {
         let info = mft.GetOutputStreamInfo(0).unwrap_or_default();
         let provides = info.dwFlags & (MFT_OUTPUT_STREAM_PROVIDES_SAMPLES.0 as u32 | MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES.0 as u32) != 0;
@@ -423,7 +498,7 @@ fn run(mft: IMFTransform, _mgr: IMFDXGIDeviceManager, fps: u32, rx: Receiver<Enc
                     }
                 }
             } else if ty == METransformHaveOutput.0 {
-                if let Err(e) = pull_output(&mft, provides, info.cbSize, &tx, &in_flight, &mut fed, &mut last_key) {
+                if let Err(e) = pull_output(&mft, vcodec, provides, info.cbSize, &tx, &in_flight, &mut fed, &mut last_key) {
                     log::warn!("{e:#}");
                 }
             } else if ty == METransformDrainComplete.0 {
@@ -447,34 +522,50 @@ pub fn start(gpu: Arc<Gpu>, p: EncodeParams, out: Sender<super::mux::MuxMsg>) ->
         .spawn(move || unsafe {
             let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
             let _ = MFStartup(MF_VERSION, MFSTARTUP_FULL);
-            let list = match list_encoders(gpu.info.luid, gpu.info.vendor_id, &p.prefer) {
-                Ok(l) => l,
-                Err(e) => {
-                    let _ = ready_tx.send(Err(e));
-                    return;
-                }
-            };
+            // The chosen codec first; H.264 if this GPU has no working encoder for it.
+            let mut order = vec![p.codec];
+            if p.codec != crate::mp4::Codec::H264 {
+                order.push(crate::mp4::Codec::H264);
+            }
             let mut last_err = anyhow!("no hardware H.264 encoder found (update your graphics driver)");
-            for (act, desc) in list {
-                let mft: IMFTransform = match act.ActivateObject() {
-                    Ok(m) => m,
+            for codec in order {
+                let list = match list_encoders_for(gpu.info.luid, gpu.info.vendor_id, &p.prefer, codec) {
+                    Ok(l) => l,
                     Err(e) => {
-                        last_err = anyhow!("{}: {e}", desc.name);
+                        last_err = e;
                         continue;
                     }
                 };
-                match configure(&mft, &gpu, &p) {
-                    Ok(mgr) => {
-                        log::info!("video encoder: {} ({})", desc.name, desc.vendor);
-                        let _ = ready_tx.send(Ok(desc));
-                        run(mft, mgr, fps, rx, out, inf);
-                        let _ = act.ShutdownObject();
-                        return;
-                    }
-                    Err(e) => {
-                        log::warn!("encoder {} unusable: {e:#}", desc.name);
-                        last_err = e.context(desc.name.clone());
-                        let _ = act.ShutdownObject();
+                if list.is_empty() && codec != crate::mp4::Codec::H264 {
+                    log::warn!("no hardware {} encoder on this GPU: recording in H.264", codec.as_str());
+                }
+                let mut params = p.clone();
+                params.codec = codec;
+                if codec != p.codec {
+                    // The fallback uses H.264's own bitrate for this quality.
+                    params.bitrate = p.h264_bitrate;
+                }
+                for (act, desc) in list {
+                    let mft: IMFTransform = match act.ActivateObject() {
+                        Ok(m) => m,
+                        Err(e) => {
+                            last_err = anyhow!("{}: {e}", desc.name);
+                            continue;
+                        }
+                    };
+                    match configure(&mft, &gpu, &params) {
+                        Ok(mgr) => {
+                            log::info!("video encoder: {} ({}, {}, {:?}, {} kbps)", desc.name, desc.vendor, codec.as_str(), params.rate, params.bitrate / 1000);
+                            let _ = ready_tx.send(Ok(desc));
+                            run(mft, mgr, codec, fps, rx, out, inf);
+                            let _ = act.ShutdownObject();
+                            return;
+                        }
+                        Err(e) => {
+                            log::warn!("encoder {} unusable: {e:#}", desc.name);
+                            last_err = e.context(desc.name.clone());
+                            let _ = act.ShutdownObject();
+                        }
                     }
                 }
             }

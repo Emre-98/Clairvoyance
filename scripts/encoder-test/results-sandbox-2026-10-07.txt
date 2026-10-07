@@ -1,0 +1,21 @@
+h264 vbr 12M (current)        12.58 Mbps  SSIM 0.9769 (16.37 dB)  fight 0.9686  low1% 0.8837  PSNR 37.32
+h264 vbr 8M                    8.45 Mbps  SSIM 0.9743 (15.90 dB)  fight 0.9645  low1% 0.8846  PSNR 37.19
+h264 vbr 16M                  16.67 Mbps  SSIM 0.9783 (16.64 dB)  fight 0.9705  low1% 0.8835  PSNR 37.38
+h264 vbr 20M (High)           20.71 Mbps  SSIM 0.9793 (16.83 dB)  fight 0.9717  low1% 0.8837  PSNR 37.41
+h264 crf 20                    8.84 Mbps  SSIM 0.9752 (16.06 dB)  fight 0.9666  low1% 0.8845  PSNR 37.25
+h264 crf 23                    6.42 Mbps  SSIM 0.9727 (15.64 dB)  fight 0.9625  low1% 0.8879  PSNR 37.12
+h264 crf 26                    4.65 Mbps  SSIM 0.9689 (15.08 dB)  fight 0.9567  low1% 0.8906  PSNR 36.89
+h264 vbr 12M + 3 B-frames     12.60 Mbps  SSIM 0.9786 (16.70 dB)  fight 0.9718  low1% 0.8844  PSNR 37.40
+hevc vbr 4M                    3.88 Mbps  SSIM 0.9618 (14.18 dB)  fight 0.9420  low1% 0.8842  PSNR 36.63
+hevc vbr 6M                    5.87 Mbps  SSIM 0.9671 (14.83 dB)  fight 0.9503  low1% 0.8872  PSNR 36.92
+hevc vbr 8M                    7.95 Mbps  SSIM 0.9705 (15.29 dB)  fight 0.9553  low1% 0.8868  PSNR 37.09
+hevc vbr 12M                  12.32 Mbps  SSIM 0.9740 (15.85 dB)  fight 0.9610  low1% 0.8867  PSNR 37.26
+hevc crf 24                    9.01 Mbps  SSIM 0.9736 (15.79 dB)  fight 0.9623  low1% 0.8870  PSNR 37.25
+hevc crf 27                    5.88 Mbps  SSIM 0.9700 (15.23 dB)  fight 0.9566  low1% 0.8869  PSNR 37.08
+hevc vbr 8M + B-frames         8.42 Mbps  SSIM 0.9748 (15.99 dB)  fight 0.9647  low1% 0.8853  PSNR 37.28
+av1 vbr 3M                     3.00 Mbps  SSIM 0.9622 (14.22 dB)  fight 0.9373  low1% 0.8849  PSNR 36.56
+av1 vbr 4.5M                   4.50 Mbps  SSIM 0.9678 (14.93 dB)  fight 0.9470  low1% 0.8893  PSNR 36.87
+av1 vbr 6M                     6.00 Mbps  SSIM 0.9711 (15.40 dB)  fight 0.9529  low1% 0.8921  PSNR 37.05
+av1 vbr 9M                     9.00 Mbps  SSIM 0.9745 (15.93 dB)  fight 0.9595  low1% 0.8932  PSNR 37.22
+av1 crf 32                     6.26 Mbps  SSIM 0.9749 (16.00 dB)  fight 0.9674  low1% 0.8934  PSNR 37.24
+av1 crf 38                     4.21 Mbps  SSIM 0.9710 (15.38 dB)  fight 0.9627  low1% 0.8939  PSNR 37.06

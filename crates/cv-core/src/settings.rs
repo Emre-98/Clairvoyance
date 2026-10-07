@@ -21,6 +21,13 @@ pub struct VideoSettings {
     pub record_mic: bool,
     /// Capture the whole monitor instead of the game window.
     pub display_capture: bool,
+    /// "h264" (default), "hevc" or "av1". HEVC / AV1 are only used where the GPU can encode
+    /// them, Windows can decode them and the in-app player can play them; H.264 otherwise.
+    pub codec: String,
+    /// "bitrate" (a fixed average, default) or "quality" (quality-based: smaller in calm moments).
+    pub rate_control: String,
+    /// Codecs the in-app player (WebView2) said it can play, reported by the UI at start-up.
+    pub playable_codecs: Vec<String>,
 }
 
 impl Default for VideoSettings {
@@ -33,6 +40,9 @@ impl Default for VideoSettings {
             replay_buffer_secs: 30,
             record_mic: false,
             display_capture: false,
+            codec: "h264".into(),
+            rate_control: "bitrate".into(),
+            playable_codecs: Vec::new(),
         }
     }
 }

@@ -1421,7 +1421,7 @@ mod tests {
 
     /// Like the recorder: `reserve` bytes of room after the header (0 = pre-v1.7.1 layout).
     fn write_fragmented_r(path: &Path, secs: i64, video_delay: i64, reserve: u64) -> usize {
-        let vc = VideoConfig { width: 64, height: 36, sps: vec![0x67, 0x64, 0, 0x1f, 1], pps: vec![0x68, 1], fps: 60 };
+        let vc = VideoConfig { width: 64, height: 36, sps: vec![0x67, 0x64, 0, 0x1f, 1], pps: vec![0x68, 1], fps: 60, ..Default::default() };
         let ac = vec![AudioConfig::aac_lc(48000, 2, "Game audio")];
         let mut w = FragmentedWriter::with_reserve(std::io::BufWriter::new(File::create(path).unwrap()), vc, ac, reserve).unwrap();
         let mut pk: Vec<Packet> = Vec::new();

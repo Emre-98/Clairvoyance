@@ -1,3 +1,4 @@
+import { playableCodecs, sameList } from "./codecs";
 import { api, on, onEngine } from "./api";
 import { initTheme } from "./theme";
 import { markNav, measurePaint, nextPaint, record } from "./perfmarks";
@@ -104,6 +105,11 @@ export async function boot() {
       app.status = s;
     }), refreshSessions()]);
   initTheme(app.settings?.theme);
+  // Tell the recorder which codecs this player can play (HEVC / AV1 are only recorded then).
+  const playable = playableCodecs();
+  if (app.settings && !sameList(app.settings.video.playable_codecs, playable)) {
+    saveSettings({ ...app.settings, video: { ...app.settings.video, playable_codecs: playable } }).catch(() => {});
+  }
   // Report when the first real content is on screen (startup time, logged by the app).
   nextPaint().then((t) => {
     record("startup", t);

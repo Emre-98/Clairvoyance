@@ -76,7 +76,7 @@ fn sources(secs: u32) -> (VideoConfig, Vec<Packet>, Vec<Packet>) {
         n += 1;
         p += len;
     }
-    let v = VideoConfig { width: 640, height: 360, sps: sps.unwrap(), pps: pps.unwrap(), fps: 30 };
+    let v = VideoConfig { width: 640, height: 360, sps: sps.unwrap(), pps: pps.unwrap(), fps: 30, ..Default::default() };
     (v, video, audio)
 }
 

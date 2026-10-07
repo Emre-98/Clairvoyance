@@ -4,6 +4,7 @@
 //!
 //! `mp4` and `replay` are portable (tested anywhere); everything touching Windows lives in `win`.
 
+pub mod encopts;
 pub mod mp4;
 pub mod nv12;
 pub mod remux;

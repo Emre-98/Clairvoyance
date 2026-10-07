@@ -400,6 +400,9 @@ impl Engine {
             record_mic: v.record_mic,
             display_capture: v.display_capture,
             full_video,
+            codec: v.codec.clone(),
+            rate_control: v.rate_control.clone(),
+            playable: v.playable_codecs.clone(),
         }
     }
 

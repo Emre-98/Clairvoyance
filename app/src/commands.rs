@@ -765,13 +765,14 @@ pub async fn recorder_selftest(st: St<'_>, secs: u64) -> R<SelfTest> {
     }
     let dir = st.save_dir().join("_selftest");
     let platform = st.platform.clone();
+    let v = st.settings().video.clone();
     let secs = secs.clamp(3, 30);
     tauri::async_runtime::spawn_blocking(move || -> R<SelfTest> {
         use cv_core::engine::Platform;
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).map_err(err)?;
         let _ = platform.perf_sample();
-        let r = run_selftest(&dir, secs)?;
+        let r = run_selftest(&dir, secs, v)?;
         let cpu = platform.perf_sample().map(|p| p.0).unwrap_or(0.0);
         Ok(SelfTest { bytes: std::fs::metadata(&r.0).map(|m| m.len()).unwrap_or(0), path: r.0.to_string_lossy().into(), frames: r.1, dropped: r.2, fps: r.1 as f64 / secs as f64, cpu_percent: cpu })
     })
@@ -780,12 +781,14 @@ pub async fn recorder_selftest(st: St<'_>, secs: u64) -> R<SelfTest> {
 }
 
 #[cfg(windows)]
-fn run_selftest(dir: &std::path::Path, secs: u64) -> R<(PathBuf, u64, u64)> {
-    cv_capture::win::self_test(dir, secs, None, false).map_err(|e| format!("{e:#}"))
+fn run_selftest(dir: &std::path::Path, secs: u64, v: cv_core::settings::VideoSettings) -> R<(PathBuf, u64, u64)> {
+    // The user's own codec / rate-control choice, so the test shows what games will get.
+    let video = cv_capture::win::TestVideo { codec: v.codec, rate_control: v.rate_control, playable: v.playable_codecs };
+    cv_capture::win::self_test(dir, secs, None, false, video).map_err(|e| format!("{e:#}"))
 }
 
 #[cfg(not(windows))]
-fn run_selftest(_dir: &std::path::Path, _secs: u64) -> R<(PathBuf, u64, u64)> {
+fn run_selftest(_dir: &std::path::Path, _secs: u64, _v: cv_core::settings::VideoSettings) -> R<(PathBuf, u64, u64)> {
     Err("The built-in recorder only works on Windows.".into())
 }
 

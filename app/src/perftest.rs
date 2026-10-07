@@ -350,6 +350,9 @@ mod run {
             record_mic: settings.video.record_mic,
             display_capture: settings.video.display_capture,
             full_video: true,
+            codec: settings.video.codec.clone(),
+            rate_control: settings.video.rate_control.clone(),
+            playable: settings.video.playable_codecs.clone(),
         };
         let rec: Arc<dyn Recorder> = st.recorder.clone();
         let phases: Vec<(&str, Option<Arc<dyn Recorder>>, bool)> =
