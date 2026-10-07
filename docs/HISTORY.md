@@ -1,12 +1,162 @@
-# Clairvoyance: decisions and measurements
+# Clairvoyance: history (finished work)
 
-> The design log behind PLAN.md: why each part works the way it does, what was measured,
-> and how it was tested. PLAN.md links here; read the section for the part you're changing.
-> Add a `###` section for each new feature or decision (newest last), with the numbers.
+> Moved unchanged from PLAN.md on 2026-10-07. Open it only when you need the background on a feature.
 
-## Contents
-- [Decisions made](#decisions-made)
-- [Status log (detailed, per release)](#status-log-detailed-per-release)
+## Current status (older entries)
+- **Renamed to Clairvoyance (2026-10-01)** and published on GitHub:
+  https://github.com/Emre-98/Clairvoyance (public). Releases are built by GitHub Actions and
+  installed copies **update themselves** (see "Updates and releases"). First release: v1.0.0.
+- **Stack: Tauri 2 (Rust + Svelte 5 web UI).** The built-in recorder is the only recorder
+  (Windows Graphics Capture + hardware H.264 via Media Foundation + per-process game audio,
+  crash-safe fragmented MP4, in-memory replay buffer). OBS support was removed.
+- Done on 2026-10-01 (owner's list): OBS removed; rename + one-time data migration; Dark /
+  Light / Match Windows themes; storage limit with automatic clean-up (favorites and kept clips
+  protected); thumbnails in their own folder, made after the game; performance work (library
+  cache, virtualized grids, lazy thumbnails, 1 s keyframes, skeletons, transitions);
+  auto-updater + release workflow + RELEASING.md.
+- **Game modes (2026-10-01, v1.1.0):** choose per League mode (queue) whether it's recorded:
+  Record / Clips only / Off, grouped (Ranked, Normal, ARAM, Arena, Rotating & event, Other,
+  Unknown / new). The queue comes from the League client (LCU) at game start, before recording.
+- Owner test of the 2026-10-01 build (job 1 on the owner's PC): migration from GameRecorder
+  worked (settings, `Videos\GameRecorder` → `Videos\Clairvoyance`, app data); thumbnails were
+  made for the 3 existing games by the new Media Foundation code; window ready ~540 ms after
+  launch (old app ~526 ms; target < 1 s met by both); recorder self-test OK (NVENC, 0 dropped).
+- Owner tests so far (2026-09-30, RTX 5080 / i9-9900K, 4K → 1080p60): self-test and a Practice
+  Tool game recorded fine: 0 dropped frames, NVENC, game-only audio, ~0.5% CPU, ~180 MB RAM while
+  recording, League FPS 140.7 → 140.3 average (−0.3%), 1% low 102.5 → 100.2.
+- **Auto-update tested end to end (2026-10-01):** v1.0.0 installed from GitHub; v1.1.0 published by
+  `scripts\release.ps1` + GitHub Actions; the installed app showed "Update available: v1.1.0"
+  ~60 s after start, "Update now" downloaded, installed and restarted it on 1.1.0.
+- **Instant replays (2026-10-01, v1.2.0):** measured in the real window on the owner's PC, 5 opens
+  each, before → after: 33 min game first frame ~28.6 s (first open > 30 s) → 97–135 ms first
+  open, 16–43 ms repeat opens; 5 min game ~4.0 s → 176–190 ms first open, 12–33 ms repeat; page
+  + markers 20–60 ms both (target < 200 ms); marker jump 121–330 ms → 69–175 ms (keyframe
+  snapping); marker clicked right away 4–29 s → 75–200 ms. Finalizing a 2.6 GB recording took
+  3.5 s. Details in "Instant replays".
+- **End-to-end tests (2026-10-01, sandbox profile on the owner's PC, simulated games + fake League
+  client):** ARAM off → not recorded, status "ARAM: recording off for this mode"; Ranked recorded
+  with queue 420 + "Ranked Solo/Duo" saved; switching Ranked off mid-game keeps that recording and
+  the next Ranked game isn't recorded; Arena on Clips only → no full video, 2 clips (triple kill,
+  ace); a brand-new queue (9999) → recorded by the "Unknown / new modes" rule and flagged "New";
+  over the storage limit during a game → nothing deleted while recording, oldest game
+  removed 24 s after the game; every recording finalized (faststart); app killed mid-recording →
+  the game got its 34 s video back. Self-test: keyframes every 1.00 s (max 1.02 s) at 54.6 fps.
+- **Accurate ult tracking (2026-10-01):** live filtering from League's own keybinds + level /
+  cooldown / death gates, then a post-game check of every press against the R icon in the
+  recording (hardware decoding, low priority). Owner's scripted Practice Tool test (Ashe, 141 key
+  presses, 34 real casts): before 56 "Ult pressed" markers (22 false, precision 61%, recall 100%);
+  after 34 "Ult used" (precision 100%, recall 100%, cast frame = ground truth to the frame), 107
+  presses kept as hidden "no cast" (on cooldown 88, dead 12, chat 7). Owner's 3 real games: 24/24
+  casts, the shop-typed "r" marked no cast (before: precision 96%). A 33 min game is checked in
+  2.7–3.3 s inside the app (target ≤ 15 s). Details in "Ult tracking".
+- **Input tracking + replay overlay (2026-10-01/02, v1.4.0):** mouse/keyboard recorded during
+  cursor-based games (League) and drawn over the replay (trail, clicks, cursor dot, keys,
+  heatmap; toggle "Input overlay" / I), plus post-game "Mechanics" stats. Tested on the owner's
+  PC: SendInput into a fake game window recorded by the real recorder: cursor samples median
+  0.01 px from the true path, clicks median 1-2 ms / max 10 ms, focus gap and window moves
+  logged, 100 % (DPI-unaware window) and 150 % correct, recorded cursor vs the cursor in the
+  video frames: best fit -5..-6 ms (< 1 frame). Ult check unchanged on the saved clips (9/9) and
+  on the owner's 5 games (identical counts). Replay open time unchanged (page 19-23 ms vs 20-24
+  ms on v1.3.0, first frame same); overlay: off on every open, re-on 10-18 ms, first on 66 ms (2
+  min game) / 125 ms (synthetic 33 min with the cursor moving non-stop; before the i16 payload),
+  draw p95 0.2-0.4 ms, 0 stalls toggling at 0.25x/1x/2x. **Performance test in League (Practice
+  Tool, 2026-10-02, real play):** not recording 143.8 FPS / 1 % low 110.1, recording 142.3 /
+  83.7, recording + input 143.7 / 109.3 (-0.07 % vs not recording; target < 1 %); app CPU
+  0.46-0.65 % with input vs 0.55-0.80 % without (no measurable difference), RAM +1-6 MB; capture
+  thread 0.26-0.41 % of one core in play (cursor moving most of the time), 0.10 % with the mouse
+  at rest. Owner's check: the trail follows the cursor in the replay. Details in "Input tracking".
+- **Ability bubbles on the input overlay (2026-10-02, v1.5.0):** every ability / summoner /
+  item / ward key press pops up as a bubble on the replay at the exact cursor position
+  (interpolated) on the exact video frame of the key-down, then fades (0.1-3 s). Binds from
+  League's own settings (same reader as the ult tracking), saved with each game. Tested (details
+  in "Ability bubbles"): Rust 107 tests (89 before), Playwright 18/18 bubble pixel checks (anchor
+  0.32 px from the expected pixel, on the key-down's frame and not the one before, fade 0.1 s
+  and 3 s, Q spam + W readable), v1.4 overlay pixel-identical with bubbles off (16/16), on the
+  owner's PC: his real binds read correctly, all 91 R presses of his 4 real games agree with the
+  ult check, ult results unchanged on his 5 games, replay open time unchanged (first frame 36 ms
+  median before and after), spam with 44 bubbles on screen drawn in p95 0.4 ms.
+- **v1.6 (2026-10-02), part A: fullscreen + timeline zoom + frame stepping.** The video fills
+  the screen with the controls as a see-through panel over its bottom (88 px at 1080 lines),
+  slid away with the arrow bubble or H, back from the bottom-centre arrow; Fit / Fill; timeline
+  zoom down to single frames (Ctrl+wheel, slider, ruler, frame ticks); frame-exact , / . steps.
+  Chromium: 94/94 fullscreen checks (5 screens × Fit/Fill × panel up/down, overlay ≤ 0.3 px),
+  frame steps exact across keyframes both ways, v1.5 overlay pixel-identical. Owner's PC:
+  replay open / marker jumps / overlay unchanged vs v1.5.0, step forward 32.5 ms median (1 s
+  keyframes), zoom redraw p95 0.6 ms at 60 fps. Details in "Fullscreen player, timeline zoom,
+  frame stepping".
+- **v1.6 part B: ult kinds.** One ult = one "Ult used": recasts / summon commands are "Ult
+  recast", Jayce/Nidalee/Elise/Udyr swaps "Form swap" (both hidden chips), charges count per
+  cast. 49 champions classified against Data Dragon 16.19.1 + the wiki (`ultscan` dev tool).
+  `verify::VERSION` 4. The owner's 19 real clips and all his normal-champion games give
+  identical results. Details in "Ult kinds".
+
+## What we're building
+A lightweight, Ascent/Outplayed-style game recorder for Windows. It starts with League of Legends,
+is designed so more games can be added, and is easy to share with friends.
+Owner's PC: RTX 5080, i9-9900K, 32 GB RAM, Windows 11.
+
+### Goals (in priority order)
+1. **Performance:** unnoticeable in game. No FPS drop, no stutter, no input lag.
+2. Automatic recording with an event timeline for every game.
+3. A polished, modern UI in the style of Ascent/Outplayed (own name and branding; no copied logos or assets).
+4. Easy to install and share with friends.
+5. A plugin-style architecture, so other games are easy to add.
+
+## Game detection & recording
+- Auto-detect when a supported game starts and ends (process detection plus the game's API).
+- Record the full game as one video, plus a replay buffer for quick clips.
+- Configurable manual "save clip" hotkey.
+- File names like `2026-09-30_League_Ahri_Win.mp4`, one folder per game.
+- Settings: quality, save folder, auto-delete games older than X days, max disk usage.
+
+## League events (Riot Live Client Data API)
+Base URL: `https://127.0.0.1:2999/liveclientdata/` (endpoints: `eventdata`, `activeplayer`, `gamestats`).
+It uses a self-signed certificate, so it must be trusted for this localhost address only.
+Track events involving the player (matched on Riot ID):
+- Death (ChampionKill where the player is the victim)
+- Kill, Multikill, FirstBlood, Ace
+- Assist (the player's name is in `Assisters`)
+- TurretKilled, InhibKilled
+- BaronKill, DragonKill, HeraldKill, plus any other objective events the API provides, including steals
+- **Ult used:** the API does NOT expose ability casts. Detect the ult keypress (R by default,
+  configurable) during a game with a global keyboard hook (no game memory access, Vanguard-safe).
+  Label it "ult pressed", since it can't confirm the cast succeeded.
+
+Rules:
+- The API returns ALL past events on every call, so track `EventID` and never handle an event twice.
+- For each event: add a timeline marker; optionally save a short clip (a few seconds before and after);
+  optional Windows text-to-speech callouts, toggleable per event type.
+
+## Timeline (main feature)
+- **Offset sync:** the recording starts before the game clock (loading screen). When recording
+  starts, read `gameTime` from `/gamestats` and store the offset:
+  `video position = EventTime + offset` (see `GameSession.VideoOffset`). Keypresses use the same conversion.
+- Video player with a timeline bar underneath; each event is a marker with its own icon and color:
+  kill = green, death = red, assist = blue, ult pressed = purple, tower/inhibitor = orange,
+  Dragon/Baron/Herald = gold (with a "steal" badge if stolen).
+- Hover a marker for details. Click one to jump to 5 seconds before the event. Next/previous-event buttons.
+- Filter buttons to show or hide each event type.
+- Each game's events are saved as JSON next to its video.
+
+## UI (Ascent/Outplayed style)
+- Dark, modern gaming look: sidebar, a game library with thumbnails, and a grid of recent games/clips
+  (champion, result, KDA, date).
+- Game detail page: player + timeline + post-game summary (KDA, CS/min, gold, deaths timeline).
+- Clip editor: trim and export. Tray icon with status (idle / recording / game detected).
+
+## Other games
+- Each game is its own crate under `games/` implementing `GameIntegration` (in `crates/cv-core/src/game.rs`).
+- The core (recording, timeline, UI, storage) must contain NO game-specific code.
+- Games without an event API: recording + manual hotkey clips + manual markers.
+- The README must explain how to add a game module. Suggested next games: CS2 (official
+  Game State Integration); Valorant has no official live event API, so recording + manual clips only.
+
+## Sharing with friends
+- A Windows installer, or a single self-contained .exe, that works on a fresh PC.
+- No hardcoded paths, usernames or Riot ID. Nothing else to install: the built-in recorder picks
+  the friend's GPU encoder automatically. First-run setup offers a 5-second recording test and asks
+  for the Riot ID.
+- Auto-update via GitHub Releases is a nice-to-have. No accounts, cloud or telemetry.
 
 ## Decisions made
 ### Stack: Tauri 2 (Rust backend + Svelte 5/TypeScript UI in WebView2)
@@ -977,8 +1127,9 @@ after the game. Decision: **continue the code as is, no rewrite**; fix the maint
   enum variant); everything else is fixed. The whole workspace also builds from Linux for
   `x86_64-pc-windows-gnu` with `gcc-mingw-w64-x86-64` installed (`cargo clippy --target
   x86_64-pc-windows-gnu --workspace --all-targets`), which is how Claude checks Windows code.
-- **PLAN.md** (1,310 lines) split: the plan (spec, status, milestones, known issues, next steps)
-  stays in PLAN.md; the decision log and the detailed status history moved here verbatim.
+- **PLAN.md** (1,310 lines) split: done in parallel by PR #3 (PLAN.md + this file + CLAUDE.md),
+  which is the layout kept; this branch's own split (a docs/DECISIONS.md) was folded in here when
+  the two were merged.
 - **Engine session stage:** the active session's `hold` / `watch` / `rule` fields (one state,
   kept consistent by convention) are one enum, `Stage::Hold(kind)` (probably a replay, waiting
   for the game's API) / `Ignored(Option<kind>)` (replay, spectating or mode off: nothing
@@ -1129,115 +1280,45 @@ The owner can't run these (2026-10-07); kept in case that changes.
   with "Unconfirmed presses" on. Fade slider at 0.1 s and 3 s changes it at once. Then send
   Settings > Advanced > Save test report (it has the game's session.json with the saved binds).
 
-## Status log (detailed, per release)
-The "Current status" of PLAN.md up to v1.7.1, kept in full (measurements and owner tests).
+## Milestones (finished)
+- [x] 0. Project setup: solution, projects, core interfaces, this plan
+- [x] Choose the language/stack: Tauri 2 (see Decisions made)
+- [x] 1. Detect League start/end (process + API), shown live in the app
+- [x] 2. Control OBS through obs-websocket (removed later: the built-in recorder replaced it)
+- [x] 3. Event tracking + EventID dedupe + game-clock offset + ult keypress (Raw Input)
+- [x] 4. Timeline UI: player, colored markers, hover, click-to-jump, filters
+- [x] 5. Clips + clip editor + library grid + post-game summary
+- [x] 6. Settings + first-run setup (Riot ID, encoder auto-config) + tray icon
+- [x] 7. Installer / portable build for friends (`dist\`)
+- [x] 8. Game-module guide (`docs/ADDING_A_GAME.md`) + a second game (CS2)
+- [x] 9. Built-in recorder: Windows Graphics Capture + GPU colour conversion + hardware H.264
+      (NVENC / AMF / Quick Sync via Media Foundation), window → monitor fallback
+- [x] 10. Built-in audio: per-process game audio (WASAPI process loopback) + optional mic track (AAC)
+- [x] 11. Crash-safe fragmented MP4 muxer + in-memory replay buffer for clips + screenshots
+- [x] 12. Recorder self-test (`recorder-selftest.exe` + in-app 5 s test), first-run setup
+      without OBS
+- [x] 13. Performance test in a real game: FPS (PresentMon), CPU and GPU, not recording vs recording
+- [x] Owner's test on Windows: self-test + performance test in a real League game
+- [x] 14. Remove OBS completely (code, deps, settings, UI, docs)
+- [x] 15. Rename to Clairvoyance + one-time migration of settings, recordings and tools
+- [x] 16. Themes: Dark / Light / Match Windows, CSS variables only, no flash
+- [x] 17. Storage limit with automatic clean-up, favorites + kept clips protected, log
+- [x] 18. Thumbnails in their own folder, made after the game, regenerated when missing
+- [x] 19. Responsiveness: library cache, virtualization, lazy thumbnails, 1 s keyframes, measured
+- [x] 20. GitHub repo + auto-updater + release workflow (v1.0.0)
+- [x] 21. Game modes: per-queue Record / Clips only / Off from the League client, dynamic list (v1.1.0)
+- [x] 22. Instant replays: faststart finalize, keyframe snapping, shared player, poster, queued jumps
+- [x] 23. Test tools: replay benchmark, end-to-end tests with a fake League client, test report
+- [x] 24. Accurate ult tracking: League keybinds + live gates, post-game check from the recording
+- [x] Owner's scripted Practice Tool ult test (34/34 casts, 0 false)
+- [x] Performance test with the ult build (done with the input build, 2026-10-02: -0.07 % FPS)
+- [x] 25. Input tracking (keyboard Raw Input + cursor/button polling, no hooks) + replay overlay + Mechanics stats (v1.4.0)
+- [x] Input tracking tested on the owner's PC (SendInput/DPI/video alignment, benchmark, ult regression, League performance test, owner's replay check)
+- [x] 26. Ability bubbles on the input overlay: League binds (all cast variants, saved per game), exact frame + interpolated position, overlap rules, ult tie-in, options (v1.5.0)
+- [x] 27. Fullscreen without black bars (overlay panel, drop-down, Fit/Fill) + zoomable timeline + frame-exact stepping (v1.6 part A)
+- [x] 28. Ult kinds: command / multi_cast / transform / charges, ult episodes live and after the game, "Ult recast" / "Form swap", Data Dragon scan tool (v1.6 part B)
+- [x] 29. Every window size from 940 × 560 to 4K at 100/125/150 %: no overlap or cut-off (More controls menu, popover placement, page fixes, layout audit test); one "Trail & bubbles" time, bubbles end with their trail piece (v1.7 part 1)
+- [x] 30. Ready right after the game: in-place index when the recording stops (no copy, crash-safe), 2 s victory-screen tail, thumbnail right away, faster exit detection (v1.7.1)
+- [x] 31. Replays and spectating aren't recorded: League client + in-game API detection before recording, late detection deletes the partial recording, "Record games you spectate" setting, simulator replay / spectate modes (v1.7.1)
+- [x] Owner's check of v1.7.1: replays not recorded, spectating deleted after 8 s, Practice Tool game ready at once
 
-- **Renamed to Clairvoyance (2026-10-01)** and published on GitHub:
-  https://github.com/Emre-98/Clairvoyance (public). Releases are built by GitHub Actions and
-  installed copies **update themselves** (see "Updates and releases"). First release: v1.0.0.
-- **Stack: Tauri 2 (Rust + Svelte 5 web UI).** The built-in recorder is the only recorder
-  (Windows Graphics Capture + hardware H.264 via Media Foundation + per-process game audio,
-  crash-safe fragmented MP4, in-memory replay buffer). OBS support was removed.
-- Done on 2026-10-01 (owner's list): OBS removed; rename + one-time data migration; Dark /
-  Light / Match Windows themes; storage limit with automatic clean-up (favorites and kept clips
-  protected); thumbnails in their own folder, made after the game; performance work (library
-  cache, virtualized grids, lazy thumbnails, 1 s keyframes, skeletons, transitions);
-  auto-updater + release workflow + RELEASING.md.
-- **Game modes (2026-10-01, v1.1.0):** choose per League mode (queue) whether it's recorded:
-  Record / Clips only / Off, grouped (Ranked, Normal, ARAM, Arena, Rotating & event, Other,
-  Unknown / new). The queue comes from the League client (LCU) at game start, before recording.
-- Owner test of the 2026-10-01 build (job 1 on the owner's PC): migration from GameRecorder
-  worked (settings, `Videos\GameRecorder` → `Videos\Clairvoyance`, app data); thumbnails were
-  made for the 3 existing games by the new Media Foundation code; window ready ~540 ms after
-  launch (old app ~526 ms; target < 1 s met by both); recorder self-test OK (NVENC, 0 dropped).
-- Owner tests so far (2026-09-30, RTX 5080 / i9-9900K, 4K → 1080p60): self-test and a Practice
-  Tool game recorded fine: 0 dropped frames, NVENC, game-only audio, ~0.5% CPU, ~180 MB RAM while
-  recording, League FPS 140.7 → 140.3 average (−0.3%), 1% low 102.5 → 100.2.
-- **Auto-update tested end to end (2026-10-01):** v1.0.0 installed from GitHub; v1.1.0 published by
-  `scripts\release.ps1` + GitHub Actions; the installed app showed "Update available: v1.1.0"
-  ~60 s after start, "Update now" downloaded, installed and restarted it on 1.1.0.
-- **Instant replays (2026-10-01, v1.2.0):** measured in the real window on the owner's PC, 5 opens
-  each, before → after: 33 min game first frame ~28.6 s (first open > 30 s) → 97–135 ms first
-  open, 16–43 ms repeat opens; 5 min game ~4.0 s → 176–190 ms first open, 12–33 ms repeat; page
-  + markers 20–60 ms both (target < 200 ms); marker jump 121–330 ms → 69–175 ms (keyframe
-  snapping); marker clicked right away 4–29 s → 75–200 ms. Finalizing a 2.6 GB recording took
-  3.5 s. Details in "Instant replays".
-- **End-to-end tests (2026-10-01, sandbox profile on the owner's PC, simulated games + fake League
-  client):** ARAM off → not recorded, status "ARAM: recording off for this mode"; Ranked recorded
-  with queue 420 + "Ranked Solo/Duo" saved; switching Ranked off mid-game keeps that recording and
-  the next Ranked game isn't recorded; Arena on Clips only → no full video, 2 clips (triple kill,
-  ace); a brand-new queue (9999) → recorded by the "Unknown / new modes" rule and flagged "New";
-  over the storage limit during a game → nothing deleted while recording, oldest game
-  removed 24 s after the game; every recording finalized (faststart); app killed mid-recording →
-  the game got its 34 s video back. Self-test: keyframes every 1.00 s (max 1.02 s) at 54.6 fps.
-- **Accurate ult tracking (2026-10-01):** live filtering from League's own keybinds + level /
-  cooldown / death gates, then a post-game check of every press against the R icon in the
-  recording (hardware decoding, low priority). Owner's scripted Practice Tool test (Ashe, 141 key
-  presses, 34 real casts): before 56 "Ult pressed" markers (22 false, precision 61%, recall 100%);
-  after 34 "Ult used" (precision 100%, recall 100%, cast frame = ground truth to the frame), 107
-  presses kept as hidden "no cast" (on cooldown 88, dead 12, chat 7). Owner's 3 real games: 24/24
-  casts, the shop-typed "r" marked no cast (before: precision 96%). A 33 min game is checked in
-  2.7–3.3 s inside the app (target ≤ 15 s). Details in "Ult tracking".
-- **Input tracking + replay overlay (2026-10-01/02, v1.4.0):** mouse/keyboard recorded during
-  cursor-based games (League) and drawn over the replay (trail, clicks, cursor dot, keys,
-  heatmap; toggle "Input overlay" / I), plus post-game "Mechanics" stats. Tested on the owner's
-  PC: SendInput into a fake game window recorded by the real recorder: cursor samples median
-  0.01 px from the true path, clicks median 1-2 ms / max 10 ms, focus gap and window moves
-  logged, 100 % (DPI-unaware window) and 150 % correct, recorded cursor vs the cursor in the
-  video frames: best fit -5..-6 ms (< 1 frame). Ult check unchanged on the saved clips (9/9) and
-  on the owner's 5 games (identical counts). Replay open time unchanged (page 19-23 ms vs 20-24
-  ms on v1.3.0, first frame same); overlay: off on every open, re-on 10-18 ms, first on 66 ms (2
-  min game) / 125 ms (synthetic 33 min with the cursor moving non-stop; before the i16 payload),
-  draw p95 0.2-0.4 ms, 0 stalls toggling at 0.25x/1x/2x. **Performance test in League (Practice
-  Tool, 2026-10-02, real play):** not recording 143.8 FPS / 1 % low 110.1, recording 142.3 /
-  83.7, recording + input 143.7 / 109.3 (-0.07 % vs not recording; target < 1 %); app CPU
-  0.46-0.65 % with input vs 0.55-0.80 % without (no measurable difference), RAM +1-6 MB; capture
-  thread 0.26-0.41 % of one core in play (cursor moving most of the time), 0.10 % with the mouse
-  at rest. Owner's check: the trail follows the cursor in the replay. Details in "Input tracking".
-- **Ability bubbles on the input overlay (2026-10-02, v1.5.0):** every ability / summoner /
-  item / ward key press pops up as a bubble on the replay at the exact cursor position
-  (interpolated) on the exact video frame of the key-down, then fades (0.1-3 s). Binds from
-  League's own settings (same reader as the ult tracking), saved with each game. Tested (details
-  in "Ability bubbles"): Rust 107 tests (89 before), Playwright 18/18 bubble pixel checks (anchor
-  0.32 px from the expected pixel, on the key-down's frame and not the one before, fade 0.1 s
-  and 3 s, Q spam + W readable), v1.4 overlay pixel-identical with bubbles off (16/16), on the
-  owner's PC: his real binds read correctly, all 91 R presses of his 4 real games agree with the
-  ult check, ult results unchanged on his 5 games, replay open time unchanged (first frame 36 ms
-  median before and after), spam with 44 bubbles on screen drawn in p95 0.4 ms.
-- **v1.6 (2026-10-02), part A: fullscreen + timeline zoom + frame stepping.** The video fills
-  the screen with the controls as a see-through panel over its bottom (88 px at 1080 lines),
-  slid away with the arrow bubble or H, back from the bottom-centre arrow; Fit / Fill; timeline
-  zoom down to single frames (Ctrl+wheel, slider, ruler, frame ticks); frame-exact , / . steps.
-  Chromium: 94/94 fullscreen checks (5 screens × Fit/Fill × panel up/down, overlay ≤ 0.3 px),
-  frame steps exact across keyframes both ways, v1.5 overlay pixel-identical. Owner's PC:
-  replay open / marker jumps / overlay unchanged vs v1.5.0, step forward 32.5 ms median (1 s
-  keyframes), zoom redraw p95 0.6 ms at 60 fps. Details in "Fullscreen player, timeline zoom,
-  frame stepping".
-- **v1.6 part B: ult kinds.** One ult = one "Ult used": recasts / summon commands are "Ult
-  recast", Jayce/Nidalee/Elise/Udyr swaps "Form swap" (both hidden chips), charges count per
-  cast. 49 champions classified against Data Dragon 16.19.1 + the wiki (`ultscan` dev tool).
-  `verify::VERSION` 4. The owner's 19 real clips and all his normal-champion games give
-  identical results. Details in "Ult kinds".
-- **v1.7 part 1 (2026-10-03): window sizes + one "Trail & bubbles" time.** Nothing overlaps or
-  is cut off at any window size from the new minimum 940 × 560 up to 4K at 100 / 125 / 150 %
-  (automatic check of 21 page states × 24 sizes: 355/504 before, 504/504 after): the player's
-  controls collapse into a "⋯ More controls" menu, popovers stay inside the window. The trail
-  length and the bubbles' fade time are one slider (0.25-3 s); a bubble disappears on the same
-  frame as the piece of trail drawn at its key-down (pixel-tested at 0.25 s and 3 s). Details in
-  "Window sizes, and one Trail & bubbles time".
-- **v1.7.1 (2026-10-03, v1.7 part 2): ready right after the game + replays not recorded.** The
-  recording makes itself instantly playable the moment it stops (full index written in place
-  into room reserved after its header, no copy, crash-safe); League's victory-screen tail is 2 s
-  (was 6 s); the thumbnail is made right away. Owner's PC, simulated real-time games opened the
-  moment they appear: the game is in Games 2.5 s (5 min) / 3.2 s (35 min) after the match ended and shows its first
-  frame at 2.8 / 3.3 s (v1.7.0: 6.5 / 6.4 s and 7.9 / 16.7 s, faststart only after ~28 s); a
-  real-size 35 min game (3.15 GB) opens in 134 ms instead of 24.3 s, marker jumps 82-183 ms. Replays and spectated games are detected before anything is
-  recorded (League client + in-game API, from a replay captured on the owner's PC) and never
-  recorded ("Replay: not recorded"; setting "Record games you spectate"). Details in "Ready
-  right after the game" and "Replays and spectating aren't recorded".
-- **Owner's check of v1.7.1 passed (2026-10-03):** replays not recorded, a spectated game
-  caught by the in-game API and its 8 s partial recording deleted, a Practice Tool game ready at
-  once.
-- **Waiting for the owner**: the Practice Tool test of the ult kinds (v1.6, see "Next steps"),
-  the PC benchmark of the v1.6 player (`--bench-replays` with `"player": true`), and the older
-  Practice Tool test of the ability bubbles.
