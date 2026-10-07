@@ -636,7 +636,7 @@ pub fn parse(b: &[u8]) -> anyhow::Result<InputFile> {
             K_HEATMAP if payload.len() >= 4 => {
                 let w = u16::from_le_bytes([payload[0], payload[1]]) as u32;
                 let h = u16::from_le_bytes([payload[2], payload[3]]) as u32;
-                let vals: Vec<f32> = payload[4..].chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]]) as f32 / 65535.0).collect();
+                let vals: Vec<f32> = payload[4..].as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c) as f32 / 65535.0).collect();
                 if vals.len() == (w * h) as usize {
                     f.heatmap = Some(Heatmap { w, h, values: vals });
                 }

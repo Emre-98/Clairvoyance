@@ -967,6 +967,9 @@ after the game. Decision: **continue the code as is, no rewrite**; fix the maint
   (windows-latest): UI build + `cargo clippy --workspace --all-targets -D warnings`. The Linux
   job also checks `cargo fmt --check` and clippy on the portable crates. The Rust tests aren't
   run on Windows yet (never tried there; compile + lint is the gap that mattered).
+- **Toolchain pinned in CI (Rust 1.99):** the first CI run on `stable` (1.99) failed on a clippy
+  lint newer than the local 1.97 (`chunks_exact_to_as_chunks`); each Rust release brings new
+  lints, so CI uses a fixed version, bumped on purpose (`.github/workflows/ci.yml`).
 - **rustfmt:** `rustfmt.toml` (max_width 200, small heuristics Max, chain_width 140) chosen for
   the least churn against the existing long-line style; the code was formatted once.
 - **clippy:** `[workspace.lints.clippy]` allows four style lints that fight the code's shape

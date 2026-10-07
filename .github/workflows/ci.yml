@@ -13,8 +13,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      # Pinned: each Rust release brings new clippy lints and rustfmt changes, which must not turn
+      # CI red on their own. Bump it on purpose (and fix what the new version reports).
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: "1.99"
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
       - name: Rust formatting
@@ -40,8 +43,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: "1.99" # same as the test job
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-node@v4
