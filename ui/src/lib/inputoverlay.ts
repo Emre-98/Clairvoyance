@@ -349,7 +349,7 @@ export function ramp(stops: [number, Rgba][], f: number): Rgba {
 }
 
 function rgba(c: Rgba, alpha: number): string {
-  return `rgba(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])},${(c[3] * alpha).toFixed(3)})`;
+  return `rgba(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])},${Math.min(1, c[3] * alpha).toFixed(3)})`;
 }
 
 /** Cursor speed (screen heights per second, 16:9) at which the trail starts to heat up / is a
@@ -612,7 +612,10 @@ export class Overlay {
         const f = 1 - (t - pt[k]) / life;
         if (f <= 0) continue;
         // Tapers from a hairline at the tail to its full width at the cursor.
-        const w = lw * (0.3 + 1.1 * Math.pow(f, 1.6)) * (1 + 0.4 * h);
+        // The width tapers on a longer clock than the flame's colors, so it narrows smoothly
+        // where a cooling flame meets the pilot light.
+        const fw = 1 - (t - pt[k]) / (secs * (1 - 0.25 * h));
+        const w = lw * (0.3 + 1.1 * Math.pow(fw, 1.6)) * (1 + 0.4 * h);
         piece(k);
         if (pass === 0) {
           // A narrow halo: sky blue around the pilot light, red-orange around a flame.
@@ -620,7 +623,8 @@ export class Overlay {
           g.lineWidth = w * 2.6 + 1;
           g.stroke();
         } else if (pass === 1) {
-          g.strokeStyle = rgba(mix(ramp(SLOW_STOPS, f), ramp(FAST_STOPS, f * f * f), h), 1);
+          // The cooling flame 20% more opaque than its ramp.
+          g.strokeStyle = rgba(mix(ramp(SLOW_STOPS, f), ramp(FAST_STOPS, f * f * f), h), 1 + 0.2 * h);
           g.lineWidth = w;
           g.stroke();
         } else {
