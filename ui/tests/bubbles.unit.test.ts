@@ -2,7 +2,7 @@
 //   node --experimental-strip-types --test tests/bubbles.unit.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { alive, aliveRange, animation, draw, geometry, layout, pressEnds, sampleFrameOf, syntheticActions, trailEnds, ALPHA_END, RECAST_SCALE, SAMPLE_ACTIONS, type BubbleOptions, type PressArrays } from "../src/lib/bubbles.ts";
+import { alive, aliveRange, animation, draw, geometry, layout, pressEnds, sampleFrameOf, syntheticActions, trailEnds, ALPHA_END, PUNCH, RECAST_SCALE, SAMPLE_ACTIONS, type BubbleOptions, type PressArrays } from "../src/lib/bubbles.ts";
 import { migrateOptions, clampSecs, DEFAULT_OPTIONS, TRAIL_STYLES } from "../src/lib/overlayoptions.ts";
 
 const Q = 0, W = 1, R = 3;
@@ -24,12 +24,20 @@ function presses(list: [number, number, number, number, number?][]): { p: PressA
   return { p, anchor: (i) => [p.x[i], p.y[i]] };
 }
 
-test("pop in, hold, fade out to the trail's faintest level; visible exactly for its time", () => {
+/** What lib/bubbles.ts reads back from a canvas context (the other calls are no-ops). */
+const gradient = { addColorStop: () => {}, toString: () => "[gradient]" };
+const canvasStubs: Record<string, unknown> = {
+  measureText: () => ({ width: 10, actualBoundingBoxLeft: 5, actualBoundingBoxRight: 5, actualBoundingBoxAscent: 8, actualBoundingBoxDescent: 0 }),
+  createLinearGradient: () => gradient,
+  createRadialGradient: () => gradient,
+};
+
+test("punch in, hold, fade out to the trail's faintest level; visible exactly for its time", () => {
   for (const total of [0.25, 1, 3]) {
     assert.equal(animation(-0.001, total), null, "not before its frame");
     const a0 = animation(0, total)!;
-    assert.ok(a0 && a0.scale < 1 && a0.alpha === 1, "pops in from its frame");
-    assert.ok(animation(Math.min(0.1, total * 0.3), total)!.scale === 1, "pop done within 100 ms");
+    assert.ok(a0 && Math.abs(a0.scale - (1 + PUNCH)) < 1e-9 && a0.alpha === 1, "punches in big on its frame");
+    if (total > 0.35) assert.ok(Math.abs(animation(0.35, total)!.scale - 1) < 0.01, "settled within 0.35 s");
     const last = animation(total - 0.001, total)!.alpha;
     assert.ok(last >= ALPHA_END && last < ALPHA_END + 0.05, `as faint as the trail's oldest part at the end (${last})`);
     assert.equal(animation(total, total), null, "gone after its time");
@@ -135,7 +143,7 @@ test("draw: the bubble is drawn exactly while its trail piece is", () => {
   const { p, anchor } = presses([[5.0021, 200, 150, Q]]);
   const ends = trailEnds(p.t, mt, mb, rate);
   const k = lowerBound(mt, 5.0021 + 1e-12);
-  const g: any = new Proxy({}, { get: (_t, key) => (key === "measureText" ? () => ({ width: 10 }) : () => {}), set: () => true });
+  const g: any = new Proxy({}, { get: (_t, key) => (key in canvasStubs ? canvasStubs[key as string] : () => {}), set: () => true });
   for (const secs of [0.25, 3]) {
     const L = layout(p, SAMPLE_ACTIONS, opts({ fade: secs }), BASE, anchor, ends);
     const lastOn = mt[k] + secs;
@@ -275,9 +283,10 @@ test("ult recasts: a smaller, outlined R bubble at the exact spot, shown with th
     {
       get: (_t, k) => {
         if (k === "arc") return (x: number, _y: number, r: number) => arcs.push({ x, r, style: "" });
+        if (k === "ellipse") return (x: number) => arcs.push({ x, r: -1, style: "" });
         if (k === "fill") return () => arcs.length && (arcs[arcs.length - 1].style = "fill:" + fill);
         if (k === "stroke") return () => arcs.length && !arcs[arcs.length - 1].style && (arcs[arcs.length - 1].style = "stroke:" + stroke);
-        if (k === "measureText") return () => ({ width: 10 });
+        if (typeof k === "string" && k in canvasStubs) return canvasStubs[k];
         return () => {};
       },
       set: (_t, k, v) => {
@@ -288,14 +297,15 @@ test("ult recasts: a smaller, outlined R bubble at the exact spot, shown with th
     },
   );
   draw(g, p, SAMPLE_ACTIONS, L, opts({ fade: 3 }), BASE, 11);
-  // Bodies: the biggest circle drawn at each press's x.
-  const body = (x: number) => Math.max(...arcs.filter((a) => Math.abs(a.x - x) < 1e-6).map((a) => a.r));
+  // Bodies: the black-edged circle drawn at each press's x (the glow around it is bigger).
+  const body = (x: number) => arcs.find((a) => Math.abs(a.x - x) < 1e-6 && a.style === "fill:#0b0b0f")!.r;
   const ratio = body(500) / body(300);
   assert.ok(Math.abs(ratio - RECAST_SCALE) < 0.02, `recast body ${ratio.toFixed(2)}x the ult's`);
-  const solid = arcs.find((a) => Math.abs(a.x - 300) < 1e-6 && a.r === body(300))!;
-  const outlined = arcs.find((a) => Math.abs(a.x - 500) < 1e-6 && a.r === body(500))!;
-  assert.match(solid.style, /fill:#|fill:rgb\(1|fill:hsl/i, "the ult: filled with R's colour");
-  assert.match(outlined.style, /fill:rgba\(15,17,22/, "the recast: dark inside, outlined in R's colour");
+  // Inside the gold ring (0.78 of the body): the ult is filled with R's colour (a gradient), the
+  // recast is dark inside.
+  const inside = (x: number) => arcs.find((a) => Math.abs(a.x - x) < 1e-6 && Math.abs(a.r - body(x) * 0.78) < 1e-6)!;
+  assert.match(inside(300).style, /fill:\[gradient\]/, "the ult: filled with R's colour");
+  assert.match(inside(500).style, /fill:rgba\(15,17,22/, "the recast: dark inside, outlined in R's colour");
 });
 
 test("options: trail color styles, Rocket by default", () => {
