@@ -58,8 +58,9 @@ export const ALPHA_END = 1 / 8;
 export const RECAST_SCALE = 0.72;
 
 /** Animation of a bubble `age` seconds after its frame, with total visible time `total`:
- * pop in (scale, ~100 ms), hold, fade out to the trail's faintest level (`ALPHA_END`), then it
- * is gone (with its trail piece). null = not visible. */
+ * punch in (scale 1.5, a damped spring back to 1 within ~0.3 s, like a fighting game's input
+ * display), hold, fade out to the trail's faintest level (`ALPHA_END`), then it is gone (with its
+ * trail piece). null = not visible. */
 export function animation(age: number, total: number): { scale: number; alpha: number } | null {
   if (age < 0 || age >= total) return null;
   return anim(age, total);
@@ -68,17 +69,14 @@ export function animation(age: number, total: number): { scale: number; alpha: n
 function anim(age: number, total: number): { scale: number; alpha: number } {
   const pop = Math.min(0.1, total * 0.3);
   const out = Math.min(Math.max(0.06, total * 0.45), total - pop);
-  let scale = 1;
-  if (age < pop) {
-    // ease-out-back from 0.55 to 1 (a little overshoot = "pop").
-    const p = Math.max(0, age) / pop;
-    const c = 1.9;
-    const e = 1 + (c + 1) * Math.pow(p - 1, 3) + c * Math.pow(p - 1, 2);
-    scale = 0.55 + 0.45 * e;
-  }
+  const a = Math.max(0, age);
+  const scale = 1 + PUNCH * Math.exp(-a / 0.07) * Math.cos(a * 34);
   const alpha = age > total - out ? ALPHA_END + (1 - ALPHA_END) * Math.min(1, Math.max(0, (total - age) / out)) : 1;
   return { scale, alpha };
 }
+
+/** How much bigger a bubble is on its first frame. */
+export const PUNCH = 0.5;
 
 /**
  * When each bubble's piece of the cursor trail is drawn from: `end[i]` is the time of the trail
@@ -255,7 +253,7 @@ export function alive(show: ArrayLike<number>, ends: Ends, i: number, t: number,
   return show[i] <= t && ends.end[i] >= t - secs;
 }
 
-/** Draws the bubbles alive at `t`: first every tail and anchor dot (a layer under all bodies, so a
+/** Draws the bubbles alive at `t`: first every glow, tail and anchor dot (a layer under all bodies, so a
  * slanted tail never crosses another bubble's letter), then the bodies oldest first (the newest
  * is on top). */
 export function draw(g: CanvasRenderingContext2D, p: PressArrays, actions: ActionKey[], L: Layout, o: BubbleOptions, base: number, t: number, ends: Ends = pressEnds(p.t)): number {
@@ -275,9 +273,13 @@ export function draw(g: CanvasRenderingContext2D, p: PressArrays, actions: Actio
       const cx = L.ax[i] + L.dx[i];
       const cy = L.ay[i] - geo.lift * (0.4 + 0.6 * an.scale);
       g.globalAlpha = an.alpha * (faded ? 0.6 : 1);
-      if (pass === 0) drawTail(g, a, L.ax[i], L.ay[i], cx, cy, faded);
-      else {
-        drawBody(g, a, cx, cy, geo.r * an.scale, faded, p.hint[i] ? p.hints[p.hint[i] - 1] : null, recast);
+      const age = t - p.show[i];
+      if (pass === 0) {
+        // The glow and the press burst under every tail, anchor dot and body.
+        if (!faded) drawGlow(g, a, cx, cy, geo.r * an.scale, age);
+        drawTail(g, a, L.ax[i], L.ay[i], cx, cy, faded);
+      } else {
+        drawBody(g, a, cx, cy, geo.r * an.scale, faded, p.hint[i] ? p.hints[p.hint[i] - 1] : null, recast, age);
         drawn++;
       }
     }
@@ -308,41 +310,66 @@ function drawTail(g: CanvasRenderingContext2D, a: ActionKey, ax: number, ay: num
   g.fill();
 }
 
-/** Body: solid colour with a dark outline (bright frames) and a light inner ring (dark frames);
- * unconfirmed ult presses are outlined only. Then the label (the action) or icon, and the hint. */
-function drawBody(g: CanvasRenderingContext2D, a: ActionKey, cx: number, cy: number, r: number, faded: boolean, hint: string | null, recast = false) {
-  if (recast) {
-    // Outlined: a dark disc with the action's colour as a thick ring.
-    g.beginPath();
-    g.arc(cx, cy, r, 0, Math.PI * 2);
-    g.fillStyle = "rgba(15,17,22,0.72)";
-    g.fill();
-    g.lineWidth = 2;
-    g.strokeStyle = "rgba(0,0,0,0.7)";
-    g.stroke();
-    g.beginPath();
-    g.arc(cx, cy, Math.max(1, r - 1.6), 0, Math.PI * 2);
-    g.lineWidth = 2.2;
-    g.strokeStyle = a.color;
-    g.stroke();
-    label(g, a, cx, cy, r);
-    return;
-  }
+/** The bubble's look ("Strive Gold", v1.10): a round button like a fighting game's input display.
+ * A black edge, a gold ring (League's), the action's colour inside with a soft shine, and the
+ * letter in the middle. On its first frames it glows in its colour and flashes white. Unconfirmed
+ * ult presses: dark inside with a dashed ring in the colour; recasts: dark inside, solid ring. */
+function drawBody(g: CanvasRenderingContext2D, a: ActionKey, cx: number, cy: number, r: number, faded: boolean, hint: string | null, recast = false, age = 1) {
+  const col = hexRgb(a.color);
+  const burst = Math.exp(-Math.max(0, age) / 0.12);
+  const edge = Math.max(1, r * 0.08);
+  const inner = r * 0.78;
+  // Black edge.
   g.beginPath();
   g.arc(cx, cy, r, 0, Math.PI * 2);
-  g.fillStyle = faded ? "rgba(15,17,22,0.55)" : a.color;
+  g.fillStyle = "#0b0b0f";
   g.fill();
-  g.lineWidth = 2;
-  g.strokeStyle = "rgba(0,0,0,0.7)";
-  g.stroke();
+  // Gold ring.
+  const gold = g.createLinearGradient(0, cy - r, 0, cy + r);
+  gold.addColorStop(0, "#f0e6d2");
+  gold.addColorStop(0.35, "#c8aa6e");
+  gold.addColorStop(1, "#785a28");
   g.beginPath();
-  g.arc(cx, cy, Math.max(1, r - 2), 0, Math.PI * 2);
-  g.lineWidth = faded ? 1.6 : 1;
-  g.strokeStyle = faded ? a.color : "rgba(255,255,255,0.55)";
-  if (faded) g.setLineDash([3, 2.5]);
-  g.stroke();
-  if (faded) g.setLineDash([]);
-  label(g, a, cx, cy, r);
+  g.arc(cx, cy, r - edge, 0, Math.PI * 2);
+  g.fillStyle = gold;
+  g.fill();
+  g.beginPath();
+  g.arc(cx, cy, inner + Math.max(0.5, r * 0.03), 0, Math.PI * 2);
+  g.fillStyle = "rgba(0,0,0,0.55)";
+  g.fill();
+  g.beginPath();
+  g.arc(cx, cy, inner, 0, Math.PI * 2);
+  if (faded || recast) {
+    g.fillStyle = "rgba(15,17,22,0.82)";
+    g.fill();
+    g.beginPath();
+    g.arc(cx, cy, Math.max(1, inner - 1.4), 0, Math.PI * 2);
+    g.lineWidth = faded ? 1.6 : 2.2;
+    g.strokeStyle = css(col, 1);
+    if (faded) g.setLineDash([3, 2.5]);
+    g.stroke();
+    if (faded) g.setLineDash([]);
+  } else {
+    // The colour, lighter at the top (and right after the press), with a shine.
+    const fill = g.createLinearGradient(0, cy - inner, 0, cy + inner);
+    fill.addColorStop(0, css(mixRgb(col, WHITE, 0.25 + 0.4 * burst), 1));
+    fill.addColorStop(0.55, css(mixRgb(col, WHITE, 0.3 * burst), 1));
+    fill.addColorStop(1, css(mixRgb(col, BLACK, 0.3), 1));
+    g.fillStyle = fill;
+    g.fill();
+    g.beginPath();
+    g.ellipse(cx, cy - inner * 0.5, inner * 0.7, inner * 0.32, 0, Math.PI, 0);
+    g.fillStyle = "rgba(255,255,255,0.22)";
+    g.fill();
+    const fl = Math.max(0, 1 - age / 0.12);
+    if (fl > 0) {
+      g.beginPath();
+      g.arc(cx, cy, r, 0, Math.PI * 2);
+      g.fillStyle = `rgba(255,255,255,${(0.95 * fl * fl).toFixed(3)})`;
+      g.fill();
+    }
+  }
+  label(g, a, cx, cy, inner);
   if (hint) {
     const fs = Math.max(9, Math.round(r * 0.62));
     g.font = `700 ${fs}px system-ui, "Segoe UI", sans-serif`;
@@ -360,20 +387,84 @@ function drawBody(g: CanvasRenderingContext2D, a: ActionKey, cx: number, cy: num
   }
 }
 
-/** The action's label (or the ward icon) in the middle of a bubble. */
+/** Under the body: a soft glow in the action's colour (a gradient: a canvas shadow on 30+ bubbles
+ * costs too much per frame), brighter and wider on the press. And on the press (~0.35 s): a soft
+ * disc of the colour blasts out behind the bubble and two gold rings burst out of it. */
+function drawGlow(g: CanvasRenderingContext2D, a: ActionKey, cx: number, cy: number, r: number, age: number) {
+  const col = hexRgb(a.color);
+  const burst = Math.exp(-Math.max(0, age) / 0.12);
+  const R0 = r * (1.35 + 0.9 * burst);
+  const glow = g.createRadialGradient(cx, cy, r * 0.9, cx, cy, R0);
+  glow.addColorStop(0, css(col, 0.55 + 0.4 * burst));
+  glow.addColorStop(1, css(col, 0));
+  g.beginPath();
+  g.arc(cx, cy, R0, 0, Math.PI * 2);
+  g.fillStyle = glow;
+  g.fill();
+  if (age < 0 || age >= 0.35) return;
+  const p = age / 0.28;
+  if (p < 1) {
+    const e = 1 - Math.pow(1 - p, 3);
+    const R = r * (1 + 1.3 * e);
+    const bg = g.createRadialGradient(cx, cy, r * 0.6, cx, cy, R);
+    bg.addColorStop(0, css(col, 0));
+    bg.addColorStop(0.75, css(col, 0.55 * Math.pow(1 - p, 2)));
+    bg.addColorStop(1, css(col, 0));
+    g.beginPath();
+    g.arc(cx, cy, R, 0, Math.PI * 2);
+    g.fillStyle = bg;
+    g.fill();
+  }
+  for (const [lag, k] of [[0, 1], [0.07, 0.55]]) {
+    const q = (age - lag) / (0.35 - lag);
+    if (q <= 0 || q >= 1) continue;
+    const e = 1 - Math.pow(1 - q, 3);
+    g.beginPath();
+    g.arc(cx, cy, r * (1 + 1.5 * e), 0, Math.PI * 2);
+    g.lineWidth = (Math.max(0.6, 3.2 * (1 - q)) * k + 0.4) * 1.5;
+    g.strokeStyle = `rgba(232,201,122,${(0.95 * Math.pow(1 - q, 1.4) * k).toFixed(3)})`;
+    g.stroke();
+  }
+}
+
+type Rgb = [number, number, number];
+const WHITE: Rgb = [255, 255, 255];
+const BLACK: Rgb = [0, 0, 0];
+function hexRgb(h: string): Rgb {
+  const m = /^#([0-9a-f]{6})$/i.exec(h);
+  if (!m) return [148, 163, 184];
+  const v = parseInt(m[1], 16);
+  return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+}
+function mixRgb(a: Rgb, b: Rgb, k: number): Rgb {
+  return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+}
+function css(c: Rgb, alpha: number): string {
+  return `rgba(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])},${alpha.toFixed(3)})`;
+}
+
+/** The letters' font: Inter Black, bundled with the app (main.ts). */
+const FONT = "Inter, system-ui, \"Segoe UI\", sans-serif";
+if (typeof document !== "undefined" && document.fonts) document.fonts.load(`900 16px ${FONT}`).catch(() => {});
+
+/** The action's label (or the ward icon) in the middle of a bubble: white with a dark outline,
+ * centred on the letter's own outline (not its text box). */
 function label(g: CanvasRenderingContext2D, a: ActionKey, cx: number, cy: number, r: number) {
-  if (a.icon === "ward") wardIcon(g, cx, cy, r);
+  if (a.icon === "ward") wardIcon(g, cx, cy, r * 1.05);
   else {
-    const fs = Math.round(r * (a.label.length > 1 ? 0.9 : 1.15));
-    g.font = `800 ${fs}px system-ui, "Segoe UI", sans-serif`;
+    const fs = Math.round(r * (a.label.length > 1 ? 1.0 : 1.4));
+    g.font = `900 ${fs}px ${FONT}`;
     g.textAlign = "center";
-    g.textBaseline = "middle";
+    g.textBaseline = "alphabetic";
     g.lineJoin = "round";
+    const m = g.measureText(a.label);
+    const x = cx + (m.actualBoundingBoxLeft - m.actualBoundingBoxRight) / 2;
+    const y = cy + (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2;
     g.lineWidth = Math.max(2, fs * 0.2);
-    g.strokeStyle = "rgba(0,0,0,0.75)";
-    g.strokeText(a.label, cx, cy + fs * 0.05);
+    g.strokeStyle = "rgba(1,10,19,0.92)";
+    g.strokeText(a.label, x, y);
     g.fillStyle = "#fff";
-    g.fillText(a.label, cx, cy + fs * 0.05);
+    g.fillText(a.label, x, y);
   }
 }
 
@@ -444,14 +535,14 @@ export class Bubbles {
 
 /** League's action keys as the backend sends them (browser preview and UI tests). */
 export const SAMPLE_ACTIONS: ActionKey[] = [
-  { id: "spell1", label: "Q", category: "ability", size: 1, color: "#3b82f6" },
-  { id: "spell2", label: "W", category: "ability", size: 1, color: "#22c55e" },
-  { id: "spell3", label: "E", category: "ability", size: 1, color: "#f59e0b" },
-  { id: "spell4", label: "R", category: "ability", size: 1.18, color: "#a855f7" },
-  { id: "summoner1", label: "D", category: "summoner", size: 1.18, color: "#f43f5e" },
-  { id: "summoner2", label: "F", category: "summoner", size: 1.18, color: "#14b8a6" },
-  { id: "item1", label: "1", category: "item", size: 0.84, color: "#64748b" },
-  { id: "ward", label: "Ward", icon: "ward", category: "ward", size: 0.84, color: "#eab308" },
+  { id: "spell1", label: "Q", category: "ability", size: 1.18, color: "#ff8c1a" },
+  { id: "spell2", label: "W", category: "ability", size: 1.18, color: "#1fbf3f" },
+  { id: "spell3", label: "E", category: "ability", size: 1.18, color: "#2f8cff" },
+  { id: "spell4", label: "R", category: "ability", size: 1.18, color: "#ff2b2b" },
+  { id: "summoner1", label: "D", category: "summoner", size: 1, color: "#8b2cf5" },
+  { id: "summoner2", label: "F", category: "summoner", size: 1, color: "#facc15" },
+  { id: "item1", label: "1", category: "item", size: 0.76, color: "#64748b" },
+  { id: "ward", label: "Ward", icon: "ward", category: "ward", size: 0.88, color: "#14b8a6" },
 ];
 
 /** Frame start times of the UI tests' sample video: 30 fps, WebM timestamps in whole ms. */

@@ -23,14 +23,16 @@ const frameOf = (t) => {
   if (at(k + 1) <= t) return at(k + 1);
   return at(k) <= t ? at(k) : at(k - 1);
 };
-const COLORS = { ward: [234, 179, 8], Q: [59, 130, 246], W: [34, 197, 94], R: [168, 85, 247] };
+const COLORS = { ward: [20, 184, 166], Q: [255, 140, 26], W: [31, 191, 63], R: [255, 43, 43] };
 
 const browser = await chromium.launch({ executablePath: exe, args: ["--autoplay-policy=no-user-gesture-required"] });
 const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
 page.on("pageerror", (e) => console.log("pageerror", e.message));
 await page.goto(BASE);
 // Only the bubbles on the canvas: no trail, clicks, dot, keys or heatmap.
-const only = { trail: false, clicks: false, dot: false, keys: false, heat: false, bubbles: true, trailSecs: 1, bubbleCats: {}, v: 2 };
+// The classic trail: its oldest piece stays visible to its end (Rocket fades it to nothing), so it
+// shows where the trail ends for the timing checks below.
+const only = { trail: false, trailStyle: "classic", clicks: false, dot: false, keys: false, heat: false, bubbles: true, trailSecs: 1, bubbleCats: {}, v: 2 };
 await page.evaluate((o) => localStorage.setItem("cv.inputOverlay", JSON.stringify(o)), only);
 await page.reload();
 await page.waitForSelector("button.card.game");
@@ -82,7 +84,7 @@ async function scan(kind, box = null, tol = 40) {
           let ok;
           if (kind === "any") ok = d[i + 3] > 0;
           else if (kind === "white") ok = d[i] > 235 && d[i + 1] > 235 && d[i + 2] > 235 && d[i + 3] > 200;
-          else if (kind === "Rfaint") ok = d[i + 3] > 40 && d[i] > 110 && d[i + 2] > 170 && d[i + 1] < 140 && d[i + 2] - d[i + 1] > 70;
+          else if (kind === "Rfaint") ok = d[i + 3] > 40 && d[i] > 110 && d[i + 1] < 90 && d[i + 2] < 90 && d[i] - d[i + 1] > 70;
           else {
             const [r, g, b] = COLORS[kind];
             ok = d[i + 3] > 200 && Math.abs(d[i] - r) < tol && Math.abs(d[i + 1] - g) < tol && Math.abs(d[i + 2] - b) < tol;
@@ -113,11 +115,14 @@ check("bubbles loaded with the overlay", loadMs[2] > 100, `${loadMs[2]} presses;
 const tw = 15.65;
 const fw = frameOf(tw);
 await seek(fw - 0.002);
-const before = await scan("ward");
-await seek(fw + 0.002);
-const onFrame = await scan("ward");
-check("bubble appears on the frame of its key-down, not before", before.n === 0 && onFrame.n > 5, `frame ${fw.toFixed(3)} s for key-down ${tw} s: ${before.n} ward px on the frame before, ${onFrame.n} on its frame`);
 const e = await expectedPx(...pos(tw));
+// Around the anchor (the bubble flashes white on its first frame, so any painted pixel counts).
+const near = [e.x - 30, e.y - 60, e.x + 30, e.y + 4];
+const before = await scan("any", near);
+const wardBefore = await scan("ward", near);
+await seek(fw + 0.002);
+const onFrame = await scan("any", near);
+check("bubble appears on the frame of its key-down, not before", wardBefore.n === 0 && onFrame.n > before.n + 1000, `frame ${fw.toFixed(3)} s for key-down ${tw} s: ${wardBefore.n} ward px near it on the frame before (${before.n} painted, earlier bubbles), ${onFrame.n} painted px on its frame`);
 const dot = await scan("white", [e.x - 5, e.y - 5, e.x + 5, e.y + 5]);
 const err = dot.n ? Math.hypot(dot.x - e.x, dot.y - e.y) : Infinity;
 check("anchor exactly on the cursor position at the key-down", dot.n >= 3 && err <= 1, `expected (${e.x.toFixed(2)}, ${e.y.toFixed(2)}), anchor dot (${dot.x?.toFixed(2)}, ${dot.y?.toFixed(2)}) = ${err.toFixed(2)} px (${dot.n} px)`);
@@ -254,17 +259,18 @@ check("30+ bubbles on screen in the spam", spam.drawn >= 30, `${spam.drawn} draw
 check("Q spam: same-action bubbles overlap at their own positions", spam.wrongMoves === 0 && spam.overlappingQs >= 20, `${spam.overlappingQs} Qs overlap an earlier Q, ${spam.exactQs}/${spam.qs} exactly on their anchor, ${spam.wrongMoves} moved without another action's letter under them`);
 const ew = await expectedPx(...pos(41.53));
 check("W's anchor exact in the spam", Math.hypot(spam.wAnchor[0] - ew.x, spam.wAnchor[1] - ew.y) <= 0.5, `anchor (${spam.wAnchor[0].toFixed(2)}, ${spam.wAnchor[1].toFixed(2)}) vs expected (${ew.x.toFixed(2)}, ${ew.y.toFixed(2)})`);
-// W's letter: when it appeared and at the end of the spam (18 more Qs drawn on top since): the
-// same white letter, no Q blue on it.
+// W's letter: once it settled after its punch-in (0.4 s) and after the spam (17 more Qs drawn on
+// top since, the last one settled too: a new bubble's punch-in may cover a neighbour's letter
+// edge for ~0.1 s): the same white letter, no Q colour on it.
 const lb = [spam.wBody[0] - spam.letter, spam.wBody[1] - spam.letter, spam.wBody[0] + spam.letter, spam.wBody[1] + spam.letter];
-await seek(41.6);
+await seek(41.93);
 const lFirst = await scan("white", lb);
 const bFirst = await scan("Q", lb);
-await seek(42.97);
+await seek(43.15);
 const lLate = await scan("white", lb);
 const bLate = await scan("Q", lb);
 await page.locator(".screen").screenshot({ path: `${OUT}/bubble-spam.png` });
-check("W in the middle of Q spam stays readable", lFirst.n > 10 && Math.abs(lLate.n - lFirst.n) <= 2 && bLate.n === 0, `letter area: ${lFirst.n} white px when it appeared, ${lLate.n} after 18 more Qs; Q-blue px on it ${bFirst.n} → ${bLate.n}`);
+check("W in the middle of Q spam stays readable", lFirst.n > 10 && Math.abs(lLate.n - lFirst.n) <= 2 && bLate.n === 0, `letter area: ${lFirst.n} white px once it settled, ${lLate.n} after 17 more Qs; Q-colour px on it ${bFirst.n} → ${bLate.n}`);
 
 // 5. Draw time while playing through the spam (fade 3 s, 30+ bubbles) and the layout time.
 const draw = await page.evaluate(async () => {
@@ -301,8 +307,8 @@ await seek(38.51);
 const rShown = await scan("Rfaint");
 const rShownSolid = await scan("R");
 await page.locator(".screen").screenshot({ path: `${OUT}/bubble-unconfirmed.png` });
-check("ult used: solid R bubble", rUsed.n > 150, `${rUsed.n} purple px`);
-check("ult pressed, no cast: hidden with the filter off, outlined with it on", rHidden.n === 0 && rShown.n > 5 && rShownSolid.n < rUsed.n * 0.3, `${rHidden.n} px with the filter off; with it on ${rShown.n} faint purple px, ${rShownSolid.n} solid (solid bubble: ${rUsed.n})`);
+check("ult used: solid R bubble", rUsed.n > 80, `${rUsed.n} red px`);
+check("ult pressed, no cast: hidden with the filter off, outlined with it on", rHidden.n === 0 && rShown.n > 5 && rShownSolid.n < rUsed.n * 0.3, `${rHidden.n} px with the filter off; with it on ${rShown.n} faint red px, ${rShownSolid.n} solid (solid bubble: ${rUsed.n})`);
 await page.getByRole("button", { name: /Unconfirmed presses/ }).click();
 
 // 7. Sub-toggles: Items off hides item bubbles; Ability bubbles off hides all; remembered.

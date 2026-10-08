@@ -87,6 +87,13 @@
   sets in the overlay menu: Plasma, Toxic, Sunset, Frost, and Classic (the old yellow line).
   "Keys pressed" shows LMB / RMB / MMB / M4 / M5 in their own lane. Drawing cost ~0.35 ms per
   frame at 1080p (Chromium, Linux).
+- **Strive Gold ability bubbles (2026-10-08, owner's pick from mockups):** round buttons like a
+  fighting game's input display (Guilty Gear Strive): black edge, League gold ring, the action's
+  colour inside, a centred Inter Black letter (bundled, @fontsource/inter). A press punches in at
+  1.5x and springs back (~0.3 s) with a white flash, a colour burst and two gold rings. Colours
+  (Strive's buttons): Q orange (Dust), W green (Slash), E blue (Kick), R red (Heavy Slash), D
+  violet, F yellow, ward teal, items slate. Sizes by importance: Q W E R 1.18, D F 1.0, ward 0.88,
+  items 0.76. Bubble pixel test 20/20; draw with 40+ bubbles p95 1.2 ms (Chromium, Linux).
 
 ## Performance rules (hard requirements)
 - Recording is done by GameRecorder's **built-in recorder** (see "Built-in recorder" below). No

@@ -61,9 +61,11 @@ fn defaults_when_nothing_is_set() {
         .collect();
     assert_eq!(items, [("1", "1"), ("2", "2"), ("3", "3"), ("4", "5"), ("5", "6"), ("6", "7"), ("Ward", "4")].map(|(a, b)| (a.to_string(), b.to_string())));
     assert_eq!(get(&a, "ward").icon.as_deref(), Some("ward"));
-    // Categories and sizes: R and summoners larger, items and ward smaller.
-    assert!(get(&a, "spell4").size > get(&a, "spell1").size && get(&a, "summoner1").size > 1.0);
-    assert!(get(&a, "item1").size < 1.0 && get(&a, "ward").size < 1.0);
+    // Categories and sizes by importance: Q W E R biggest, then summoners, the ward, items smallest.
+    let size = |id| get(&a, id).size;
+    assert!(["spell1", "spell2", "spell3", "spell4"].iter().all(|&s| size(s) == size("spell1")));
+    assert!(size("spell1") > size("summoner1") && size("summoner1") == size("summoner2"));
+    assert!(size("summoner1") > size("ward") && size("ward") > size("item1"));
     assert_eq!(categories().iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["ability", "summoner", "item", "ward"]);
     // No level-up (Ctrl) bind anywhere.
     assert!(a.iter().all(|x| x.binds.iter().all(|b| !b.ctrl)));

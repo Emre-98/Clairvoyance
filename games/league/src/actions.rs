@@ -47,21 +47,21 @@ struct Slot {
 }
 
 const SLOTS: [Slot; 13] = [
-    Slot { id: "spell1", label: "Q", icon: None, category: "ability", size: 1.0, color: "#3b82f6", key: "q", suffixes: &["Spell1"], use_names: &[] },
-    Slot { id: "spell2", label: "W", icon: None, category: "ability", size: 1.0, color: "#22c55e", key: "w", suffixes: &["Spell2"], use_names: &[] },
-    Slot { id: "spell3", label: "E", icon: None, category: "ability", size: 1.0, color: "#f59e0b", key: "e", suffixes: &["Spell3"], use_names: &[] },
-    Slot { id: "spell4", label: "R", icon: None, category: "ability", size: 1.18, color: "#a855f7", key: "r", suffixes: &["Spell4"], use_names: &[] },
-    Slot { id: "summoner1", label: "D", icon: None, category: "summoner", size: 1.18, color: "#f43f5e", key: "d", suffixes: &["AvatarSpell1"], use_names: &[] },
-    Slot { id: "summoner2", label: "F", icon: None, category: "summoner", size: 1.18, color: "#14b8a6", key: "f", suffixes: &["AvatarSpell2"], use_names: &[] },
-    Slot { id: "item1", label: "1", icon: None, category: "item", size: 0.84, color: "#64748b", key: "1", suffixes: &["Item1"], use_names: &["evtUseItem1"] },
-    Slot { id: "item2", label: "2", icon: None, category: "item", size: 0.84, color: "#64748b", key: "2", suffixes: &["Item2"], use_names: &["evtUseItem2"] },
-    Slot { id: "item3", label: "3", icon: None, category: "item", size: 0.84, color: "#64748b", key: "3", suffixes: &["Item3"], use_names: &["evtUseItem3"] },
-    Slot { id: "item4", label: "4", icon: None, category: "item", size: 0.84, color: "#64748b", key: "5", suffixes: &["Item4"], use_names: &["evtUseItem4"] },
-    Slot { id: "item5", label: "5", icon: None, category: "item", size: 0.84, color: "#64748b", key: "6", suffixes: &["Item5"], use_names: &["evtUseItem5"] },
-    Slot { id: "item6", label: "6", icon: None, category: "item", size: 0.84, color: "#64748b", key: "7", suffixes: &["Item6"], use_names: &["evtUseItem6"] },
+    Slot { id: "spell1", label: "Q", icon: None, category: "ability", size: 1.18, color: "#ff8c1a", key: "q", suffixes: &["Spell1"], use_names: &[] },
+    Slot { id: "spell2", label: "W", icon: None, category: "ability", size: 1.18, color: "#1fbf3f", key: "w", suffixes: &["Spell2"], use_names: &[] },
+    Slot { id: "spell3", label: "E", icon: None, category: "ability", size: 1.18, color: "#2f8cff", key: "e", suffixes: &["Spell3"], use_names: &[] },
+    Slot { id: "spell4", label: "R", icon: None, category: "ability", size: 1.18, color: "#ff2b2b", key: "r", suffixes: &["Spell4"], use_names: &[] },
+    Slot { id: "summoner1", label: "D", icon: None, category: "summoner", size: 1.0, color: "#8b2cf5", key: "d", suffixes: &["AvatarSpell1"], use_names: &[] },
+    Slot { id: "summoner2", label: "F", icon: None, category: "summoner", size: 1.0, color: "#facc15", key: "f", suffixes: &["AvatarSpell2"], use_names: &[] },
+    Slot { id: "item1", label: "1", icon: None, category: "item", size: 0.76, color: "#64748b", key: "1", suffixes: &["Item1"], use_names: &["evtUseItem1"] },
+    Slot { id: "item2", label: "2", icon: None, category: "item", size: 0.76, color: "#64748b", key: "2", suffixes: &["Item2"], use_names: &["evtUseItem2"] },
+    Slot { id: "item3", label: "3", icon: None, category: "item", size: 0.76, color: "#64748b", key: "3", suffixes: &["Item3"], use_names: &["evtUseItem3"] },
+    Slot { id: "item4", label: "4", icon: None, category: "item", size: 0.76, color: "#64748b", key: "5", suffixes: &["Item4"], use_names: &["evtUseItem4"] },
+    Slot { id: "item5", label: "5", icon: None, category: "item", size: 0.76, color: "#64748b", key: "6", suffixes: &["Item5"], use_names: &["evtUseItem5"] },
+    Slot { id: "item6", label: "6", icon: None, category: "item", size: 0.76, color: "#64748b", key: "7", suffixes: &["Item6"], use_names: &["evtUseItem6"] },
     // Not "Item7": League 16.x uses that for another slot (the owner's file has it on Right Arrow
     // and "=" next to the trinket on C).
-    Slot { id: "ward", label: "Ward", icon: Some("ward"), category: "ward", size: 0.84, color: "#eab308", key: "4", suffixes: &["VisionItem"], use_names: &["evtUseVisionItem"] },
+    Slot { id: "ward", label: "Ward", icon: Some("ward"), category: "ward", size: 0.88, color: "#14b8a6", key: "4", suffixes: &["VisionItem"], use_names: &["evtUseVisionItem"] },
 ];
 
 pub fn categories() -> Vec<ActionCategory> {
