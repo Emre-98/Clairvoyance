@@ -3,6 +3,13 @@
 Newest first. `scripts/release.ps1` adds a section for each release; the section becomes the
 release notes on GitHub and in the in-app "Update available" card.
 
+## [Unreleased]
+
+- Clip editor: a "Share: fit for Discord" tick next to the other options. It's the same setting as the tick on the Clips page (changing one changes the other) and only affects the Share button; your saved clip stays full quality
+- Clip editor: "Exact cut" is now "Start exactly at the handle", with a clearer explanation
+- "Create clip" scrolls the clip editor into view when it's below the window
+- Share: the clipboard is retried for a moment when another app holds it, and the copy follows what Explorer's Copy does, so Ctrl+V in Discord attaches the file. "Copied!" shows the size; if copying fails, a "Show file" button opens the file's folder so you can drag it into Discord
+
 ## [1.10.0] - 2026-10-08
 
 - The cursor trail is now colored by speed: "Rocket" (default) is a blue pilot light when you move slowly and an orange to red flame on fast flicks

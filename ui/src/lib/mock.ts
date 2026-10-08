@@ -322,6 +322,8 @@ let mockUpdate: any = q.get("update") === "1"
 /** Overlay exports the mock received (UI tests read them: the PNG of every frame). */
 const exports: { job: number; id: string; start: number; end: number; title: string; times: number[]; frames: Uint8Array[]; done: boolean; cancelled: boolean }[] = [];
 (globalThis as any).__cvExports = exports;
+/** The saved settings (UI tests check what was saved). */
+(globalThis as any).__cvSettings = settings;
 
 export async function invoke(cmd: string, args: any = {}): Promise<any> {
   // Overlay frames come fast and many: no fake latency.
@@ -502,7 +504,17 @@ export async function invoke(cmd: string, args: any = {}): Promise<any> {
       await new Promise((r) => setTimeout(r, 400));
       const fit = settings.share_fit_discord;
       const small = c.size_bytes <= 19_500_000;
-      return { path: c.path, bytes: fit && !small ? 18_900_000 : c.size_bytes, width: 1920, height: 1080, fps: fit && !small ? 30 : 60, fitted: fit && !small, copied: true };
+      // `?clipboard=busy`: the clipboard can't be opened (UI tests check the "Show file" fallback).
+      return { path: c.path, bytes: fit && !small ? 18_035_507 : c.size_bytes, width: 1920, height: 1080, fps: fit && !small ? 30 : 60, fitted: fit && !small, copied: q.get("clipboard") !== "busy" };
+    }
+    case "export_clip":
+      // UI tests read how clips were cut (e.g. `precise`).
+      ((window as any).__cvClipExports ??= []).push(args);
+      return;
+    case "reveal_path": {
+      // UI tests read which files were shown in their folder.
+      ((window as any).__cvRevealed ??= []).push(args.path);
+      return;
     }
     case "set_share_fit_discord":
       settings.share_fit_discord = args.on;

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { tick, untrack } from "svelte";
   import { api, fileSrc, confirmDialog } from "../lib/api";
   import { videoUrl } from "../lib/videopool";
   import { app, go, toast, cachedSession, fetchSession } from "../lib/store.svelte";
@@ -98,9 +98,12 @@
     el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   });
 
-  function startClip() {
+  let editor = $state<ClipEditor | null>(null);
+  async function startClip() {
     const c = current;
     range = [Math.max(0, c - 10), Math.min(videoLen, c + 5)];
+    await tick();
+    editor?.reveal();
   }
 
   async function toggleFav() {
@@ -182,6 +185,7 @@
         />
         {#if range && s}
           <ClipEditor
+            bind:this={editor}
             sessionId={s.id}
             bind:range
             {current}

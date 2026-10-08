@@ -54,6 +54,11 @@ pub async fn share_clip(st: State<'_, Arc<AppState>>, id: String, file: String) 
         let fit = st.settings().share_fit_discord;
         let t = std::time::Instant::now();
         let mut out = if fit { prepare(&st, &dir, &id, &file, &clip, &root)? } else { as_is(&clip)? };
+        // The clipboard holds a path: an absolute one, to a file that stays put (the Discord copy
+        // is only swept at the next start or after a day).
+        if let Ok(abs) = std::path::absolute(&out.path) {
+            out.path = abs.to_string_lossy().to_string();
+        }
         out.copied = match copy_file_to_clipboard(Path::new(&out.path)) {
             Ok(()) => true,
             Err(e) => {
@@ -121,81 +126,7 @@ pub use cv_capture::share::sweep;
 /// a chat app or a folder attaches / copies it.
 #[cfg(windows)]
 fn copy_file_to_clipboard(path: &Path) -> anyhow::Result<()> {
-    use std::os::windows::ffi::OsStrExt;
-    use windows::core::w;
-    use windows::Win32::Foundation::{GlobalFree, HANDLE, HGLOBAL};
-    use windows::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, OpenClipboard, RegisterClipboardFormatW, SetClipboardData};
-    use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
-
-    const CF_HDROP: u32 = 15;
-    const DROPEFFECT_COPY: u32 = 1;
-    /// DROPFILES: offset of the file list, drop point, non-client flag, wide-chars flag.
-    #[repr(C)]
-    struct DropFiles {
-        p_files: u32,
-        pt: [i32; 2],
-        f_nc: i32,
-        f_wide: i32,
-    }
-
-    unsafe fn global(bytes: &[u8]) -> anyhow::Result<HGLOBAL> {
-        let h = unsafe { GlobalAlloc(GMEM_MOVEABLE, bytes.len())? };
-        let p = unsafe { GlobalLock(h) } as *mut u8;
-        if p.is_null() {
-            let _ = unsafe { GlobalFree(Some(h)) };
-            anyhow::bail!("GlobalLock failed");
-        }
-        unsafe {
-            std::ptr::copy_nonoverlapping(bytes.as_ptr(), p, bytes.len());
-            let _ = GlobalUnlock(h);
-        }
-        Ok(h)
-    }
-
-    unsafe fn set(format: u32, bytes: &[u8]) -> anyhow::Result<()> {
-        let h = unsafe { global(bytes)? };
-        // On success the clipboard owns the memory; otherwise it's still ours to free.
-        if let Err(e) = unsafe { SetClipboardData(format, Some(HANDLE(h.0))) } {
-            let _ = unsafe { GlobalFree(Some(h)) };
-            return Err(e.into());
-        }
-        Ok(())
-    }
-
-    // The file list: DROPFILES, then the path in UTF-16, ended by two NULs.
-    let wide: Vec<u16> = path.as_os_str().encode_wide().chain([0, 0]).collect();
-    let header = DropFiles { p_files: std::mem::size_of::<DropFiles>() as u32, pt: [0, 0], f_nc: 0, f_wide: 1 };
-    let mut drop = Vec::with_capacity(std::mem::size_of::<DropFiles>() + wide.len() * 2);
-    // SAFETY: DropFiles is plain old data (repr(C), integers only).
-    drop.extend_from_slice(unsafe { std::slice::from_raw_parts(&header as *const DropFiles as *const u8, std::mem::size_of::<DropFiles>()) });
-    drop.extend(wide.iter().flat_map(|c| c.to_le_bytes()));
-
-    // Another app may hold the clipboard for a moment.
-    let mut opened = false;
-    for _ in 0..10 {
-        if unsafe { OpenClipboard(None) }.is_ok() {
-            opened = true;
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(30));
-    }
-    if !opened {
-        anyhow::bail!("the clipboard is busy");
-    }
-    let res = (|| -> anyhow::Result<()> {
-        unsafe {
-            EmptyClipboard()?;
-            set(CF_HDROP, &drop)?;
-            // "Copy", not "move", when it's pasted into a folder.
-            let effect = RegisterClipboardFormatW(w!("Preferred DropEffect"));
-            if effect != 0 {
-                let _ = set(effect, &DROPEFFECT_COPY.to_le_bytes());
-            }
-        }
-        Ok(())
-    })();
-    let _ = unsafe { CloseClipboard() };
-    res
+    cv_capture::win::clipboard::copy_file(path)
 }
 
 #[cfg(not(windows))]

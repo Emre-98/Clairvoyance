@@ -37,12 +37,71 @@ await page.evaluate(async () => {
     v.currentTime = 40;
   });
 });
+// Opening the editor scrolls it into view (only as far as needed), from the top of the page.
+const scroller = async () => page.evaluate(() => {
+  const ed = document.querySelector(".editor");
+  let el = ed?.parentElement;
+  while (el && !(el.scrollHeight > el.clientHeight && /auto|scroll/.test(getComputedStyle(el).overflowY))) el = el.parentElement;
+  const sc = el ?? document.scrollingElement;
+  const r = ed.getBoundingClientRect(), b = sc === document.scrollingElement ? { top: 0, bottom: innerHeight } : sc.getBoundingClientRect();
+  return { top: sc.scrollTop, visible: r.top >= b.top - 1 && r.bottom <= b.bottom + 1 };
+});
+const settle = () => page.waitForTimeout(900); // smooth scrolling
+await page.setViewportSize({ width: 1600, height: 640 });
 await page.getByRole("button", { name: "Create clip" }).click();
 await page.waitForSelector('[data-testid="export-overlay"]');
+await settle();
+let sc = await scroller();
+check("opening the editor scrolls it fully into view", sc.visible && sc.top > 0, `scrollTop ${sc.top}`);
+await page.locator(".editor").getByLabel("Close editor").click();
+// A tall window, at the top of the page: the editor shows up without scrolling.
+await page.setViewportSize({ width: 1600, height: 1400 });
+await page.evaluate(() => { for (let el = document.querySelector(".vhost"); el; el = el.parentElement) el.scrollTop = 0; });
+await settle();
+await page.getByRole("button", { name: "Create clip" }).click();
+await settle();
+const sc2 = await scroller();
+check("it doesn't scroll when the editor is already visible", sc2.visible && sc2.top === 0, `scrollTop ${sc2.top}`);
+// With reduced motion it jumps there (no animation to wait for).
+await page.locator(".editor").getByLabel("Close editor").click();
+await page.emulateMedia({ reducedMotion: "reduce" });
+await page.setViewportSize({ width: 1600, height: 640 });
+await page.evaluate(() => { for (let el = document.querySelector(".vhost"); el; el = el.parentElement) el.scrollTop = 0; });
+await page.getByRole("button", { name: "Create clip" }).click();
+await page.waitForTimeout(60);
+const sc3 = await scroller();
+check("with reduced motion it scrolls there at once", sc3.visible && sc3.top > 0, `scrollTop ${sc3.top} after 60 ms`);
+await page.emulateMedia({ reducedMotion: "no-preference" });
+await page.setViewportSize({ width: 1600, height: 1000 });
+await settle();
+await page.screenshot({ path: `${OUT}/editor-options.png` });
 check("the clip editor offers the input overlay for a game with an input recording", true);
+
+// The editor's Discord tick is the clips list's tick (the same saved setting).
+const edFit = page.locator(".editor .fitdiscord input");
+const listFit = page.locator(".cliphead .fitdiscord input");
+check("the editor has \"Share: fit for Discord\", ticked by default", (await page.locator(".editor .fitdiscord", { hasText: "Share: fit for Discord" }).count()) === 1 && (await edFit.isChecked()));
+await edFit.uncheck();
+check("unticking it in the editor unticks the clips list's tick", !(await listFit.isChecked()));
+check("and saves the setting", await page.waitForFunction(() => window.__cvSettings.share_fit_discord === false, null, { timeout: 5000 }).then(() => true, () => false));
+await listFit.check();
+check("ticking the clips list's tick ticks the editor's (saved too)", (await edFit.isChecked()) && (await page.waitForFunction(() => window.__cvSettings.share_fit_discord === true, null, { timeout: 5000 }).then(() => true, () => false)));
+
+// "Start exactly at the handle" (was "Exact cut"): its own choice, ticked and locked with the overlay.
+const exact = page.locator('[data-testid="export-exact"]');
+check("the exact-cut option is labelled \"Start exactly at the handle\"", (await page.locator(".editor label", { hasText: "Start exactly at the handle" }).count()) === 1 && !(await exact.isChecked()) && !(await exact.isDisabled()));
+await exact.check();
+await page.getByRole("button", { name: "Save clip" }).click();
+await page.waitForFunction(() => window.__cvClipExports?.length === 1, null, { timeout: 10000 });
+check("ticked, the clip is cut exactly (re-encoded)", await page.evaluate(() => window.__cvClipExports[0].precise === true));
+await page.getByRole("button", { name: "Create clip" }).click();
+await page.getByRole("button", { name: "Save clip" }).click();
+await page.waitForFunction(() => window.__cvClipExports?.length === 2, null, { timeout: 10000 });
+check("unticked, it's the instant copy (it doesn't stay ticked)", await page.evaluate(() => window.__cvClipExports[1].precise === false));
+await page.getByRole("button", { name: "Create clip" }).click();
+await page.waitForSelector('[data-testid="export-overlay"]');
 await page.locator('[data-testid="export-overlay"]').check();
-const exact = page.locator(".editor label", { hasText: "Exact cut" }).locator("input");
-check("with the overlay the clip is re-encoded (Exact cut on, locked)", (await exact.isChecked()) && (await exact.isDisabled()));
+check("with the overlay the clip is re-encoded (Start exactly at the handle on, locked)", (await exact.isChecked()) && (await exact.isDisabled()));
 
 const t0 = Date.now();
 await page.getByRole("button", { name: "Save clip" }).click();

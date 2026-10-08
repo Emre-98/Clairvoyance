@@ -8,6 +8,7 @@
 
 pub mod audio;
 pub mod capture;
+pub mod clipboard;
 pub mod d3d;
 pub mod frames;
 pub mod input;

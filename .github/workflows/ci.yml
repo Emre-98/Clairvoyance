@@ -60,3 +60,6 @@ jobs:
           npm --prefix ui run build
       - name: Clippy (whole workspace, Windows code included)
         run: cargo clippy --workspace --all-targets -- -D warnings
+      # Windows-only unit tests that need no GPU or game: the clipboard (Share's Ctrl+V).
+      - name: Windows tests (clipboard)
+        run: cargo test -p cv-capture --lib win::clipboard

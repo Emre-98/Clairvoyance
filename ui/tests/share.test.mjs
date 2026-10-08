@@ -41,7 +41,8 @@ await page.locator(".card.clip .sharebtn").first().click();
 const busy = await page.locator(".card.clip .sharebtn").first().textContent();
 check("the button says it's preparing while it works", busy.includes("Preparing"), busy.trim());
 let t = await lastToast();
-check("sharing says it's copied and how to paste it", t.includes("Copied") && t.includes("Paste it in Discord"), t);
+check("sharing says it's copied and how to paste it", t.startsWith("Copied! Paste it in Discord with Ctrl+V"), t);
+check("the toast gives the copy's size", t.includes("17.2 MB"), t);
 check("the copy fits Discord (under 19.5 MB, 30 fps)", /1[0-9](\.\d)? MB/.test(t) && t.includes("30 fps"), t);
 await page.screenshot({ path: `${OUT}/shared.png` });
 
@@ -66,6 +67,23 @@ await page.locator(".card.clip button:has-text('Game')").first().click();
 await page.waitForSelector(".cliplist .sharebtn", { timeout: 8000 }).catch(() => {});
 check("the game page's clips have a Share button", (await page.locator(".cliplist .sharebtn").count()) > 0);
 check("the game page has the Fit for Discord tick", (await page.locator(".cliphead .fitdiscord").count()) === 1);
+
+// The clipboard can't be opened: an error with "Show file", which opens the file's folder.
+await page.goto(`${BASE}/?clipboard=busy`);
+await nav("Clips");
+await page.waitForSelector(".card.clip .sharebtn");
+await page.locator(".card.clip .sharebtn").first().click();
+t = await lastToast();
+const errToast = page.locator(".toast.error", { hasText: "Couldn't copy to the clipboard" });
+check("when copying fails it says so (error toast)", (await errToast.count()) === 1, t);
+const showFile = errToast.getByRole("button", { name: "Show file" });
+check("with a \"Show file\" button", (await showFile.count()) === 1);
+await page.screenshot({ path: `${OUT}/copy-failed.png` });
+await showFile.click();
+await page.waitForTimeout(300);
+const revealed = await page.evaluate(() => window.__cvRevealed ?? []);
+check("\"Show file\" opens the shared file's folder", revealed.length === 1 && typeof revealed[0] === "string" && revealed[0].length > 0, JSON.stringify(revealed));
+await page.goto(BASE);
 
 // Every window size from the smallest up: the card's buttons (Share, keep, delete) all fit.
 for (const [w, h] of [[940, 560], [1280, 720], [1600, 900], [1920, 1080], [2560, 1440]]) {

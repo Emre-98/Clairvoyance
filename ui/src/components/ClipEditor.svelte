@@ -4,6 +4,7 @@
   import { toast } from "../lib/store.svelte";
   import { Overlay, parse as parseInput, loadOptions } from "../lib/inputoverlay";
   import Icon from "./Icon.svelte";
+  import ShareFitToggle from "./ShareFitToggle.svelte";
 
   let {
     sessionId,
@@ -131,6 +132,13 @@
   const opts = loadOptions();
   const drawsNothing = !(opts.trail || opts.clicks || opts.dot || opts.keys || opts.heat || opts.bubbles);
 
+  let root: HTMLDivElement;
+  /** Scrolls only as far as needed for the whole editor to be visible (not at all if it is). */
+  export function reveal() {
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    root?.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
+  }
+
   function setStart() {
     range = [Math.min(current, range[1] - 1), range[1]];
   }
@@ -139,7 +147,7 @@
   }
 </script>
 
-<div class="editor card fade-in">
+<div class="editor card fade-in" bind:this={root}>
   <div class="row head">
     <Icon name="scissors" size={17} />
     <h3>Clip editor</h3>
@@ -156,8 +164,8 @@
       <button class="btn small ghost" onclick={onpreview}><Icon name="play" size={13} fill />Preview</button>
     </div>
     <input class="input title" placeholder="Clip name (optional)" bind:value={title} maxlength="80" />
-    <label class="chk" title="Re-encodes on your GPU so the clip starts exactly at the handle. Off = instant copy (may start up to a couple of seconds early).">
-      <input type="checkbox" checked={precise || withOverlay} disabled={withOverlay} onchange={(e) => (precise = e.currentTarget.checked)} /> Exact cut
+    <label class="chk" title="Re-encodes on your graphics card so the clip starts exactly at the handle (a few seconds slower). Off: instant, but may start up to ~2 s early.">
+      <input type="checkbox" checked={precise || withOverlay} disabled={withOverlay} onchange={(e) => (precise = e.currentTarget.checked)} data-testid="export-exact" /> Start exactly at the handle
     </label>
     {#if inputId}
       <label
@@ -169,6 +177,8 @@
         <input type="checkbox" bind:checked={withOverlay} disabled={busy} data-testid="export-overlay" /> Input overlay
       </label>
     {/if}
+    <!-- Not used to make the clip: it's what the Share button on the saved clip does. -->
+    <ShareFitToggle variant="chk" label="Share: fit for Discord" title="When you share this clip, a copy under 18 MB is made for Discord. Your saved clip stays full quality." />
     {#if ff && !ff.available}
       <button class="btn primary" onclick={download} disabled={dl != null}>
         <Icon name="download" size={15} />
