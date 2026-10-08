@@ -320,15 +320,32 @@ const SLOW_STOPS: [number, Rgba][] = [
   [0.85, [56, 189, 248, 1]],
   [1, [224, 242, 254, 1]],
 ];
-/** Flame along the trail: dark embers, deep red, red, orange, yellow, white-hot tip. */
+/** Flame along the trail: dark embers, deep red, red, red-orange, orange, amber, yellow,
+ * white-hot tip (in-between stops so it shades gradually instead of in bands). */
 const FAST_STOPS: [number, Rgba][] = [
   [0, [150, 32, 32, 0.15]],
-  [0.3, [201, 42, 42, 0.8]],
-  [0.55, [240, 62, 62, 1]],
-  [0.75, [253, 126, 20, 1]],
-  [0.9, [255, 212, 59, 1]],
+  [0.25, [190, 40, 42, 0.8]],
+  [0.45, [232, 56, 56, 1]],
+  [0.6, [246, 88, 44, 1]],
+  [0.72, [252, 120, 28, 1]],
+  [0.82, [254, 160, 40, 1]],
+  [0.92, [255, 212, 59, 1]],
   [1, [255, 251, 230, 1]],
 ];
+
+/** Pilot light -> flame by heat `h`, through a saturated middle (a plain blend of blue and
+ * red goes through grey; this goes through violet / magenta). */
+function heatMix(slow: Rgba, fast: Rgba, h: number): Rgba {
+  const c = mix(slow, fast, h);
+  const grey = (c[0] + c[1] + c[2]) / 3;
+  const boost = 1 + 0.9 * h * (1 - h) * 4 * 0.5;
+  return [
+    Math.max(0, Math.min(255, grey + (c[0] - grey) * boost)),
+    Math.max(0, Math.min(255, grey + (c[1] - grey) * boost)),
+    Math.max(0, Math.min(255, grey + (c[2] - grey) * boost)),
+    c[3],
+  ];
+}
 const GLOW_SLOW: Rgba = [56, 189, 248, 1];
 const GLOW_FAST: Rgba = [240, 72, 50, 1];
 
@@ -357,7 +374,9 @@ function rgba(c: Rgba, alpha: number): string {
 export const HEAT_COOL = 0.6;
 export const HEAT_HOT = 3;
 /** How fast a flame cools back to the pilot light (s, exponential). */
-export const HEAT_COOLDOWN = 0.18;
+export const HEAT_COOLDOWN = 0.3;
+/** How fast it heats up when a flick starts (s, exponential). */
+export const HEAT_WARMUP = 0.035;
 
 /**
  * Heat of each cursor sample, 0 (slow, pilot light) .. 1 (flick, full flame): the cursor speed
@@ -386,8 +405,14 @@ export function trailHeat(mt: ArrayLike<number>, mx: ArrayLike<number>, my: Arra
     const v = (len[i] - len[j]) / dt;
     const k = Math.min(1, Math.max(0, (v - HEAT_COOL) / (HEAT_HOT - HEAT_COOL)));
     let hv = k * k * (3 - 2 * k);
-    // After a flick the flame cools down gradually (no hard red -> blue switch).
-    if (i > start) hv = Math.max(hv, out[i - 1] * Math.exp(-(mt[i] - mt[i - 1]) / HEAT_COOLDOWN));
+    if (i > start) {
+      const prev = out[i - 1];
+      const dt = mt[i] - mt[i - 1];
+      // Heats up quickly but not instantly, and cools down gradually after a flick, so the
+      // trail shades blue -> violet -> red and back instead of switching.
+      if (hv > prev) hv = prev + (hv - prev) * (1 - Math.exp(-dt / HEAT_WARMUP));
+      else hv = Math.max(hv, prev * Math.exp(-dt / HEAT_COOLDOWN));
+    }
     out[i] = hv;
   }
   return out;
@@ -639,7 +664,7 @@ export class Overlay {
           g.lineWidth = w * 2.6 + 1;
           g.stroke();
         } else if (pass === 1) {
-          const c = mix(ramp(SLOW_STOPS, f), ramp(FAST_STOPS, fh * fh * fh), h);
+          const c = heatMix(ramp(SLOW_STOPS, f), ramp(FAST_STOPS, fh * fh * fh), h);
           c[3] = 1;
           // Fades out completely at the tail, so its end flows away instead of dropping off.
           g.strokeStyle = rgba(c, tp);
