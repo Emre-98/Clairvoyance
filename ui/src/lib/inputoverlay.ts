@@ -2,7 +2,7 @@
 // layout in cv_core::input::stats::ui_payload) and draws it over the video for a time `t`
 // (video seconds). Pure functions + one Overlay class; no Svelte here so it can be tested.
 import { Bubbles, baseRadius, type ActionsView, type BubbleOptions } from "./bubbles";
-import type { OverlayOptions } from "./overlayoptions";
+import type { OverlayOptions, TrailStyle } from "./overlayoptions";
 export { DEFAULT_OPTIONS, loadOptions, saveOptions, migrateOptions, clampSecs, type OverlayOptions } from "./overlayoptions";
 
 export interface InputData {
@@ -350,6 +350,59 @@ function heatMix(slow: Rgba, fast: Rgba, h: number): Rgba {
 const GLOW_SLOW: Rgba = [56, 189, 248, 1];
 const GLOW_FAST: Rgba = [240, 72, 50, 1];
 
+/** A speed-colored trail's colors: along the trail (tail 0 -> tip 1) when slow and on a flick,
+ * the halo around each, and the bright core at the cursor. */
+interface TrailPalette {
+  slow: [number, Rgba][];
+  fast: [number, Rgba][];
+  glowSlow: Rgba;
+  glowFast: Rgba;
+  coreSlow: Rgba;
+  coreFast: Rgba;
+}
+
+/** The speed-colored trail styles ("classic" is drawn separately). Rocket is the default. */
+export const TRAIL_PALETTES: Record<Exclude<TrailStyle, "classic">, TrailPalette> = {
+  // Blue pilot light, orange -> red flame.
+  rocket: { slow: SLOW_STOPS, fast: FAST_STOPS, glowSlow: GLOW_SLOW, glowFast: GLOW_FAST, coreSlow: [224, 242, 254, 1], coreFast: [255, 251, 230, 1] },
+  // Teal when slow, violet -> magenta -> pink on a flick.
+  plasma: {
+    slow: [[0, [14, 80, 90, 0.12]], [0.5, [20, 184, 166, 0.7]], [0.85, [45, 212, 191, 1]], [1, [204, 251, 241, 1]]],
+    fast: [[0, [76, 29, 149, 0.15]], [0.18, [109, 40, 217, 0.8]], [0.3, [139, 92, 246, 1]], [0.45, [168, 85, 247, 1]], [0.6, [192, 38, 211, 1]], [0.75, [217, 70, 239, 1]], [0.9, [244, 114, 182, 1]], [1, [253, 232, 255, 1]]],
+    glowSlow: [45, 212, 191, 1],
+    glowFast: [217, 70, 239, 1],
+    coreSlow: [204, 251, 241, 1],
+    coreFast: [253, 232, 255, 1],
+  },
+  // Green when slow, lime -> yellow on a flick.
+  toxic: {
+    slow: [[0, [20, 83, 45, 0.12]], [0.5, [34, 197, 94, 0.7]], [0.85, [74, 222, 128, 1]], [1, [220, 252, 231, 1]]],
+    fast: [[0, [63, 98, 18, 0.15]], [0.18, [101, 163, 13, 0.8]], [0.3, [132, 204, 22, 1]], [0.5, [163, 230, 53, 1]], [0.7, [234, 179, 8, 1]], [0.88, [250, 204, 21, 1]], [1, [254, 252, 232, 1]]],
+    glowSlow: [74, 222, 128, 1],
+    glowFast: [190, 242, 100, 1],
+    coreSlow: [220, 252, 231, 1],
+    coreFast: [254, 252, 232, 1],
+  },
+  // Purple when slow, pink -> coral -> gold on a flick.
+  sunset: {
+    slow: [[0, [59, 7, 100, 0.12]], [0.5, [126, 34, 206, 0.7]], [0.85, [192, 132, 252, 1]], [1, [243, 232, 255, 1]]],
+    fast: [[0, [131, 24, 67, 0.15]], [0.18, [190, 24, 93, 0.8]], [0.3, [219, 39, 119, 1]], [0.45, [244, 63, 94, 1]], [0.62, [249, 115, 22, 1]], [0.78, [251, 146, 60, 1]], [0.9, [253, 186, 116, 1]], [1, [255, 247, 237, 1]]],
+    glowSlow: [192, 132, 252, 1],
+    glowFast: [244, 63, 94, 1],
+    coreSlow: [243, 232, 255, 1],
+    coreFast: [255, 247, 237, 1],
+  },
+  // Silver when slow, icy blue -> white on a flick.
+  frost: {
+    slow: [[0, [51, 65, 85, 0.12]], [0.5, [100, 116, 139, 0.7]], [0.85, [148, 163, 184, 1]], [1, [241, 245, 249, 1]]],
+    fast: [[0, [12, 74, 110, 0.15]], [0.18, [3, 105, 161, 0.8]], [0.3, [2, 132, 199, 1]], [0.5, [14, 165, 233, 1]], [0.7, [56, 189, 248, 1]], [0.88, [125, 211, 252, 1]], [1, [240, 249, 255, 1]]],
+    glowSlow: [148, 163, 184, 1],
+    glowFast: [56, 189, 248, 1],
+    coreSlow: [241, 245, 249, 1],
+    coreFast: [240, 249, 255, 1],
+  },
+};
+
 function mix(a: Rgba, b: Rgba, k: number): Rgba {
   return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k, a[3] + (b[3] - a[3]) * k];
 }
@@ -481,7 +534,7 @@ export class Overlay {
 
     if (o.trail && hi > 0) {
       if (o.trailStyle === "classic") this.drawClassicTrail(g, m, t, o.trailSecs, hi, lw);
-      else this.drawRocketTrail(g, m, t, o.trailSecs, hi, lw);
+      else this.drawRocketTrail(g, m, t, o.trailSecs, hi, lw, TRAIL_PALETTES[o.trailStyle] ?? TRAIL_PALETTES.rocket);
     }
 
     if (o.clicks) {
@@ -593,7 +646,7 @@ export class Overlay {
    * a few px apart and drawn as a smooth curve through them (quadratic pieces between the
    * midpoints), each piece with its own width and color.
    */
-  private drawRocketTrail(g: CanvasRenderingContext2D, m: Mapper, t: number, secs: number, hi: number, lw: number) {
+  private drawRocketTrail(g: CanvasRenderingContext2D, m: Mapper, t: number, secs: number, hi: number, lw: number, pal: TrailPalette) {
     const d = this.d;
     const heat = this.sampleHeat();
     const t0 = t - secs;
@@ -661,11 +714,11 @@ export class Overlay {
         piece(k);
         if (pass === 0) {
           // A narrow halo: sky blue around the pilot light, red-orange around a flame.
-          g.strokeStyle = rgba(mix(GLOW_SLOW, GLOW_FAST, h), (0.16 + 0.12 * h) * tp * tp);
+          g.strokeStyle = rgba(mix(pal.glowSlow, pal.glowFast, h), (0.16 + 0.12 * h) * tp * tp);
           g.lineWidth = w * 2.6 + 1;
           g.stroke();
         } else if (pass === 1) {
-          const c = heatMix(ramp(SLOW_STOPS, f), ramp(FAST_STOPS, Math.pow(fh, 2.5)), h);
+          const c = heatMix(ramp(pal.slow, f), ramp(pal.fast, Math.pow(fh, 2.5)), h);
           c[3] = 1;
           // Fades out completely at the tail, so its end flows away instead of dropping off.
           g.strokeStyle = rgba(c, tp);
@@ -676,7 +729,7 @@ export class Overlay {
           const fc = f + (fh - f) * h;
           const k0 = fc > 0.8 ? (fc - 0.8) / 0.2 : 0;
           if (k0 <= 0) continue;
-          g.strokeStyle = rgba(mix([224, 242, 254, 1], [255, 251, 230, 1], h), k0 * (0.6 + 0.4 * h));
+          g.strokeStyle = rgba(mix(pal.coreSlow, pal.coreFast, h), k0 * (0.6 + 0.4 * h));
           g.lineWidth = Math.max(0.75, w * 0.4);
           g.stroke();
         }

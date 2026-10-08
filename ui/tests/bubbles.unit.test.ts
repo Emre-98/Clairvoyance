@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { alive, aliveRange, animation, draw, geometry, layout, pressEnds, sampleFrameOf, syntheticActions, trailEnds, ALPHA_END, RECAST_SCALE, SAMPLE_ACTIONS, type BubbleOptions, type PressArrays } from "../src/lib/bubbles.ts";
-import { migrateOptions, clampSecs, DEFAULT_OPTIONS } from "../src/lib/overlayoptions.ts";
+import { migrateOptions, clampSecs, DEFAULT_OPTIONS, TRAIL_STYLES } from "../src/lib/overlayoptions.ts";
 
 const Q = 0, W = 1, R = 3;
 const opts = (o: Partial<BubbleOptions> = {}): BubbleOptions => ({ on: true, fade: 1, cats: {}, unconfirmed: false, ...o });
@@ -296,4 +296,11 @@ test("ult recasts: a smaller, outlined R bubble at the exact spot, shown with th
   const outlined = arcs.find((a) => Math.abs(a.x - 500) < 1e-6 && a.r === body(500))!;
   assert.match(solid.style, /fill:#|fill:rgb\(1|fill:hsl/i, "the ult: filled with R's colour");
   assert.match(outlined.style, /fill:rgba\(15,17,22/, "the recast: dark inside, outlined in R's colour");
+});
+
+test("options: trail color styles, Rocket by default", () => {
+  assert.equal(DEFAULT_OPTIONS.trailStyle, "rocket");
+  for (const s of TRAIL_STYLES) assert.equal(migrateOptions({ v: 2, trailStyle: s.id }).trailStyle, s.id);
+  assert.equal(migrateOptions({ v: 2, trailStyle: "neon" }).trailStyle, "rocket", "unknown style: the default");
+  assert.equal(migrateOptions({ trailSecs: 1 }).trailStyle, "rocket", "saved before styles existed");
 });

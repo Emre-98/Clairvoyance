@@ -8,9 +8,20 @@ export const SECS_MAX = 3;
 export const SECS_STEP = 0.05;
 export const SECS_DEFAULT = 1;
 
-/** "rocket": colored by cursor speed (blue pilot light when slow, red-orange flame on flicks);
- * "classic": the pale yellow trail of v1.4-v1.9. */
-export type TrailStyle = "rocket" | "classic";
+/** "rocket" (default): colored by cursor speed (blue pilot light when slow, orange -> red flame
+ * on flicks); "plasma", "toxic", "sunset", "frost": the same, in other colors (palettes in
+ * lib/inputoverlay.ts); "classic": the pale yellow trail of v1.4-v1.9. */
+export type TrailStyle = "rocket" | "plasma" | "toxic" | "sunset" | "frost" | "classic";
+
+/** The trail styles in menu order: name, menu swatch (slow -> flick colors) and tooltip. */
+export const TRAIL_STYLES: { id: TrailStyle; label: string; swatch: string; title: string }[] = [
+  { id: "rocket", label: "Rocket", swatch: "linear-gradient(90deg,#3b82f6,#38bdf8 30%,#e83838 60%,#fc781c 80%,#ffde5a)", title: "Blue when the cursor moves slowly, an orange and red flame on fast flicks" },
+  { id: "plasma", label: "Plasma", swatch: "linear-gradient(90deg,#14b8a6,#2dd4bf 30%,#8b5cf6 60%,#d946ef 80%,#f472b6)", title: "Teal when slow, violet and pink on fast flicks" },
+  { id: "toxic", label: "Toxic", swatch: "linear-gradient(90deg,#22c55e,#4ade80 30%,#84cc16 60%,#a3e635 80%,#facc15)", title: "Green when slow, lime and yellow on fast flicks" },
+  { id: "sunset", label: "Sunset", swatch: "linear-gradient(90deg,#7e22ce,#c084fc 30%,#db2777 60%,#f43f5e 75%,#fb923c)", title: "Purple when slow, pink and coral on fast flicks" },
+  { id: "frost", label: "Frost", swatch: "linear-gradient(90deg,#64748b,#94a3b8 30%,#0284c7 60%,#38bdf8 80%,#f0f9ff)", title: "Silver when slow, icy blue on fast flicks" },
+  { id: "classic", label: "Classic", swatch: "#ffeb99", title: "One pale yellow line" },
+];
 
 export interface OverlayOptions {
   trail: boolean;
@@ -74,7 +85,7 @@ export function migrateOptions(raw: Record<string, unknown>): OverlayOptions {
   delete r.v;
   const o = { ...DEFAULT_OPTIONS, bubbleCats: {}, ...r } as OverlayOptions;
   o.trailSecs = clampSecs(o.trailSecs);
-  if (o.trailStyle !== "rocket" && o.trailStyle !== "classic") o.trailStyle = DEFAULT_OPTIONS.trailStyle;
+  if (!TRAIL_STYLES.some((s) => s.id === o.trailStyle)) o.trailStyle = DEFAULT_OPTIONS.trailStyle;
   if (typeof o.bubbleCats !== "object" || !o.bubbleCats) o.bubbleCats = {};
   return o;
 }
