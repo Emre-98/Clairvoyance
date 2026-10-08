@@ -354,8 +354,8 @@ function rgba(c: Rgba, alpha: number): string {
 
 /** Cursor speed (screen heights per second, 16:9) at which the trail starts to heat up / is a
  * full flame. */
-export const HEAT_COOL = 0.6;
-export const HEAT_HOT = 3;
+export const HEAT_COOL = 0.45;
+export const HEAT_HOT = 2.2;
 /** How fast a flame cools back to the pilot light (s, exponential). */
 export const HEAT_COOLDOWN = 0.18;
 
