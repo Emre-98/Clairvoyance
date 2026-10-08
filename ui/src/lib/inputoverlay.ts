@@ -320,9 +320,9 @@ const SLOW_STOPS: [number, Rgba][] = [
   [0.85, [56, 189, 248, 1]],
   [1, [224, 242, 254, 1]],
 ];
-/** Flame along the trail: grey smoke, deep red, red, orange, yellow, white-hot tip. */
+/** Flame along the trail: dark embers, deep red, red, orange, yellow, white-hot tip. */
 const FAST_STOPS: [number, Rgba][] = [
-  [0, [110, 110, 110, 0.15]],
+  [0, [150, 32, 32, 0.15]],
   [0.3, [201, 42, 42, 0.8]],
   [0.55, [240, 62, 62, 1]],
   [0.75, [253, 126, 20, 1]],
@@ -611,25 +611,27 @@ export class Overlay {
         const life = secs * (1 - 0.5 * h);
         const f = 1 - (t - pt[k]) / life;
         if (f <= 0) continue;
-        // Tapers from a hairline at the tail to its full width at the cursor.
-        // The width tapers on a longer clock than the flame's colors, so it narrows smoothly
-        // where a cooling flame meets the pilot light.
-        const fw = 1 - (t - pt[k]) / (secs * (1 - 0.25 * h));
-        const w = lw * (0.3 + 1.1 * Math.pow(fw, 1.6)) * (1 + 0.4 * h);
+        // Full width and opacity over the newer half of its life, then tapering to a hairline
+        // and fading out. The same for pilot light and flame (only the colors differ), so where
+        // a cooling flame meets the pilot light there is no step in width or opacity, even when
+        // the cursor slows down and a lot of time is packed into a few pixels.
+        const tp = f >= 0.5 ? 1 : (f / 0.5) * (f / 0.5) * (3 - (2 * f) / 0.5);
+        const w = lw * (0.35 + 1.25 * tp);
         piece(k);
         if (pass === 0) {
           // A narrow halo: sky blue around the pilot light, red-orange around a flame.
-          g.strokeStyle = rgba(mix(GLOW_SLOW, GLOW_FAST, h), (0.16 + 0.12 * h) * f * f);
+          g.strokeStyle = rgba(mix(GLOW_SLOW, GLOW_FAST, h), (0.16 + 0.12 * h) * tp * tp);
           g.lineWidth = w * 2.6 + 1;
           g.stroke();
         } else if (pass === 1) {
-          // The cooling flame 20% more opaque than its ramp.
-          g.strokeStyle = rgba(mix(ramp(SLOW_STOPS, f), ramp(FAST_STOPS, f * f * f), h), 1 + 0.2 * h);
+          const c = mix(ramp(SLOW_STOPS, f), ramp(FAST_STOPS, f * f * f), h);
+          c[3] = 1;
+          g.strokeStyle = rgba(c, 0.12 + 0.88 * tp);
           g.lineWidth = w;
           g.stroke();
         } else {
           // The white-hot core right at the cursor.
-          const k0 = f > 0.7 ? (f - 0.7) / 0.3 : 0;
+          const k0 = f > 0.8 ? (f - 0.8) / 0.2 : 0;
           if (k0 <= 0) continue;
           g.strokeStyle = rgba(mix([224, 242, 254, 1], [255, 251, 230, 1], h), k0 * (0.6 + 0.4 * h));
           g.lineWidth = Math.max(0.75, w * 0.4);
