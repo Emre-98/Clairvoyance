@@ -28,6 +28,8 @@ export interface InputData {
   heat: { w: number; h: number; v: Float32Array } | null;
   /** Key presses with their release, for the keys strip. */
   keys: KeyBar[];
+  /** Mouse button presses with their release, for the keys strip's mouse lane. */
+  buttons: KeyBar[];
 }
 
 export interface KeyBar {
@@ -36,7 +38,17 @@ export interface KeyBar {
   t1: number;
   label: string;
   lane: number;
+  /** Mouse button (1 left, 2 right, 3 middle, 4/5 side), 0 for a key. */
+  btn?: number;
 }
+
+/** Keys strip label of a mouse button. */
+export function btnName(btn: number): string {
+  return ({ 1: "LMB", 2: "RMB", 3: "MMB", 4: "M4", 5: "M5" } as Record<number, string>)[btn] ?? `M${btn}`;
+}
+
+/** The keys strip lane of the mouse buttons (under the three key lanes). */
+const MOUSE_LANE = 3;
 
 export function vkName(vk: number): string {
   if ((vk >= 0x41 && vk <= 0x5a) || (vk >= 0x30 && vk <= 0x39)) return String.fromCharCode(vk);
@@ -123,7 +135,26 @@ export function parse(buf: ArrayBuffer): InputData {
       }
     }
   }
-  return { rate, mt, mx, my, mb, ct, cx, cy, cc, kt, kc, gaps, wt, wm, heat, keys };
+  // Mouse button bars, the same way (left / right clicks in the strip's mouse lane).
+  const buttons: KeyBar[] = [];
+  const held = new Map<number, KeyBar>();
+  for (let i = 0; i < nc; i++) {
+    const btn = cc[i] & 0x7f;
+    if (cc[i] & 0x80) {
+      const b = { vk: 0, btn, t0: ct[i], t1: ct[i] + 0.12, label: btnName(btn), lane: MOUSE_LANE };
+      const prev = held.get(btn);
+      if (prev) prev.t1 = Math.min(prev.t1, b.t0);
+      held.set(btn, b);
+      buttons.push(b);
+    } else {
+      const b = held.get(btn);
+      if (b) {
+        b.t1 = Math.min(Math.max(ct[i], b.t0 + 0.05), b.t0 + 3);
+        held.delete(btn);
+      }
+    }
+  }
+  return { rate, mt, mx, my, mb, ct, cx, cy, cc, kt, kc, gaps, wt, wm, heat, keys, buttons };
 }
 
 /** Index of the first element >= v (sorted array). */
@@ -198,6 +229,8 @@ export function mapper(d: InputData, t: number, rect: { x: number; y: number; w:
   const by = rect.h * ch * sy;
   return { x: (nx: number) => ax + bx * nx, y: (ny: number) => ay + by * ny, w: bx, h: by, ox: ax, oy: ay };
 }
+
+type Mapper = ReturnType<typeof mapper>;
 
 /** Cursor dwell heatmap for [a, b] (same rule as the Rust one: dwell per sample, max 0.5 s). */
 export function heatmapFor(d: InputData, a: number, b: number, w = 96, h = 54): Float32Array {
@@ -276,6 +309,115 @@ function heatImage(raw: Float32Array, w: number, h: number): HTMLCanvasElement {
 
 const BTN_COLOR: Record<number, string> = { 1: "#4dabf7", 2: "#ff6b6b", 3: "#ffd43b", 4: "#b197fc", 5: "#b197fc" };
 const TRAIL_BUCKETS = 8;
+/** The rocket trail's points are at least this far apart (CSS px). */
+const ROCKET_STEP = 3;
+
+type Rgba = [number, number, number, number];
+/** Pilot light along the trail, tail (0) -> tip (1). */
+const SLOW_STOPS: [number, Rgba][] = [
+  [0, [30, 58, 138, 0.12]],
+  [0.5, [59, 130, 246, 0.7]],
+  [0.85, [56, 189, 248, 1]],
+  [1, [224, 242, 254, 1]],
+];
+/** Flame along the trail: dark embers, deep red, red, red-orange, orange, amber, yellow,
+ * white-hot tip (in-between stops so it shades gradually instead of in bands). */
+const FAST_STOPS: [number, Rgba][] = [
+  [0, [150, 32, 32, 0.15]],
+  [0.18, [190, 40, 42, 0.8]],
+  [0.3, [232, 56, 56, 1]],
+  [0.42, [246, 88, 44, 1]],
+  [0.55, [252, 120, 28, 1]],
+  [0.75, [254, 150, 36, 1]],
+  [0.88, [255, 190, 50, 1]],
+  [0.95, [255, 222, 90, 1]],
+  [1, [255, 251, 230, 1]],
+];
+
+/** Pilot light -> flame by heat `h`, through a saturated middle (a plain blend of blue and
+ * red goes through grey; this goes through violet / magenta). */
+function heatMix(slow: Rgba, fast: Rgba, h: number): Rgba {
+  const c = mix(slow, fast, h);
+  const grey = (c[0] + c[1] + c[2]) / 3;
+  const boost = 1 + 0.9 * h * (1 - h) * 4 * 0.5;
+  return [
+    Math.max(0, Math.min(255, grey + (c[0] - grey) * boost)),
+    Math.max(0, Math.min(255, grey + (c[1] - grey) * boost)),
+    Math.max(0, Math.min(255, grey + (c[2] - grey) * boost)),
+    c[3],
+  ];
+}
+const GLOW_SLOW: Rgba = [56, 189, 248, 1];
+const GLOW_FAST: Rgba = [240, 72, 50, 1];
+
+function mix(a: Rgba, b: Rgba, k: number): Rgba {
+  return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k, a[3] + (b[3] - a[3]) * k];
+}
+
+export function ramp(stops: [number, Rgba][], f: number): Rgba {
+  if (f <= stops[0][0]) return stops[0][1];
+  for (let i = 1; i < stops.length; i++) {
+    const [p, c] = stops[i];
+    if (f <= p) {
+      const [p0, c0] = stops[i - 1];
+      return mix(c0, c, (f - p0) / (p - p0));
+    }
+  }
+  return stops[stops.length - 1][1];
+}
+
+function rgba(c: Rgba, alpha: number): string {
+  return `rgba(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])},${Math.min(1, c[3] * alpha).toFixed(3)})`;
+}
+
+/** Cursor speed (screen heights per second, 16:9) at which the trail starts to heat up / is a
+ * full flame. */
+export const HEAT_COOL = 0.6;
+export const HEAT_HOT = 3;
+/** How fast a flame cools back to the pilot light (s, exponential). */
+export const HEAT_COOLDOWN = 0.3;
+/** How fast it heats up when a flick starts (s, exponential). */
+export const HEAT_WARMUP = 0.035;
+
+/**
+ * Heat of each cursor sample, 0 (slow, pilot light) .. 1 (flick, full flame): the cursor speed
+ * over the last 50 ms (not across stroke breaks), eased between HEAT_COOL and HEAT_HOT, cooling
+ * down gradually after a flick (HEAT_COOLDOWN).
+ */
+export function trailHeat(mt: ArrayLike<number>, mx: ArrayLike<number>, my: ArrayLike<number>, mb: ArrayLike<number>, win = 0.05): Float32Array {
+  const n = mt.length;
+  const out = new Float32Array(n);
+  let j = 0; // first sample of the window
+  let start = 0; // first sample of the current stroke
+  // Running path length from the stroke start, so the window length is a difference.
+  const len = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    if (mb[i] || i === 0) {
+      start = i;
+      len[i] = 0;
+    } else {
+      const dx = (mx[i] - mx[i - 1]) * (16 / 9);
+      const dy = my[i] - my[i - 1];
+      len[i] = len[i - 1] + Math.hypot(dx, dy);
+    }
+    if (j < start) j = start;
+    while (j < i && mt[i] - mt[j] > win) j++;
+    const dt = Math.max(mt[i] - mt[j], 1 / 120);
+    const v = (len[i] - len[j]) / dt;
+    const k = Math.min(1, Math.max(0, (v - HEAT_COOL) / (HEAT_HOT - HEAT_COOL)));
+    let hv = k * k * (3 - 2 * k);
+    if (i > start) {
+      const prev = out[i - 1];
+      const dt = mt[i] - mt[i - 1];
+      // Heats up quickly but not instantly, and cools down gradually after a flick, so the
+      // trail shades blue -> violet -> red and back instead of switching.
+      if (hv > prev) hv = prev + (hv - prev) * (1 - Math.exp(-dt / HEAT_WARMUP));
+      else hv = Math.max(hv, prev * Math.exp(-dt / HEAT_COOLDOWN));
+    }
+    out[i] = hv;
+  }
+  return out;
+}
 const STRIP_BEFORE = 2.5;
 const STRIP_AFTER = 0.5;
 
@@ -338,31 +480,8 @@ export class Overlay {
     const gap = inGap(d, t);
 
     if (o.trail && hi > 0) {
-      const t0 = t - o.trailSecs;
-      const lo = Math.max(1, lowerBound(d.mt, t0));
-      g.lineCap = "round";
-      g.lineJoin = "round";
-      // Fade: older segments in fainter buckets (one stroke per bucket keeps it fast).
-      for (let b = 0; b < TRAIL_BUCKETS; b++) {
-        const a0 = t0 + (o.trailSecs * b) / TRAIL_BUCKETS;
-        const a1 = t0 + (o.trailSecs * (b + 1)) / TRAIL_BUCKETS;
-        const s = Math.max(lo, lowerBound(d.mt, a0));
-        const e = Math.min(hi, upperBound(d.mt, a1) - 1);
-        if (e < s) continue;
-        g.beginPath();
-        for (let i = s; i <= e; i++) {
-          if (d.mb[i]) continue; // a new stroke starts here (focus came back, window moved)
-          g.moveTo(m.x(d.mx[i - 1]), m.y(d.my[i - 1]));
-          g.lineTo(m.x(d.mx[i]), m.y(d.my[i]));
-        }
-        const f = (b + 1) / TRAIL_BUCKETS;
-        g.strokeStyle = `rgba(0,0,0,${0.35 * f})`;
-        g.lineWidth = lw * (1 + f) + 2;
-        g.stroke();
-        g.strokeStyle = `rgba(255,236,153,${0.95 * f})`;
-        g.lineWidth = lw * (1 + f);
-        g.stroke();
-      }
+      if (o.trailStyle === "classic") this.drawClassicTrail(g, m, t, o.trailSecs, hi, lw);
+      else this.drawRocketTrail(g, m, t, o.trailSecs, hi, lw);
     }
 
     if (o.clicks) {
@@ -429,12 +548,148 @@ export class Overlay {
     }
   }
 
-  /** A strip of the keys pressed from 2.5 s before to 0.5 s after `t`, one lane per key group. */
+  /** The v1.4 trail: pale yellow, older segments fainter. */
+  private drawClassicTrail(g: CanvasRenderingContext2D, m: Mapper, t: number, secs: number, hi: number, lw: number) {
+    const d = this.d;
+    const t0 = t - secs;
+    const lo = Math.max(1, lowerBound(d.mt, t0));
+    g.lineCap = "round";
+    g.lineJoin = "round";
+    // Fade: older segments in fainter buckets (one stroke per bucket keeps it fast).
+    for (let b = 0; b < TRAIL_BUCKETS; b++) {
+      const a0 = t0 + (secs * b) / TRAIL_BUCKETS;
+      const a1 = t0 + (secs * (b + 1)) / TRAIL_BUCKETS;
+      const s = Math.max(lo, lowerBound(d.mt, a0));
+      const e = Math.min(hi, upperBound(d.mt, a1) - 1);
+      if (e < s) continue;
+      g.beginPath();
+      for (let i = s; i <= e; i++) {
+        if (d.mb[i]) continue; // a new stroke starts here (focus came back, window moved)
+        g.moveTo(m.x(d.mx[i - 1]), m.y(d.my[i - 1]));
+        g.lineTo(m.x(d.mx[i]), m.y(d.my[i]));
+      }
+      const f = (b + 1) / TRAIL_BUCKETS;
+      g.strokeStyle = `rgba(0,0,0,${0.35 * f})`;
+      g.lineWidth = lw * (1 + f) + 2;
+      g.stroke();
+      g.strokeStyle = `rgba(255,236,153,${0.95 * f})`;
+      g.lineWidth = lw * (1 + f);
+      g.stroke();
+    }
+  }
+
+  /** How hot each cursor sample is (0 slow .. 1 fast flick), computed once. */
+  private speedHeat: Float32Array | null = null;
+  private sampleHeat(): Float32Array {
+    if (!this.speedHeat) this.speedHeat = trailHeat(this.d.mt, this.d.mx, this.d.my, this.d.mb);
+    return this.speedHeat;
+  }
+
+  /**
+   * The rocket exhaust trail: a thin streak that tapers to a hairline at its tail, colored by
+   * its age and by how fast the cursor moved there. Slow moves burn like a blue pilot light;
+   * flicks ignite into a red-orange flame with a white-hot core that burns out faster than the
+   * rest of the trail, so a flick reads as a quick streak. The cursor path is thinned to points
+   * a few px apart and drawn as a smooth curve through them (quadratic pieces between the
+   * midpoints), each piece with its own width and color.
+   */
+  private drawRocketTrail(g: CanvasRenderingContext2D, m: Mapper, t: number, secs: number, hi: number, lw: number) {
+    const d = this.d;
+    const heat = this.sampleHeat();
+    const t0 = t - secs;
+    const lo = Math.max(1, lowerBound(d.mt, t0));
+    if (hi < lo) return;
+    // Points at least ROCKET_STEP px apart (the newest one always), split at stroke breaks.
+    const px: number[] = [], py: number[] = [], pt: number[] = [], ph: number[] = [], brk: number[] = [];
+    let lx = NaN, ly = NaN;
+    for (let i = lo - 1; i <= hi; i++) {
+      const x = m.x(d.mx[i]);
+      const y = m.y(d.my[i]);
+      const cut = i >= lo && d.mb[i] === 1;
+      if (!cut && i !== hi && Math.hypot(x - lx, y - ly) < ROCKET_STEP) continue;
+      px.push(x);
+      py.push(y);
+      pt.push(d.mt[i]);
+      ph.push(heat[i]);
+      brk.push(cut || i === lo - 1 ? 1 : 0);
+      lx = x;
+      ly = y;
+    }
+    const n = px.length;
+    // Smooth out the mouse's pixel steps and jitter: each inner point moves toward its
+    // neighbors (1-2-1, three times); stroke ends and the newest point (the cursor) stay put.
+    for (let pass = 0; pass < 3; pass++) {
+      const sx = px.slice(), sy = py.slice();
+      for (let k = 1; k < n - 1; k++) {
+        if (brk[k] || brk[k + 1]) continue;
+        px[k] = (sx[k - 1] + 2 * sx[k] + sx[k + 1]) / 4;
+        py[k] = (sy[k - 1] + 2 * sy[k] + sy[k + 1]) / 4;
+      }
+    }
+    g.lineCap = "butt";
+    g.lineJoin = "round";
+    // Piece k runs from the midpoint before point k to the midpoint after it (the ends of a
+    // stroke from the point itself), curving through point k: neighbors share their ends and
+    // tangents, so the streak is smooth and the pieces meet without overlaps.
+    const piece = (k: number) => {
+      const first = brk[k] === 1 || k === 0;
+      const last = k === n - 1 || brk[k + 1] === 1;
+      g.beginPath();
+      if (first) g.moveTo(px[k], py[k]);
+      else g.moveTo((px[k - 1] + px[k]) / 2, (py[k - 1] + py[k]) / 2);
+      if (last) g.lineTo(px[k], py[k]);
+      else g.quadraticCurveTo(px[k], py[k], (px[k] + px[k + 1]) / 2, (py[k] + py[k + 1]) / 2);
+    };
+    for (let pass = 0; pass < 3; pass++) {
+      for (let k = 0; k < n; k++) {
+        const h = ph[k];
+        const age = t - pt[k];
+        // Fades over the whole trail time, the same for pilot light and flame (a flame that
+        // left earlier would leave a gap between older and newer blue on long trails).
+        const f = 1 - age / secs;
+        if (f <= 0) continue;
+        // A flame's colors cool on a faster clock (white-hot -> red -> embers), so a flick
+        // still reads as a quick streak.
+        const fh = Math.max(0, 1 - age / (secs * (1 - 0.5 * h)));
+        // Full width and opacity over the newest 40% of its life, then tapering to a hairline
+        // and fading out completely. The same for pilot light and flame (only the colors differ), so where
+        // a cooling flame meets the pilot light there is no step in width or opacity, even when
+        // the cursor slows down and a lot of time is packed into a few pixels.
+        const u = Math.min(1, f / 0.6);
+        const tp = u * u * (3 - 2 * u);
+        const w = lw * (0.25 + 1.05 * tp);
+        piece(k);
+        if (pass === 0) {
+          // A narrow halo: sky blue around the pilot light, red-orange around a flame.
+          g.strokeStyle = rgba(mix(GLOW_SLOW, GLOW_FAST, h), (0.16 + 0.12 * h) * tp * tp);
+          g.lineWidth = w * 2.6 + 1;
+          g.stroke();
+        } else if (pass === 1) {
+          const c = heatMix(ramp(SLOW_STOPS, f), ramp(FAST_STOPS, Math.pow(fh, 2.5)), h);
+          c[3] = 1;
+          // Fades out completely at the tail, so its end flows away instead of dropping off.
+          g.strokeStyle = rgba(c, tp);
+          g.lineWidth = w;
+          g.stroke();
+        } else {
+          // The white-hot core right at the cursor.
+          const fc = f + (fh - f) * h;
+          const k0 = fc > 0.8 ? (fc - 0.8) / 0.2 : 0;
+          if (k0 <= 0) continue;
+          g.strokeStyle = rgba(mix([224, 242, 254, 1], [255, 251, 230, 1], h), k0 * (0.6 + 0.4 * h));
+          g.lineWidth = Math.max(0.75, w * 0.4);
+          g.stroke();
+        }
+      }
+    }
+  }
+
+  /** A strip of the keys and mouse buttons pressed from 2.5 s before to 0.5 s after `t`, one
+   * lane per key group plus one for the mouse. */
   private drawKeys(g: CanvasRenderingContext2D, rect: { x: number; y: number; w: number; h: number }, t: number, sizeH = rect.h) {
-    const keys = this.d.keys;
     const W = Math.max(220, Math.min(rect.w * 0.36, 520));
     const laneH = Math.max(15, Math.min(22, sizeH / 30));
-    const H = laneH * 3 + 10;
+    const H = laneH * (MOUSE_LANE + 1) + 10;
     const x0 = rect.x + 12;
     const y0 = rect.y + rect.h - H - 12;
     const span = STRIP_BEFORE + STRIP_AFTER;
@@ -448,30 +703,37 @@ export class Overlay {
     g.clip();
     g.font = `600 ${Math.round(laneH * 0.62)}px system-ui, sans-serif`;
     g.textBaseline = "middle";
-    // Keys are sorted by press time: find the ones overlapping the window.
-    const from = t - STRIP_BEFORE - 3;
-    let s = 0;
-    let lo = 0;
-    let hi = keys.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (keys[mid].t0 < from) lo = mid + 1;
-      else hi = mid;
-    }
-    s = lo;
-    for (let i = s; i < keys.length && keys[i].t0 <= t + STRIP_AFTER; i++) {
-      const k = keys[i];
-      if (k.t1 < t - STRIP_BEFORE) continue;
-      const a = px(k.t0);
-      const w = Math.max(px(k.t1) - a, g.measureText(k.label).width + 10);
-      const y = y0 + 5 + k.lane * laneH;
-      const held = k.t0 <= t && t <= k.t1;
-      const future = k.t0 > t;
-      g.fillStyle = held ? "rgba(255,236,153,0.95)" : future ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.32)";
-      roundRect(g, a, y, w, laneH - 3, 4);
-      g.fill();
-      g.fillStyle = held ? "#1b1b1b" : "rgba(255,255,255,0.92)";
-      g.fillText(k.label, a + 5, y + (laneH - 3) / 2 + 0.5);
+    for (const bars of [this.d.keys, this.d.buttons]) {
+      // Bars are sorted by press time: find the ones overlapping the window.
+      const from = t - STRIP_BEFORE - 3;
+      let lo = 0;
+      let hi = bars.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (bars[mid].t0 < from) lo = mid + 1;
+        else hi = mid;
+      }
+      for (let i = lo; i < bars.length && bars[i].t0 <= t + STRIP_AFTER; i++) {
+        const k = bars[i];
+        if (k.t1 < t - STRIP_BEFORE) continue;
+        const a = px(k.t0);
+        const w = Math.max(px(k.t1) - a, g.measureText(k.label).width + 10);
+        const y = y0 + 5 + k.lane * laneH;
+        const held = k.t0 <= t && t <= k.t1;
+        const future = k.t0 > t;
+        // A held mouse button takes its click ring's color (left blue, right red).
+        const heldFill = k.btn ? (BTN_COLOR[k.btn] ?? "#fff") : "rgba(255,236,153,0.95)";
+        g.fillStyle = held ? heldFill : future ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.32)";
+        roundRect(g, a, y, w, laneH - 3, 4);
+        g.fill();
+        if (k.btn && !held) {
+          // Not held: a thin edge in the button's color tells left from right at a glance.
+          g.fillStyle = BTN_COLOR[k.btn] ?? "#fff";
+          g.fillRect(a, y + 2, 2, laneH - 7);
+        }
+        g.fillStyle = held ? "#1b1b1b" : "rgba(255,255,255,0.92)";
+        g.fillText(k.label, a + 5, y + (laneH - 3) / 2 + 0.5);
+      }
     }
     // Now.
     const nx = px(t);

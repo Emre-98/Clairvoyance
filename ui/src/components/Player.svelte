@@ -758,6 +758,10 @@
           <div class="ovpop card" use:popfit onkeydown={(e) => e.key === "Escape" && (optsOpen = false)}>
             <div class="ovhead"><strong>Input overlay</strong><button class="x" onclick={() => (optsOpen = false)} aria-label="Close"><Icon name="x" size={14} /></button></div>
             <label class="check"><input type="checkbox" bind:checked={overlayOpts.trail} />Cursor trail</label>
+            <div class="seg" class:dim={!overlayOpts.trail} role="radiogroup" aria-label="Cursor trail style" data-testid="trail-style">
+              <button role="radio" aria-checked={overlayOpts.trailStyle === "rocket"} class:on={overlayOpts.trailStyle === "rocket"} onclick={() => (overlayOpts.trailStyle = "rocket")} disabled={!overlayOpts.trail} title="Blue when the cursor moves slowly, a red flame on fast flicks">Rocket</button>
+              <button role="radio" aria-checked={overlayOpts.trailStyle === "classic"} class:on={overlayOpts.trailStyle === "classic"} onclick={() => (overlayOpts.trailStyle = "classic")} disabled={!overlayOpts.trail} title="One pale yellow line">Classic</button>
+            </div>
             <!-- One time for both: a bubble goes together with the trail piece of its moment. -->
             <label class="slider" class:dim={!overlayOpts.trail && !(overlayOpts.bubbles && bubbleCats.length)} title={bubbleCats.length ? "How long the cursor trail is, and how long an ability bubble stays: it goes together with the trail piece under it" : "How long the cursor trail is"}>
               <span>{bubbleCats.length ? "Trail & bubbles" : "Trail length"} <b>{secsLabel(overlayOpts.trailSecs)} s</b></span>
