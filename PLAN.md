@@ -81,6 +81,12 @@
   recorded anyway, the late check still deletes it. Your id in the players list now counts as
   "you're playing" even alone with bots (Practice Tool, Co-op vs AI). Details in
   docs/HISTORY.md "Spectating: when the client can't tell".
+- **Cursor trail colors + clicks in the keys strip (2026-10-08, owner's request; PR #9 + this
+  one):** the trail is colored by cursor speed (Rocket, default: blue pilot light when slow,
+  orange -> red flame on flicks, same clock for width and fade so colors blend). Other color
+  sets in the overlay menu: Plasma, Toxic, Sunset, Frost, and Classic (the old yellow line).
+  "Keys pressed" shows LMB / RMB / MMB / M4 / M5 in their own lane. Drawing cost ~0.35 ms per
+  frame at 1080p (Chromium, Linux).
 
 ## Performance rules (hard requirements)
 - Recording is done by GameRecorder's **built-in recorder** (see "Built-in recorder" below). No
