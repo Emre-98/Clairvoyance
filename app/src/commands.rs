@@ -408,6 +408,18 @@ pub async fn set_favorite(app: AppHandle, st: St<'_>, id: String, favorite: bool
     Ok(())
 }
 
+/// The Share button's "Fit for Discord" tick: the same saved setting as in Settings, changed
+/// on its own (no engine reload, so it's harmless during a game).
+#[tauri::command]
+pub async fn set_share_fit_discord(st: St<'_>, on: bool) -> R<()> {
+    let s = {
+        let mut g = st.settings.write().unwrap();
+        g.share_fit_discord = on;
+        g.clone()
+    };
+    s.save(&st.paths.config_file).map_err(err)
+}
+
 /// Marks a clip "keep" (never removed by the storage clean-up) or not.
 #[tauri::command]
 pub async fn set_clip_keep(app: AppHandle, st: St<'_>, id: String, file: String, keep: bool) -> R<()> {
@@ -950,6 +962,8 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static 
         crate::export::overlay_export_frame,
         crate::export::overlay_export_end,
         crate::export::overlay_export_cancel,
+        crate::share::share_clip,
+        set_share_fit_discord,
         save_clip_now,
         add_marker_now,
         stop_session,

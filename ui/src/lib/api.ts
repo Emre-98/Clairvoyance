@@ -15,6 +15,7 @@ import type {
   GameModesView,
   SelfTestResult,
   Mechanics,
+  Shared,
 } from "./types";
 
 type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
@@ -110,6 +111,9 @@ export const api = {
   storageInfo: () => call<StorageInfo>("storage_info"),
   cleanupNow: () => call<CleanupReport>("cleanup_now"),
   setClipKeep: (id: string, file: string, keep: boolean) => call<void>("set_clip_keep", { id, file, keep }),
+  /** Share: the clip (or its Discord copy) on the clipboard as a file. */
+  shareClip: (id: string, file: string) => call<Shared>("share_clip", { id, file }),
+  setShareFitDiscord: (on: boolean) => call<void>("set_share_fit_discord", { on }),
   finishFirstRun: () => call<void>("finish_first_run"),
   simulateGame: (speed: number, length: number, queue: number | null = null, watch: string | null = null) => call<void>("simulate_game", { speed, length, queue, watch }),
   videoInfo: (path: string) => call<{ layout: string; fragments: number; keyframe_interval_avg: number; keyframe_interval_max: number; duration_secs: number; codec: string | null }>("video_info", { path }),

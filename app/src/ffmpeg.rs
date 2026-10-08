@@ -41,11 +41,11 @@ impl Ffmpeg {
         std::env::var_os("PATH").and_then(|paths| std::env::split_paths(&paths).map(|d| d.join(exe)).find(|p| p.is_file()))
     }
 
-    /// Encoder arguments for an export that has to re-encode (the input overlay burned in): the
-    /// GPU's own H.264 encoder, else Windows' Media Foundation one, else x264. Tried once (a tenth
+    /// The H.264 encoder for exports that re-encode (the input overlay burned in, the Discord
+    /// copy): the GPU's own, else Windows' Media Foundation one, else x264. Tried once (a tenth
     /// of a second of black) and remembered while the app runs.
-    pub fn overlay_encoder(&self, exe: &Path) -> Vec<String> {
-        static PICKED: Mutex<Option<Vec<String>>> = Mutex::new(None);
+    pub fn h264_encoder(&self, exe: &Path) -> String {
+        static PICKED: Mutex<Option<String>> = Mutex::new(None);
         if let Some(e) = PICKED.lock().unwrap().clone() {
             return e;
         }
@@ -54,13 +54,21 @@ impl Ffmpeg {
             "qsv" => "h264_qsv",
             _ => "h264_nvenc",
         };
-        let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<String>>();
-        let candidates = [v(&["-c:v", gpu_enc, "-b:v", "16M"]), v(&["-c:v", "h264_mf", "-b:v", "16M"]), v(&["-c:v", "libx264", "-preset", "veryfast", "-crf", "20"])];
-        let last = candidates[2].clone();
-        let picked = candidates.into_iter().find(|c| cv_capture::overlay_export::encoder_works(exe, c)).unwrap_or(last);
-        log::info!("overlay export encoder: {}", picked.join(" "));
+        let picked = [gpu_enc, "h264_mf"]
+            .into_iter()
+            .find(|e| cv_capture::overlay_export::encoder_works(exe, &["-c:v".to_string(), e.to_string()]))
+            .unwrap_or("libx264")
+            .to_string();
+        log::info!("export encoder: {picked}");
         *PICKED.lock().unwrap() = Some(picked.clone());
         picked
+    }
+
+    /// Encoder arguments for the input-overlay export (see [`Ffmpeg::h264_encoder`]).
+    pub fn overlay_encoder(&self, exe: &Path) -> Vec<String> {
+        let e = self.h264_encoder(exe);
+        let a: &[&str] = if e == "libx264" { &["-c:v", "libx264", "-preset", "veryfast", "-crf", "20"] } else { &["-c:v", &e, "-b:v", "16M"] };
+        a.iter().map(|s| s.to_string()).collect()
     }
 
     async fn run(&self, exe: &Path, args: &[String]) -> anyhow::Result<()> {

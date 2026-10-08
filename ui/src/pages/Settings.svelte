@@ -288,6 +288,11 @@
         </div>
       </div>
 
+      <h3 class="sub">Sharing</h3>
+      <div class="card box form">
+        <label class="check wide"><input type="checkbox" bind:checked={draft.share_fit_discord} />Fit shared clips for Discord <small>(Share makes a copy under 19.5 MB, Discord's free upload limit; off: the original clip is shared)</small></label>
+      </div>
+
       <h3 class="sub">Voice callouts</h3>
       <div class="card box form">
         <label class="check wide"><input type="checkbox" bind:checked={draft.events.tts_enabled} />Speak events out loud while playing (Windows text-to-speech)</label>

@@ -158,6 +158,27 @@ Rules:
   for the Riot ID.
 - Auto-update via GitHub Releases is a nice-to-have. No accounts, cloud or telemetry.
 
+## Share (Discord)
+2026-10-08, owner's request (plan: /mnt/project-files/plans/clip-sharing.md in the project).
+- Discord's free upload limit is 20 MB since 2026-08-13 (news coverage of Discord's
+  announcement; its help pages weren't reachable from the build container). Target 19.5 million
+  bytes: under it whether Discord counts 10^6 or 2^20 bytes per MB. Nitro sizes left out (owner).
+- "Fit for Discord" is a saved setting, on by default (owner). The tick next to the clips is a
+  separate command (`set_share_fit_discord`) that saves only that field, so it never reloads
+  the engine during a game.
+- The file goes on the clipboard as CF_HDROP + "Preferred DropEffect" = copy (what Explorer's
+  Copy does); Discord reads the file when it's pasted / sent, so the copy must outlive the
+  click: kept 24 h, cleared at every start (owner: shorter than the 7 days first proposed).
+- Copies are out of sight in the app's data folder (owner: the recordings folder shows only the
+  game folders and their `clips`), one folder per clip so the friend sees a readable name
+  ("<champion> - <title>.mp4") without clashes. Reused while newer than the clip.
+- Encoding (`cv_capture::share`): budget = 19.5 MB × 0.94 / length; the ladder picks the
+  resolution / frame rate from the video bitrate (1080p60 ≥ 8 Mbps, 1080p30 ≥ 4, 720p60 ≥ 3.5,
+  720p30 ≥ 1.8, else 540p30; never upscaled), at least 0.6 Mbps (~3.5 min max), at most 16 Mbps.
+  Average bitrate with a 1.5× peak; if the file is still over, once more scaled by the
+  overshoot. The encoder is the same pick as the overlay export (GPU, Media Foundation, x264).
+- Allowed during a game (owner): ffmpeg at below-normal priority, one share at a time.
+
 ## Decisions made
 ### Stack: Tauri 2 (Rust backend + Svelte 5/TypeScript UI in WebView2)
 Compared:

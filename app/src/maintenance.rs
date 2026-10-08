@@ -183,6 +183,7 @@ fn run_blocking(st: &Arc<AppState>, forced: bool) -> RunReport {
     let lib = st.library.clone();
     lib.refresh(&root);
     st.library_dirty.store(false, Ordering::SeqCst);
+    crate::share::sweep(&st.paths.data_dir.join(crate::share::SHARE_DIR), crate::share::KEEP);
 
     // Thumbnails older versions kept in the game folder move to the thumbnail folder.
     let mut adopted = false;

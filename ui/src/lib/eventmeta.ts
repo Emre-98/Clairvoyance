@@ -140,6 +140,8 @@ export const ICONS: Record<string, string> = {
   cpu: "M6 6h12v12H6zM9 9h6v6H9zM9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4",
   download: "M12 3v12M7 10l5 5 5-5M4 21h16",
   external: "M14 4h6v6M20 4l-9 9M18 14v6H4V6h6",
+  // An arrow up out of a tray (Share).
+  share: "M4 13v7h16v-7M16 7l-4-4-4 4M12 3v12",
   info: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 16v-5M12 8h.01",
   warn: "M12 3l10 18H2zM12 10v5M12 18h.01",
   keyboard: "M3 6h18v12H3zM7 10h.01M11 10h.01M15 10h.01M7 14h10",

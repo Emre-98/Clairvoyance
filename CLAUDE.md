@@ -16,6 +16,8 @@ only for background on a feature.
   capabilities: CursorInput, RecordingCheck, WatchDetection, ModeRules), docs/ADDING_A_GAME.md
 - Clip export with the overlay: crates/cv-capture/src/overlay_export.rs, app/src/export.rs,
   ui/src/components/ClipEditor.svelte. Timeline filters: ui/src/lib/timelinefilters.ts
+- Share / Fit for Discord: crates/cv-capture/src/share.rs (size ladder, ffmpeg), app/src/share.rs
+  (command, clipboard), ui/src/components/ShareButton.svelte, ShareFitToggle.svelte
 
 ## Rules
 - Core crates (crates/cv-core, cv-capture) contain no game-specific code; that lives in games/*.
@@ -47,7 +49,7 @@ Slow (only before pushing, once):
   tests above, and the Windows clippy (cross-check above)
 - Browser e2e (playwright-core, Chromium, mock backend): `VITE_MOCK=1 npx vite` in ui/, then
   `node tests/layout.test.mjs http://localhost:5173 <outdir> --quick` (also bubbles, fullscreen,
-  framestep, overlay, filters, export, timelinechips, scoreboard tests in ui/tests/; `python3 ui/tests/make-sample.py` makes
+  framestep, overlay, filters, export, timelinechips, scoreboard, share tests in ui/tests/; `python3 ui/tests/make-sample.py` makes
   their sample videos first). Needs `ln -s /opt/node-tools/node_modules/playwright-core
   ui/node_modules/`. Here layout --quick passed 42/63; the other 21 page states time out (timing/
   network in the container), so treat failures there as unverified and check on the owner's PC.

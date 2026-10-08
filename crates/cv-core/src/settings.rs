@@ -116,6 +116,9 @@ pub struct Settings {
     pub modes: BTreeMap<String, crate::modes::GameModes>,
     /// Path to ffmpeg.exe used for clip export (empty = auto).
     pub ffmpeg_path: String,
+    /// Share makes a copy that fits Discord's free upload limit (on by default); off = the
+    /// original clip file is shared as it is.
+    pub share_fit_discord: bool,
 }
 
 impl Default for Settings {
@@ -143,6 +146,7 @@ impl Default for Settings {
             disabled_games: Vec::new(),
             modes: BTreeMap::new(),
             ffmpeg_path: String::new(),
+            share_fit_discord: true,
         }
     }
 }
@@ -315,6 +319,16 @@ mod tests {
         assert_eq!(s.hotkey_clip, "F7");
         assert_eq!(s.video.fps, 30);
         assert_eq!(s.video.replay_buffer_secs, 30);
+        assert!(s.share_fit_discord, "an older settings file gets Fit for Discord on");
+    }
+
+    #[test]
+    fn fit_for_discord_off_is_remembered() {
+        let mut s = Settings::default();
+        assert!(s.share_fit_discord);
+        s.share_fit_discord = false;
+        let back: Settings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert!(!back.share_fit_discord);
     }
 
     #[test]

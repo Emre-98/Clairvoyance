@@ -15,6 +15,8 @@
   import Mechanics from "../components/Mechanics.svelte";
   import ChampionIcon from "../components/ChampionIcon.svelte";
   import Icon from "../components/Icon.svelte";
+  import ShareButton from "../components/ShareButton.svelte";
+  import ShareFitToggle from "../components/ShareFitToggle.svelte";
 
   let { id, t = 0 }: { id: string; t?: number } = $props();
 
@@ -300,7 +302,7 @@
     {/if}
 
     {#if view.clips.length}
-      <h2 class="sec">Clips from this game</h2>
+      <div class="cliphead"><h2 class="sec">Clips from this game</h2><ShareFitToggle /></div>
       <div class="cliplist card">
         {#each view.clips as c (c.file)}
           <div class="clip">
@@ -311,6 +313,7 @@
             </div>
             {#if c.video_start != null}<button class="btn small ghost" onclick={() => player?.seek(c.video_start!, true)}>Watch here</button>{/if}
             <button class="btn small ghost keepbtn" class:on={c.keep} onclick={() => toggleKeep(c.file, !c.keep)} title={c.keep ? "Kept: never deleted by the storage clean-up" : "Keep this clip (never auto-deleted)"} aria-pressed={!!c.keep}><Icon name="pin" size={13} />{c.keep ? "Kept" : "Keep"}</button>
+            <ShareButton id={id} file={c.file} disabled={!c.exists} iconSize={13} />
             <button class="btn small ghost" onclick={() => api.openPath(c.path)} disabled={!c.exists}><Icon name="external" size={13} />Open</button>
             <button class="btn small ghost" onclick={() => api.reveal(c.path)} disabled={!c.exists}><Icon name="folder" size={13} /></button>
             <button class="btn small ghost" onclick={() => delClip(c.file)}><Icon name="trash" size={13} /></button>
@@ -486,6 +489,12 @@
   }
   .sec {
     margin: 30px 0 14px;
+  }
+  .cliphead {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 14px;
   }
   .tiles {
     display: grid;
