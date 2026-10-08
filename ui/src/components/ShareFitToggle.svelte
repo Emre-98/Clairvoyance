@@ -17,7 +17,7 @@
   }
 </script>
 
-<label class="fitdiscord" title="Share makes a copy under 19.5 MB so it fits Discord's free upload limit. Off: the original clip is shared.">
+<label class="fitdiscord" title="Share makes a copy under 18 MB so it fits Discord's free upload limit. Off: the original clip is shared.">
   <input type="checkbox" checked={on} onchange={(e) => set(e.currentTarget.checked)} />
   Fit for Discord
 </label>

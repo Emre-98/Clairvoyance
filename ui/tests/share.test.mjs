@@ -42,7 +42,7 @@ const busy = await page.locator(".card.clip .sharebtn").first().textContent();
 check("the button says it's preparing while it works", busy.includes("Preparing"), busy.trim());
 let t = await lastToast();
 check("sharing says it's copied and how to paste it", t.includes("Copied") && t.includes("Paste it in Discord"), t);
-check("the copy fits Discord (under 19.5 MB, 30 fps)", /1[0-9](\.\d)? MB/.test(t) && t.includes("30 fps"), t);
+check("the copy fits Discord (under 18 MB, 30 fps)", /1[0-9](\.\d)? MB/.test(t) && t.includes("30 fps"), t);
 await page.screenshot({ path: `${OUT}/shared.png` });
 
 // Untick: the original clip, and Settings shows the same setting off.

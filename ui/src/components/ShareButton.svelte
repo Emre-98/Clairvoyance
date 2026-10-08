@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Share: puts the clip (with "Fit for Discord" on, a copy under Discord's 19.5 MB) on the
+  // Share: puts the clip (with "Fit for Discord" on, a copy under Discord's 18 MB) on the
   // clipboard as a file, ready to paste in Discord.
   import { api } from "../lib/api";
   import { toast } from "../lib/store.svelte";

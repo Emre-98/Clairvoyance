@@ -149,10 +149,12 @@ impl NativeRecorder {
         let gpu = self.gpu()?;
         std::fs::create_dir_all(&opts.output_dir)?;
 
-        // Which window? It may take a moment to appear after the game starts.
+        // Which window? It may take a moment to appear after the game starts. Never falls back
+        // to the screen on its own: that would record the desktop (and whatever is on it).
+        let screen = opts.display_capture || target.display_capture_only;
         let mut hwnd = None;
-        if !(opts.display_capture || target.display_capture_only) {
-            for _ in 0..16 {
+        if !screen {
+            for _ in 0..60 {
                 hwnd = window::find_window(&target.exe);
                 if hwnd.is_some() {
                     break;
@@ -161,8 +163,9 @@ impl NativeRecorder {
             }
         }
         let cap_target = match hwnd {
-            Some(h) if !(opts.display_capture || target.display_capture_only) => Target::Window(h),
-            _ => Target::Monitor(window::monitor_for(window::find_window(&target.exe))),
+            Some(h) if !screen => Target::Window(h),
+            _ if screen => Target::Monitor(window::monitor_for(window::find_window(&target.exe))),
+            _ => bail!("the game's window didn't appear (not recording the desktop instead)"),
         };
         let (src_w, src_h) = capture::target_size(cap_target)?;
         let (out_w, out_h) = capture::output_size(src_w, src_h, opts.height);
@@ -256,31 +259,20 @@ impl NativeRecorder {
             };
         let capture = Arc::new(Mutex::new(Some(cap)));
 
-        // Watchdog: if window capture delivers nothing (some exclusive-fullscreen games),
-        // switch to capturing the screen.
+        // Watchdog: if window capture delivers nothing (some exclusive-fullscreen games), say so.
+        // It doesn't switch to the screen: that recorded the desktop. "Capture the whole screen"
+        // in Settings is the opt-in for such games.
         let watchdog_stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        if let Target::Window(h) = cap_target {
-            let h_raw = h.0 as isize;
-            let (c, g, ws, etx, inf) = (capture.clone(), gpu.clone(), watchdog_stop.clone(), encoder.tx.clone(), encoder.in_flight.clone());
-            let height = opts.height;
+        if let Target::Window(_) = cap_target {
+            let (c, ws) = (capture.clone(), watchdog_stop.clone());
             std::thread::spawn(move || {
-                com();
                 std::thread::sleep(Duration::from_secs(6));
                 if ws.load(std::sync::atomic::Ordering::SeqCst) {
                     return;
                 }
                 let frames = c.lock().unwrap().as_ref().map(|c| c.stats.frames.load(std::sync::atomic::Ordering::Relaxed)).unwrap_or(1);
                 if frames == 0 {
-                    log::warn!("window capture delivered no frames; switching to screen capture");
-                    let mon = Target::Monitor(window::monitor_for(Some(windows::Win32::Foundation::HWND(h_raw as *mut _))));
-                    let mut guard = c.lock().unwrap();
-                    if let Some(old) = guard.take() {
-                        old.stop();
-                    }
-                    match capture::start(g, CaptureParams { target: mon, height, fps, rec_start, cursor: true }, out_w, out_h, etx, inf) {
-                        Ok(n) => *guard = Some(n),
-                        Err(e) => log::error!("screen capture failed too: {e:#}"),
-                    }
+                    log::warn!("window capture delivered no frames yet (not switching to the screen; see Settings > Capture the whole screen)");
                 }
             });
         }

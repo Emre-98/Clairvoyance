@@ -14,7 +14,7 @@
 
   let { section = "setup" }: { section?: string } = $props();
 
-  const sections = [
+  const allSections = [
     { id: "setup", label: "Recorder", icon: "rec" },
     { id: "recording", label: "Recording", icon: "clips" },
     { id: "modes", label: "Game modes", icon: "flag" },
@@ -27,9 +27,12 @@
     { id: "performance", label: "Performance test", icon: "cpu" },
     { id: "advanced", label: "Advanced", icon: "settings" },
   ];
+  // Performance test and Advanced are developer tools (Settings > General).
+  const DEV_SECTIONS = ["performance", "advanced"];
+  const sections = $derived(allSections.filter((s) => app.settings?.dev_tools || !DEV_SECTIONS.includes(s.id)));
   let active = $state("setup");
   $effect(() => {
-    active = section;
+    active = !app.settings?.dev_tools && DEV_SECTIONS.includes(section) ? "setup" : section;
   });
 
   // Copy of the settings with every game's defaults filled in.
@@ -195,37 +198,12 @@
       <h2>Recording</h2>
       <div class="card box form">
         <label class="check wide"><input type="checkbox" bind:checked={draft.auto_record} />Record games automatically</label>
-        <label>Encoder
-          <select class="input" bind:value={draft.video.encoder}>
-            <option value="auto">Automatic ({app.info?.gpu?.vendor ?? "detect"})</option>
-            <option value="nvenc">NVIDIA NVENC</option>
-            <option value="amd">AMD AMF</option>
-            <option value="qsv">Intel Quick Sync</option>
-          </select>
-          <small>Always a hardware (GPU) encoder, never CPU.</small>
-        </label>
         <label>Quality
           <select class="input" bind:value={draft.video.quality}>
             <option value="standard">Standard (smaller files)</option>
             <option value="high">High (bigger files)</option>
           </select>
           <small>About 1.5–3 GB/hour at 1080p60 on Standard.</small>
-        </label>
-        <label>Video codec
-          <select class="input" bind:value={draft.video.codec} data-testid="codec-select">
-            <option value="h264">H.264 (plays everywhere)</option>
-            {#each [["hevc", "HEVC / H.265 (smaller files)"], ["av1", "AV1 (smallest, newest GPUs)"]] as [c, label]}
-              <option value={c} disabled={!(draft.video.playable_codecs ?? []).includes(c) && draft.video.codec !== c}>{label}{(draft.video.playable_codecs ?? []).includes(c) ? "" : " – not playable in this app here"}</option>
-            {/each}
-          </select>
-          <small>HEVC and AV1 need a GPU that encodes them and Windows' free / store decoder (HEVC Video Extensions, AV1 Video Extension); otherwise games are recorded in H.264. Clips you export keep the codec; "Exact cut" makes H.264 for sharing.</small>
-        </label>
-        <label>Bitrate
-          <select class="input" bind:value={draft.video.rate_control} data-testid="ratecontrol-select">
-            <option value="bitrate">Fixed average (steady file size)</option>
-            <option value="quality">Quality-based (smaller in calm moments, more for fights)</option>
-          </select>
-          <small>Quality-based sizes vary with the game; try the 5 s recorder test after changing it.</small>
         </label>
         <label>Resolution
           <select class="input" bind:value={draft.video.height}>
@@ -249,7 +227,34 @@
           <small>What the clip hotkey saves.</small>
         </label>
         <label class="check wide"><input type="checkbox" bind:checked={draft.video.record_mic} />Record my microphone <small>(its own audio track; the game's sound is always recorded on its own)</small></label>
-        <label class="check wide"><input type="checkbox" bind:checked={draft.video.display_capture} />Capture the whole screen instead of the game window <small>(only if recordings come out black)</small></label>
+        {#if app.settings?.dev_tools}
+        <label>Encoder
+          <select class="input" bind:value={draft.video.encoder}>
+            <option value="auto">Automatic ({app.info?.gpu?.vendor ?? "detect"})</option>
+            <option value="nvenc">NVIDIA NVENC</option>
+            <option value="amd">AMD AMF</option>
+            <option value="qsv">Intel Quick Sync</option>
+          </select>
+          <small>Always a hardware (GPU) encoder, never CPU.</small>
+        </label>
+        <label>Video codec
+          <select class="input" bind:value={draft.video.codec} data-testid="codec-select">
+            <option value="h264">H.264 (plays everywhere)</option>
+            {#each [["hevc", "HEVC / H.265 (smaller files)"], ["av1", "AV1 (smallest, newest GPUs)"]] as [c, label]}
+              <option value={c} disabled={!(draft.video.playable_codecs ?? []).includes(c) && draft.video.codec !== c}>{label}{(draft.video.playable_codecs ?? []).includes(c) ? "" : " – not playable in this app here"}</option>
+            {/each}
+          </select>
+          <small>HEVC and AV1 need a GPU that encodes them and Windows' free / store decoder (HEVC Video Extensions, AV1 Video Extension); otherwise games are recorded in H.264. Clips you export keep the codec; "Exact cut" makes H.264 for sharing.</small>
+        </label>
+        <label>Bitrate
+          <select class="input" bind:value={draft.video.rate_control} data-testid="ratecontrol-select">
+            <option value="bitrate">Fixed average (steady file size)</option>
+            <option value="quality">Quality-based (smaller in calm moments, more for fights)</option>
+          </select>
+          <small>Quality-based sizes vary with the game; try the 5 s recorder test after changing it.</small>
+        </label>
+        <label class="check wide"><input type="checkbox" bind:checked={draft.video.display_capture} />Capture the whole screen instead of the game window <small>(records your desktop too; only if recordings come out black)</small></label>
+        {/if}
       </div>
     {:else if active === "modes"}
       <h2>Game modes</h2>
@@ -278,19 +283,19 @@
         <label>Seconds after<input class="input" type="number" min="1" max="60" bind:value={draft.events.clip_after_secs} /></label>
         <div class="wide ffrow">
           {#if ff?.available}
-            <span class="ok"><Icon name="check" size={14} /> ffmpeg ready</span><span class="muted path" title={ff.path}>{ff.path}</span>
+            <span class="ok"><Icon name="check" size={14} /> ffmpeg ready</span>{#if app.settings?.dev_tools}<span class="muted path" title={ff.path}>{ff.path}</span>{/if}
           {:else}
             <span class="warn">Clips need the free ffmpeg tool.</span>
             <button class="btn small primary" onclick={getFfmpeg} disabled={ffdl != null}><Icon name="download" size={13} />{ffdl ? `Downloading ${ffdl.total ? Math.round((ffdl.done / ffdl.total) * 100) + "%" : bytes(ffdl.done)}` : "Download ffmpeg (~100 MB)"}</button>
-            <span class="muted">or set its path:</span>
+            {#if app.settings?.dev_tools}<span class="muted">or set its path:</span>{/if}
           {/if}
-          <input class="input grow" bind:value={draft.ffmpeg_path} placeholder="Path to ffmpeg.exe (optional)" />
+          {#if app.settings?.dev_tools}<input class="input grow" bind:value={draft.ffmpeg_path} placeholder="Path to ffmpeg.exe (optional)" />{/if}
         </div>
       </div>
 
       <h3 class="sub">Sharing</h3>
       <div class="card box form">
-        <label class="check wide"><input type="checkbox" bind:checked={draft.share_fit_discord} />Fit shared clips for Discord <small>(Share makes a copy under 19.5 MB, Discord's free upload limit; off: the original clip is shared)</small></label>
+        <label class="check wide"><input type="checkbox" bind:checked={draft.share_fit_discord} />Fit shared clips for Discord <small>(Share makes a copy under 18 MB, Discord's free upload limit; off: the original clip is shared)</small></label>
       </div>
 
       <h3 class="sub">Voice callouts</h3>
@@ -432,7 +437,10 @@
         <label class="check wide"><input type="checkbox" bind:checked={draft.start_minimized} />Start minimized to the tray</label>
         <label class="check wide"><input type="checkbox" bind:checked={draft.keep_ui_loaded} />Keep Clairvoyance ready in the background <small>(opens instantly; while hidden in the tray it's paused and uses no CPU, but keeps some memory)</small></label>
         <label class="check wide"><input type="checkbox" bind:checked={draft.close_ui_in_game} />Close this window when a game starts <small>(off: stays open so you can alt-tab to it during the loading screen)</small></label>
-        <label class="check wide"><input type="checkbox" bind:checked={draft.show_perf} />Show Clairvoyance's CPU/RAM use in the sidebar</label>
+        <label class="check wide"><input type="checkbox" bind:checked={draft.dev_tools} data-testid="dev-tools" />Developer tools <small>(technical recording options, recorder and performance tests, Advanced)</small></label>
+        {#if draft.dev_tools}
+          <label class="check wide"><input type="checkbox" bind:checked={draft.show_perf} />Show Clairvoyance's CPU/RAM use in the sidebar</label>
+        {/if}
       </div>
       <p class="muted small">Closing the window keeps Clairvoyance in the tray (bottom-right, next to the clock). Use Quit there to exit.</p>
       <button class="btn danger" onclick={() => api.quit()}>Quit Clairvoyance</button>

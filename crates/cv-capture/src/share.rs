@@ -8,11 +8,12 @@
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-/// What a Discord copy must stay under (bytes).
-pub const DISCORD_TARGET_BYTES: u64 = 19_500_000;
+/// What a Discord copy must stay under (bytes). Well clear of 20 MB: Windows and Discord count
+/// a MB differently, and a copy showing "19.x MB" next to a 20 MB limit looked like it didn't fit.
+pub const DISCORD_TARGET_BYTES: u64 = 18_000_000;
 /// Share of the target given to the streams; the rest covers the container and the encoder
-/// overshooting its average a little.
-const USABLE: f64 = 0.94;
+/// overshooting its average (hardware encoders overshoot by up to ~10 % in busy scenes).
+const USABLE: f64 = 0.90;
 /// Below this video bitrate even 540p30 looks bad: the clip is too long to share this way.
 pub const MIN_VIDEO_KBPS: u32 = 600;
 /// A short clip gets no more than this (more would only make the file bigger, not better).
@@ -64,7 +65,7 @@ pub fn plan(duration: f64, src_w: u32, src_h: u32, src_fps: u32, limit: u64) -> 
 /// Encoder arguments for `encoder` (e.g. "h264_nvenc", "h264_mf", "libx264") at `kbps`: an
 /// average with a capped peak, which every H.264 encoder ffmpeg has understands.
 pub fn encoder_args(encoder: &str, kbps: u32) -> Vec<String> {
-    let mut a: Vec<String> = vec!["-c:v".into(), encoder.into(), "-b:v".into(), format!("{kbps}k"), "-maxrate".into(), format!("{}k", kbps * 3 / 2), "-bufsize".into(), format!("{}k", kbps * 2)];
+    let mut a: Vec<String> = vec!["-c:v".into(), encoder.into(), "-b:v".into(), format!("{kbps}k"), "-maxrate".into(), format!("{}k", kbps * 5 / 4), "-bufsize".into(), format!("{}k", kbps * 2)];
     if encoder == "libx264" {
         a.extend(["-preset".into(), "veryfast".into()]);
     }
@@ -105,21 +106,37 @@ fn run(exe: &Path, args: &[String]) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// The encoder for each attempt: the chosen one twice, then (when it's a hardware encoder that
+/// keeps missing the bitrate) libx264, which holds a bitrate closely.
+pub fn attempt_encoders(encoder: &str) -> Vec<&str> {
+    if encoder == "libx264" {
+        vec![encoder; 3]
+    } else {
+        vec![encoder, encoder, "libx264"]
+    }
+}
+
 /// Encodes the Discord copy of `input` into `out` and checks it fits `limit`: if the encoder
-/// overshot, once more at a bitrate scaled down by the overshoot. Returns the plan used and the
-/// file's size.
+/// overshot, again at a bitrate scaled down by the overshoot (the last try in libx264). Never
+/// hands back a file over `limit`. Returns the plan used and the file's size.
 pub fn make(exe: &Path, input: &Path, out: &Path, plan: SharePlan, audio_tracks: usize, encoder: &str, limit: u64) -> anyhow::Result<(SharePlan, u64)> {
     let part: PathBuf = out.with_extension("part.mp4");
     let mut p = plan;
-    for attempt in 0..2 {
-        run(exe, &ffmpeg_args(input, &part, &p, audio_tracks, encoder))?;
+    for (attempt, enc) in attempt_encoders(encoder).into_iter().enumerate() {
+        if let Err(e) = run(exe, &ffmpeg_args(input, &part, &p, audio_tracks, enc)) {
+            // libx264 missing from this ffmpeg build: nothing more to try.
+            if attempt > 0 && enc != encoder {
+                break;
+            }
+            return Err(e);
+        }
         let size = std::fs::metadata(&part)?.len();
         if size <= limit {
             std::fs::rename(&part, out)?;
             return Ok((p, size));
         }
         log::info!("share: {} bytes at {} kbps is over {limit} (attempt {})", size, p.video_kbps, attempt + 1);
-        let scaled = p.video_kbps as f64 * (limit as f64 / size as f64) * 0.92;
+        let scaled = p.video_kbps as f64 * (limit as f64 / size as f64) * 0.88;
         p.video_kbps = (scaled as u32).max(MIN_VIDEO_KBPS / 2);
     }
     let _ = std::fs::remove_file(&part);
@@ -171,16 +188,16 @@ mod tests {
         let p = |secs: f64| plan(secs, 1920, 1080, 60, L).unwrap();
         // A 14 s auto clip: room for 1080p60.
         assert_eq!((p(14.0).height, p(14.0).fps), (1080, 60));
-        // A 30 s hotkey clip: 1080p at 30 fps (about 4.8 Mbps).
+        // A 30 s hotkey clip: 1080p at 30 fps (about 4.2 Mbps).
         let h = p(30.0);
         assert_eq!((h.width, h.height, h.fps), (1920, 1080, 30));
-        assert!((4_500..5_000).contains(&h.video_kbps), "{h:?}");
+        assert!((4_000..4_500).contains(&h.video_kbps), "{h:?}");
         // A minute: 720p30; two minutes: 540p30.
         assert_eq!((p(60.0).height, p(60.0).fps), (720, 30));
         assert_eq!((p(120.0).width, p(120.0).height, p(120.0).fps), (960, 540, 30));
         // Too long.
         assert!(plan(max_secs(L) + 1.0, 1920, 1080, 60, L).is_none());
-        assert!(max_secs(L) > 200.0 && max_secs(L) < 220.0, "{}", max_secs(L));
+        assert!(max_secs(L) > 180.0 && max_secs(L) < 200.0, "{}", max_secs(L));
     }
 
     #[test]
@@ -195,7 +212,7 @@ mod tests {
 
     #[test]
     fn every_plan_fits_on_paper() {
-        for secs in [1.0, 5.0, 14.0, 30.0, 45.0, 90.0, 150.0, 200.0] {
+        for secs in [1.0, 5.0, 14.0, 30.0, 45.0, 90.0, 150.0, 180.0] {
             let p = plan(secs, 1920, 1080, 60, L).unwrap();
             let bytes = (p.video_kbps + p.audio_kbps) as f64 * 1000.0 / 8.0 * secs;
             assert!(bytes <= L as f64 * USABLE + 1.0, "{secs} s: {bytes}");
@@ -238,7 +255,7 @@ mod tests {
         let a = ffmpeg_args(Path::new("in.mp4"), Path::new("out.mp4"), &p, 2, "h264_nvenc").join(" ");
         assert!(a.contains("[0:v:0]fps=30,scale=1920:1080:flags=bicubic,format=yuv420p[v]"), "{a}");
         assert!(a.contains("amix=inputs=2") && a.contains("-map [a]"), "{a}");
-        assert!(a.contains("-c:v h264_nvenc -b:v 4800k -maxrate 7200k -bufsize 9600k -g 60"), "{a}");
+        assert!(a.contains("-c:v h264_nvenc -b:v 4800k -maxrate 6000k -bufsize 9600k -g 60"), "{a}");
         assert!(a.contains("-c:a aac -b:a 128k -ac 2 -movflags +faststart out.mp4"), "{a}");
         let a = ffmpeg_args(Path::new("in.mp4"), Path::new("out.mp4"), &p, 1, "libx264").join(" ");
         assert!(a.contains("-map 0:a:0") && !a.contains("amix") && a.contains("-preset veryfast"), "{a}");

@@ -63,6 +63,13 @@
     overlay 20/20, bubbles 20/20, frame stepping 27/27. Details in docs/HISTORY.md: "Richer timeline",
     "Time-synced scoreboard", "Smaller files (v1.8 part 3)".
 
+- **Share size, no desktop, Developer tools (2026-10-08, owner's request), not yet tried on
+  Windows:** Discord copies target 18 MB with 10 % headroom, peak 1.25× average, up to 3 tries
+  (GPU, GPU, then libx264), never a file over the limit; clips up to ~3 min. Recording never falls
+  back to the screen any more (window not found in 30 s → error; no frames → only a log line);
+  "Capture the whole screen" is a dev option and settings v5 turns it off once. New
+  `dev_tools` setting (off) hides the technical options, recorder test, CPU/RAM stat,
+  Performance test and Advanced.
 - **v1.8 sharing (2026-10-08, owner's request), not yet tried on Windows:** a Share button on
   every clip puts it on the clipboard as a file (Ctrl+V in Discord). "Fit for Discord" (saved
   setting, on by default, a tick on the Clips / game page and in Settings) makes an H.264 copy
