@@ -18,11 +18,41 @@ assists, objectives, steals and ult presses on a clickable timeline.
 See **PLAN.md** for the spec, milestone status and next steps, and **docs/HISTORY.md** for
 the design decisions, measurements and tests behind each part.
 
+## Why you can trust Clairvoyance
+
+Clairvoyance's source code isn't public, so here is what it does and doesn't do, and how you can
+check it yourself:
+
+- **Your games stay on your PC.** No accounts, no cloud, no telemetry, no analytics, no ads.
+  Recordings, timelines, clips and input data are never uploaded. The only internet requests are
+  the update check, Riot's public game data (champion and item pictures, the list of modes) and
+  the free tools you ask for (ffmpeg for clips, PresentMon for the performance test). The full
+  list, and what's stored where, is in **[PRIVACY.md](PRIVACY.md)**. You can watch it yourself
+  with Windows' Resource Monitor (Network tab) or any firewall.
+- **Safe with anti-cheat.** It reads only the official game APIs (Riot's Live Client Data API,
+  CS2 Game State Integration) on your own PC and records with Windows Graphics Capture. Nothing is
+  injected into the game, it draws no overlay over it and reads no game memory.
+- **Your keyboard is not logged.** Mouse and key presses are recorded only while the game window
+  is focused and never while the chat is open, as key codes (never text), and stay on your PC.
+  You can turn it off.
+- **Every update is signed.** Installed copies only accept updates signed with the developer's
+  private key (checked against the public key built into the app), so a tampered download is
+  refused.
+- **Checksums for every download.** Each release's notes list the SHA-256 of every file; compare
+  them with `Get-FileHash` in PowerShell.
+- **One official source.** Downloads and updates come only from
+  [github.com/Emre-98/Clairvoyance-releases](https://github.com/Emre-98/Clairvoyance-releases).
+  Copies from anywhere else aren't official.
+- **No admin rights.** It installs for your Windows user only. (The optional performance test asks
+  for admin once, for Intel's PresentMon.)
+
 ## Install (you or a friend)
 
 1. Download `Clairvoyance_<version>_x64-setup.exe` from the
-   [latest release](https://github.com/Emre-98/Clairvoyance/releases/latest) and run it
+   [latest release](https://github.com/Emre-98/Clairvoyance-releases/releases/latest) and run it
    (no admin rights needed). It installs for your Windows user and adds a Start menu entry.
+   To check the download, compare `Get-FileHash .\Clairvoyance_<version>_x64-setup.exe` (in
+   PowerShell) with the SHA-256 in that release's notes.
 2. Clairvoyance keeps itself up to date: it checks GitHub for a new version when it starts and
    every few hours (never while you're in a game) and asks before installing.
 3. The first-run setup shows your graphics card and its encoder and can record a 5-second
@@ -135,6 +165,8 @@ desktop. You can also start `Clairvoyance.exe --simulate` (or `--simulate=90` fo
 
 ## Building from source
 
+This source repository is private (see **License** below); this section is for the developer.
+
 Layout:
 
 ```
@@ -159,3 +191,11 @@ The exe is `target\release\clairvoyance.exe`. `cargo test` runs the tests.
 `scripts/build-windows.sh` is the cross-build (Linux → Windows) used for test builds (a portable
 zip in `dist\`). Releases (installer + auto-update files) are built by GitHub Actions: see
 **RELEASING.md**.
+
+## License
+
+Copyright (c) 2026 Emre-98. All rights reserved. Clairvoyance is proprietary software: you may
+download the official releases and use them free of charge for personal use. Copying, modifying,
+redistributing or reverse-engineering it isn't allowed. See **[LICENSE](LICENSE)** for the full
+terms. Versions published before 1.11.0 were released under the MIT license and keep it.
+Third-party components keep their own licenses.

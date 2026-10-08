@@ -3,6 +3,13 @@
 Newest first. `scripts/release.ps1` adds a section for each release; the section becomes the
 release notes on GitHub and in the in-app "Update available" card.
 
+## [Unreleased]
+
+- Updates now come from the new releases page, github.com/Emre-98/Clairvoyance-releases. This version moves your copy over; nothing to do on your side
+- Clairvoyance is now closed-source: still free for personal use (new license, see LICENSE). Versions up to 1.10.0 keep the MIT license
+- New privacy policy (PRIVACY.md): what is stored on your PC and every server the app talks to. No accounts, no cloud, no telemetry, as before
+- Each release's notes on GitHub list the SHA-256 checksum of every file, to check your download
+
 ## [1.10.0] - 2026-10-08
 
 - The cursor trail is now colored by speed: "Rocket" (default) is a blue pilot light when you move slowly and an orange to red flame on fast flicks

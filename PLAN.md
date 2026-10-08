@@ -211,7 +211,23 @@
   factors (0.75 / 0.6 of H.264) are starting points, not measured on a GPU yet.
 
 
+- **Closed source + releases repo (2026-10-08, owner's request), bridge not yet released:** new
+  proprietary LICENSE (free personal use; no copying, modifying, redistributing or
+  reverse-engineering), `license-file` / `publish = false` in Cargo, `UNLICENSED` in
+  ui/package.json. Updates move to the public, releases-only repo Emre-98/Clairvoyance-releases:
+  updater endpoint, installer homepage, release.ps1, RELEASING.md. The Release workflow
+  publishes there with the `RELEASES_TOKEN` secret (signing key unchanged), adds a SHA-256
+  table to the GitHub notes, and mirrors each release into this repo while it's public (the
+  bridge for copies on <= 1.10.0). PRIVACY.md, README "Why you can trust Clairvoyance", and
+  docs/releases-repo/README.md (the new repo's front page). Details in docs/HISTORY.md
+  "Closed source, releases repo".
+
 ## Next steps
+- **Owner, move to Clairvoyance-releases (in order, RELEASING.md "Moving releases to
+  Clairvoyance-releases"):** create the public repo with a README, add the `RELEASES_TOKEN`
+  secret, merge this branch, release 1.11.0 (the bridge) while this repo is still public, check
+  both latest.json addresses and an update from 1.10.0, wait at least 4 weeks, then make this
+  repo private.
 - **Owner, spectating caught earlier (~5 min, no Riot needed):** Settings > Advanced >
   Simulate, What = "Spectating, players unreadable": the status says "Checking whether this is
   a replay…", then "not recorded", and no folder is left. What = "A match, players unreadable":

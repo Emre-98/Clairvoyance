@@ -1,21 +1,42 @@
-MIT License
+Clairvoyance - Proprietary Software License
 
-Copyright (c) 2026 GameRecorder contributors
+Copyright (c) 2026 Emre-98. All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+This license covers the Clairvoyance software, including its source code, compiled program,
+installer, updates, documentation and assets (the "Software").
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+1. Permitted use. You may download the official released builds of the Software (from
+   https://github.com/Emre-98/Clairvoyance-releases or through the Software's built-in
+   updater), install them and use them free of charge, for your own personal, non-commercial
+   purposes, on any number of computers you own or control.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+2. Restrictions. Except as expressly permitted in section 1 or by applicable law that cannot be
+   waived, you may not:
+   a. copy the Software, other than installing it as permitted above;
+   b. modify, adapt, translate or create derivative works of the Software;
+   c. redistribute, sell, rent, lend, sublicense, host or otherwise make the Software available
+      to anyone else (point others to the official releases page instead);
+   d. reverse-engineer, decompile, disassemble or otherwise try to derive the source code of the
+      Software;
+   e. remove or alter any copyright notice, license text or other proprietary marking.
+
+3. Source code. Any source code of the Software you may have seen or obtained, including copies
+   published under an earlier license, does not grant you any rights beyond this license for
+   versions released under it. Earlier versions keep the license they were published under.
+
+4. Ownership. The Software is licensed, not sold. Emre-98 keeps all rights, title and interest in
+   the Software. All rights not expressly granted here are reserved.
+
+5. Third-party components. The Software includes open-source components that remain under their
+   own licenses. Nothing in this license limits your rights under those licenses.
+
+6. Termination. This license ends automatically if you break any of its terms. You must then
+   stop using the Software and delete all copies.
+
+7. No warranty. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+   PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+8. Limitation of liability. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM,
+   DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

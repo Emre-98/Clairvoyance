@@ -6,7 +6,8 @@ members = ["crates/cv-core", "crates/cv-capture", "crates/cv-mock-league", "game
 version = "1.10.0"
 edition = "2021"
 rust-version = "1.91"
-license = "MIT"
+license-file = "LICENSE"
+publish = false
 
 [workspace.dependencies]
 cv-core = { path = "crates/cv-core" }

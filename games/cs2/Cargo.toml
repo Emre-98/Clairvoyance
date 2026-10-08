@@ -4,7 +4,8 @@ description = "Counter-Strike 2 module: Valve's official Game State Integration 
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license.workspace = true
+license-file.workspace = true
+publish.workspace = true
 
 [dependencies]
 cv-core.workspace = true

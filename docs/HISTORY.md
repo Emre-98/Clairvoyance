@@ -179,6 +179,28 @@ Rules:
   overshoot. The encoder is the same pick as the overlay export (GPU, Media Foundation, x264).
 - Allowed during a game (owner): ffmpeg at below-normal priority, one share at a time.
 
+## Closed source, releases repo
+2026-10-08, owner's request. Steps for the owner: RELEASING.md "Moving releases to
+Clairvoyance-releases".
+- License: proprietary ("Copyright (c) 2026 Emre-98. All rights reserved."), free personal use of
+  the released app; no copying, modifying, redistributing or reverse-engineering. Versions up to
+  1.10.0 were published under MIT and keep it (can't be withdrawn). Cargo: `license-file` +
+  `publish = false` in `[workspace.package]`; ui/package.json `"license": "UNLICENSED"`.
+- Updates come from the public, releases-only repo **Emre-98/Clairvoyance-releases** (the source
+  repo becomes private, and a private repo's release files can't be downloaded without a token).
+  The Release workflow still runs in the source repo (where the signing key secrets stay,
+  unchanged) and publishes with tauri-action's `owner` / `repo` + `releaseCommitish: main` and a
+  fine-grained token (`RELEASES_TOKEN`, Contents read/write on that repo only).
+- Bridge: copies on <= 1.10.0 check the old repo's `latest.json`. While the source repo is
+  public (`github.event.repository.private` false) the workflow mirrors each release into it
+  with the same files; the mirrored `latest.json` points at the installer in the releases repo.
+  The first release with the new endpoint (1.11.0) is the bridge; wait at least 4 weeks
+  (copies check at start-up and every 4 h) before going private. Copies that missed it update
+  by hand once.
+- SHA-256 of every release file goes into the GitHub release notes after publishing (downloaded
+  back from the release, so it hashes what's actually served), not into latest.json (the
+  in-app card shows the plain notes).
+
 ## Decisions made
 ### Stack: Tauri 2 (Rust backend + Svelte 5/TypeScript UI in WebView2)
 Compared:

@@ -2,7 +2,8 @@
 .SYNOPSIS
   Publishes a new Clairvoyance version: bumps the version everywhere, adds the release notes to
   CHANGELOG.md, commits, tags and pushes. GitHub Actions then builds the installer, signs it and
-  creates the GitHub Release with latest.json (installed copies update themselves from it).
+  creates the GitHub Release with latest.json in the public repository Emre-98/Clairvoyance-releases
+  (installed copies update themselves from it). See RELEASING.md.
 
 .EXAMPLE
   .\scripts\release.ps1 1.0.1 -Notes "Faster library", "Fixed thumbnails for short games"
@@ -86,5 +87,5 @@ Invoke-Git push origin $tag
 Write-Host ""
 Write-Host "Pushed $tag. GitHub Actions is building the release (about 10-15 minutes):"
 Write-Host "  https://github.com/Emre-98/Clairvoyance/actions"
-Write-Host "When it's green, the release is at https://github.com/Emre-98/Clairvoyance/releases/tag/$tag"
+Write-Host "When it's green, the release is at https://github.com/Emre-98/Clairvoyance-releases/releases/tag/$tag"
 Write-Host "and installed copies will offer the update within a few hours (or Settings > Check now)."
