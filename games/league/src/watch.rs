@@ -24,10 +24,16 @@
 //! - the client spectating (its watch state) → not recorded unless "Record games you spectate";
 //! - no game session at all → most likely a replay / spectating: nothing is recorded until the
 //!   in-game API says (spectator mode → not recorded; your champion → recording starts);
-//! - the client can't be reached → recorded, and deleted if the in-game API then says
-//!   spectator mode (a few seconds in).
+//! - the client can't be reached, or its match's players can't be read → nothing is recorded
+//!   until the in-game API says (v1.8.1; before, it was recorded and deleted a few seconds in).
+//!   TFT, when the client says so, is recorded at once (its in-game API may not show your
+//!   champion);
+//! - a hold the in-game API doesn't settle (no answer either way after ~60 reads, or not
+//!   answering at all for 3 min) records anyway: the late check still deletes a replay /
+//!   spectated game found after that, so a real game is never lost.
 
 use cv_core::game::{SessionCheck, WatchKind};
+use std::time::Duration;
 
 /// What the League client (LCU) says when the game process appears.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -63,8 +69,9 @@ pub fn classify_client(f: &ClientFacts) -> SessionCheck {
 /// Are you one of the match's players? `me` = `/lol-summoner/v1/current-summoner`, `session` =
 /// `/lol-gameflow/v1/session` (its `gameData.teamOne` / `teamTwo`). Compared by `puuid`, else
 /// by `summonerId`. `None` = can't tell (a list without ids, an unknown format, your account
-/// unknown): then nothing changes. Only a list with at least two players carrying the same id
-/// as yours, and none of them you, says `Some(false)`.
+/// unknown). Your id in the list says `Some(true)` (also alone with bots: Practice Tool, Co-op
+/// vs AI); only a list with at least two players carrying the same kind of id as yours, none of
+/// them you, says `Some(false)`.
 pub fn in_roster(me: &serde_json::Value, session: &serde_json::Value) -> Option<bool> {
     let players: Vec<&serde_json::Value> = ["teamOne", "teamTwo"].iter().filter_map(|t| session["gameData"][*t].as_array()).flatten().collect();
     let id = |v: &serde_json::Value, key: &str| match &v[key] {
@@ -75,20 +82,53 @@ pub fn in_roster(me: &serde_json::Value, session: &serde_json::Value) -> Option<
     for key in ["puuid", "summonerId"] {
         let Some(mine) = id(me, key) else { continue };
         let ids: Vec<String> = players.iter().filter_map(|p| id(p, key)).collect();
+        if ids.contains(&mine) {
+            return Some(true);
+        }
         if ids.len() >= 2 {
-            return Some(ids.contains(&mine));
+            return Some(false);
         }
     }
     None
 }
 
 /// The client's verdict refined by the match's players: a "match of yours" you aren't playing
-/// in is probably spectating, so the in-game API decides (`Unsure`).
-pub fn refine_with_roster(c: SessionCheck, in_roster: Option<bool>) -> SessionCheck {
+/// in is probably spectating, so the in-game API decides (`Unsure`). Players that can't be read
+/// leave it open too (`Unsure(Unknown)`: a replay the client hides is possible, so never
+/// "spectating", which the setting could record), except in TFT (`tft`: the session's game mode),
+/// recorded at once as before.
+pub fn refine_with_roster(c: SessionCheck, in_roster: Option<bool>, tft: bool) -> SessionCheck {
     match (c, in_roster) {
         (SessionCheck::Playing, Some(false)) => SessionCheck::Unsure(WatchKind::Spectate),
+        (SessionCheck::Playing, None) if !tft => SessionCheck::Unsure(WatchKind::Unknown),
         _ => c,
     }
+}
+
+/// The client couldn't be asked (not found, or no answer): the in-game API decides before
+/// anything is recorded, like a game with no session of yours.
+pub fn hold_when_unknown(c: SessionCheck) -> SessionCheck {
+    match c {
+        SessionCheck::Unknown => SessionCheck::Unsure(WatchKind::Unknown),
+        _ => c,
+    }
+}
+
+/// Is the session a TFT game? (`/lol-gameflow/v1/session` → `gameData.queue.gameMode`)
+pub fn is_tft(session: &serde_json::Value) -> bool {
+    session["gameData"]["queue"]["gameMode"].as_str().is_some_and(|m| m.eq_ignore_ascii_case("TFT"))
+}
+
+/// In-game API reads (one per poll, once it answers) without a verdict before a hold records anyway.
+pub const HOLD_UNDECIDED_READS: u32 = 60;
+/// How long a hold waits for an in-game API that never answers before it records anyway (a slow
+/// loading screen is well under this).
+pub const HOLD_LIMIT: Duration = Duration::from_secs(180);
+
+/// The safety net of a hold: record anyway (the late check still applies) when the in-game API
+/// answered `reads` times without saying either way, or hasn't settled it after `waited`.
+pub fn hold_gives_up(reads: u32, waited: Duration) -> bool {
+    reads >= HOLD_UNDECIDED_READS || waited >= HOLD_LIMIT
 }
 
 /// The in-game API's answer to `/liveclientdata/activeplayer`.
@@ -165,12 +205,41 @@ mod tests {
         assert_eq!(in_roster(&me, &json!({"errorCode": "RPC_ERROR", "httpStatus": 404})), None);
         // Practice Tool with bots: you're there (bots carry no puuid).
         let practice = json!({"gameData": {"teamOne": [{"puuid": "p-me", "summonerId": 11}], "teamTwo": [{"puuid": "", "summonerId": 0, "botDifficulty": "EASY"}]}});
-        assert_ne!(in_roster(&me, &practice), Some(false));
+        assert_eq!(in_roster(&me, &practice), Some(true));
 
-        assert_eq!(refine_with_roster(SessionCheck::Playing, Some(false)), SessionCheck::Unsure(WatchKind::Spectate));
-        assert_eq!(refine_with_roster(SessionCheck::Playing, Some(true)), SessionCheck::Playing);
-        assert_eq!(refine_with_roster(SessionCheck::Playing, None), SessionCheck::Playing);
-        assert_eq!(refine_with_roster(SessionCheck::Watching(WatchKind::Replay), Some(false)), SessionCheck::Watching(WatchKind::Replay));
+        assert_eq!(refine_with_roster(SessionCheck::Playing, Some(false), false), SessionCheck::Unsure(WatchKind::Spectate));
+        assert_eq!(refine_with_roster(SessionCheck::Playing, Some(true), false), SessionCheck::Playing);
+        assert_eq!(refine_with_roster(SessionCheck::Watching(WatchKind::Replay), Some(false), false), SessionCheck::Watching(WatchKind::Replay));
+    }
+
+    #[test]
+    fn a_match_the_client_cant_confirm_waits_for_the_game() {
+        use serde_json::json;
+        // Players unreadable: the in-game API decides (never as "spectating": a hidden replay
+        // must not be recorded by "Record games you spectate").
+        assert_eq!(refine_with_roster(SessionCheck::Playing, None, false), SessionCheck::Unsure(WatchKind::Unknown));
+        // TFT: recorded at once, as before.
+        assert_eq!(refine_with_roster(SessionCheck::Playing, None, true), SessionCheck::Playing);
+        assert_eq!(refine_with_roster(SessionCheck::Playing, Some(false), true), SessionCheck::Unsure(WatchKind::Spectate));
+        // Other verdicts aren't touched.
+        assert_eq!(refine_with_roster(SessionCheck::Unsure(WatchKind::Unknown), None, false), SessionCheck::Unsure(WatchKind::Unknown));
+        assert_eq!(refine_with_roster(SessionCheck::Watching(WatchKind::Spectate), None, false), SessionCheck::Watching(WatchKind::Spectate));
+        // The client can't be asked at all.
+        assert_eq!(hold_when_unknown(SessionCheck::Unknown), SessionCheck::Unsure(WatchKind::Unknown));
+        assert_eq!(hold_when_unknown(SessionCheck::Playing), SessionCheck::Playing);
+        assert_eq!(hold_when_unknown(SessionCheck::Watching(WatchKind::Replay)), SessionCheck::Watching(WatchKind::Replay));
+        assert!(is_tft(&json!({"gameData": {"queue": {"id": 1100, "gameMode": "TFT"}}})));
+        assert!(!is_tft(&json!({"gameData": {"queue": {"id": 420, "gameMode": "CLASSIC"}}})));
+        assert!(!is_tft(&json!({"errorCode": "RPC_ERROR", "httpStatus": 404})));
+    }
+
+    #[test]
+    fn a_hold_never_loses_a_real_game() {
+        let s = Duration::from_secs;
+        assert!(!hold_gives_up(0, s(5)));
+        assert!(!hold_gives_up(HOLD_UNDECIDED_READS - 1, s(120)), "a long loading screen still waits");
+        assert!(hold_gives_up(HOLD_UNDECIDED_READS, s(70)), "a minute of answers without a verdict");
+        assert!(hold_gives_up(0, HOLD_LIMIT), "an in-game API that never answers");
     }
 
     #[test]

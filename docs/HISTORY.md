@@ -1206,6 +1206,27 @@ later, then deleted.
   `--simulate-watch=spectate-live`, Settings > Advanced > Simulate > "Spectating a friend",
   and the `--ui-test` `watch` list); `watch_mock.rs` end to end over HTTP.
 
+### Spectating: when the client can't tell (2026-10-08, owner's request)
+The one late case left after "Spectating: you're not one of the match's players": the League
+client not reachable, or reporting your match with players that can't be read. Both were
+recorded at once and deleted when the in-game API said spectator mode ~10 s in.
+- **Now (League only, the engine is unchanged):** both are `SessionCheck::Unsure(Unknown)`
+  (`watch::hold_when_unknown`, `watch::refine_with_roster`): nothing is recorded until the
+  in-game API says spectator mode (not recorded) or your champion (recording starts; your own
+  game misses its loading screen). `Unknown`, not `Spectate`: the client could be hiding a
+  replay, which "Record games you spectate" must not record. The players are read up to 3 times
+  (300 ms apart).
+- **TFT** (`gameData.queue.gameMode` "TFT"): recorded at once as before, since its in-game API
+  may not show a champion.
+- **Safety net** (`watch::hold_gives_up`): a hold the in-game API doesn't settle (60 reads
+  without a verdict, or 3 min) records anyway; spectator mode found later still deletes it. Before,
+  such a hold waited for good.
+- **Players list:** your id in it now says "playing" even with fewer than two ids (you alone
+  with bots: Practice Tool, Co-op vs AI), so those games don't wait.
+- **Tests:** `watch.rs` unit tests; the fake client got `spectate-unreadable` and
+  `match-unreadable` (Settings > Advanced > Simulate, `--simulate-watch=`); `watch_mock.rs`
+  covers both and a missing client end to end.
+
 ### Auto clips follow the recording check (2026-10-07)
 Automatic event clips are cut right after the game (stream copy, so the game is ready at once),
 from the live events. The check against the recording runs later in the maintenance pass and
