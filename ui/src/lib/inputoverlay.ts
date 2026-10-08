@@ -356,10 +356,13 @@ function rgba(c: Rgba, alpha: number): string {
  * full flame. */
 export const HEAT_COOL = 0.6;
 export const HEAT_HOT = 3;
+/** How fast a flame cools back to the pilot light (s, exponential). */
+export const HEAT_COOLDOWN = 0.18;
 
 /**
  * Heat of each cursor sample, 0 (slow, pilot light) .. 1 (flick, full flame): the cursor speed
- * over the last 50 ms (not across stroke breaks), eased between HEAT_COOL and HEAT_HOT.
+ * over the last 50 ms (not across stroke breaks), eased between HEAT_COOL and HEAT_HOT, cooling
+ * down gradually after a flick (HEAT_COOLDOWN).
  */
 export function trailHeat(mt: ArrayLike<number>, mx: ArrayLike<number>, my: ArrayLike<number>, mb: ArrayLike<number>, win = 0.05): Float32Array {
   const n = mt.length;
@@ -382,7 +385,10 @@ export function trailHeat(mt: ArrayLike<number>, mx: ArrayLike<number>, my: Arra
     const dt = Math.max(mt[i] - mt[j], 1 / 120);
     const v = (len[i] - len[j]) / dt;
     const k = Math.min(1, Math.max(0, (v - HEAT_COOL) / (HEAT_HOT - HEAT_COOL)));
-    out[i] = k * k * (3 - 2 * k);
+    let hv = k * k * (3 - 2 * k);
+    // After a flick the flame cools down gradually (no hard red -> blue switch).
+    if (i > start) hv = Math.max(hv, out[i - 1] * Math.exp(-(mt[i] - mt[i - 1]) / HEAT_COOLDOWN));
+    out[i] = hv;
   }
   return out;
 }
