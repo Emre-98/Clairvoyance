@@ -639,7 +639,7 @@ export class Overlay {
           g.lineWidth = w * 2.6 + 1;
           g.stroke();
         } else if (pass === 1) {
-          const c = mix(ramp(SLOW_STOPS, f), ramp(FAST_STOPS, fh * fh * fh), h);
+          const c = mix(ramp(SLOW_STOPS, f), ramp(FAST_STOPS, fh * fh), h);
           c[3] = 1;
           // Fades out completely at the tail, so its end flows away instead of dropping off.
           g.strokeStyle = rgba(c, tp);
