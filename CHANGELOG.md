@@ -3,6 +3,14 @@
 Newest first. `scripts/release.ps1` adds a section for each release; the section becomes the
 release notes on GitHub and in the in-app "Update available" card.
 
+## [1.10.0] - 2026-10-08
+
+- The cursor trail is now colored by speed: "Rocket" (default) is a blue pilot light when you move slowly and an orange to red flame on fast flicks
+- Pick other trail colors in the overlay menu: Plasma, Toxic, Sunset, Frost, or Classic (the old yellow line)
+- "Keys pressed" now shows your mouse clicks (LMB, RMB, middle and side buttons) in their own lane
+- New ability bubbles: round buttons like a fighting game's input display, with a gold ring and a punchy pop on every press
+- Ability colors follow Guilty Gear Strive's buttons: Q orange, W green, E blue, R red, D violet, F yellow; Q W E R are the biggest, items the smallest
+
 ## [1.9.0] - 2026-10-08
 
 - New Share button on every clip (Clips page, the clip player and a game's clip list): one click puts the clip on the clipboard, so Ctrl+V in Discord attaches it
