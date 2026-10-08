@@ -309,10 +309,8 @@ function heatImage(raw: Float32Array, w: number, h: number): HTMLCanvasElement {
 
 const BTN_COLOR: Record<number, string> = { 1: "#4dabf7", 2: "#ff6b6b", 3: "#ffd43b", 4: "#b197fc", 5: "#b197fc" };
 const TRAIL_BUCKETS = 8;
-/** Rocket trail buckets: by age (tail -> tip; finer near the tip, where the colors change
- * fastest) and by heat (slow -> flick). */
-const ROCKET_AGE = 16;
-const ROCKET_HEAT = 6;
+/** The rocket trail's points are at least this far apart (CSS px). */
+const ROCKET_STEP = 3;
 
 type Rgba = [number, number, number, number];
 /** Pilot light along the trail, tail (0) -> tip (1). */
@@ -451,7 +449,7 @@ export class Overlay {
 
     if (o.trail && hi > 0) {
       if (o.trailStyle === "classic") this.drawClassicTrail(g, m, t, o.trailSecs, hi, lw);
-      else this.drawRocketTrail(g, m, t, o.trailSecs, hi, lw, rect.h);
+      else this.drawRocketTrail(g, m, t, o.trailSecs, hi, lw);
     }
 
     if (o.clicks) {
@@ -556,73 +554,76 @@ export class Overlay {
   }
 
   /**
-   * The rocket exhaust trail: each segment colored by its age (tail -> tip) and by how fast the
-   * cursor moved there. Slow moves burn like a blue pilot light; flicks ignite into a wide
-   * red-orange flame with a white-hot core. Segments are grouped by (age, heat) bucket so a frame
-   * is a few dozen strokes, whatever the sample rate.
+   * The rocket exhaust trail: a thin streak that tapers to a hairline at its tail, colored by
+   * its age and by how fast the cursor moved there. Slow moves burn like a blue pilot light;
+   * flicks ignite into a red-orange flame with a white-hot core that burns out faster than the
+   * rest of the trail, so a flick reads as a quick streak. The cursor path is thinned to points
+   * a few px apart and drawn as a smooth curve through them (quadratic pieces between the
+   * midpoints), each piece with its own width and color.
    */
-  private drawRocketTrail(g: CanvasRenderingContext2D, m: Mapper, t: number, secs: number, hi: number, lw: number, videoH: number) {
+  private drawRocketTrail(g: CanvasRenderingContext2D, m: Mapper, t: number, secs: number, hi: number, lw: number) {
     const d = this.d;
     const heat = this.sampleHeat();
     const t0 = t - secs;
     const lo = Math.max(1, lowerBound(d.mt, t0));
     if (hi < lo) return;
-    const paths = new Map<number, Path2D>();
-    for (let i = lo; i <= hi; i++) {
-      if (d.mb[i]) continue; // a new stroke starts here (focus came back, window moved)
-      const f = (d.mt[i] - t0) / secs;
-      const b = Math.min(ROCKET_AGE - 1, Math.max(0, Math.floor(f * f * ROCKET_AGE)));
-      const h = Math.min(ROCKET_HEAT - 1, Math.round(heat[i] * (ROCKET_HEAT - 1)));
-      const key = b * ROCKET_HEAT + h;
-      let p = paths.get(key);
-      if (!p) paths.set(key, (p = new Path2D()));
-      p.moveTo(m.x(d.mx[i - 1]), m.y(d.my[i - 1]));
-      p.lineTo(m.x(d.mx[i]), m.y(d.my[i]));
+    // Points at least ROCKET_STEP px apart (the newest one always), split at stroke breaks.
+    const px: number[] = [], py: number[] = [], pt: number[] = [], ph: number[] = [], brk: number[] = [];
+    let lx = NaN, ly = NaN;
+    for (let i = lo - 1; i <= hi; i++) {
+      const x = m.x(d.mx[i]);
+      const y = m.y(d.my[i]);
+      const cut = i >= lo && d.mb[i] === 1;
+      if (!cut && i !== hi && Math.hypot(x - lx, y - ly) < ROCKET_STEP) continue;
+      px.push(x);
+      py.push(y);
+      pt.push(d.mt[i]);
+      ph.push(heat[i]);
+      brk.push(cut || i === lo - 1 ? 1 : 0);
+      lx = x;
+      ly = y;
     }
-    g.lineCap = "round";
+    const n = px.length;
+    g.lineCap = "butt";
     g.lineJoin = "round";
-    const scale = Math.max(1, videoH / 720);
-    // Oldest first, so the hot tip is drawn over the cooling tail. Three passes keep the glow
-    // under every flame and the cores on top.
-    const keys = [...paths.keys()].sort((a, b) => a - b);
+    // Piece k runs from the midpoint before point k to the midpoint after it (the ends of a
+    // stroke from the point itself), curving through point k: neighbors share their ends and
+    // tangents, so the streak is smooth and the pieces meet without overlaps.
+    const piece = (k: number) => {
+      const first = brk[k] === 1 || k === 0;
+      const last = k === n - 1 || brk[k + 1] === 1;
+      g.beginPath();
+      if (first) g.moveTo(px[k], py[k]);
+      else g.moveTo((px[k - 1] + px[k]) / 2, (py[k - 1] + py[k]) / 2);
+      if (last) g.lineTo(px[k], py[k]);
+      else g.quadraticCurveTo(px[k], py[k], (px[k] + px[k + 1]) / 2, (py[k] + py[k + 1]) / 2);
+    };
     for (let pass = 0; pass < 3; pass++) {
-      for (const key of keys) {
-        const p = paths.get(key)!;
-        const f = Math.sqrt((Math.floor(key / ROCKET_HEAT) + 0.5) / ROCKET_AGE);
-        const h = (key % ROCKET_HEAT) / (ROCKET_HEAT - 1);
-        const w = lw * (1 + f) * (1 + 1.1 * h);
-        // The flame cools faster than the pilot light: white-hot only right at the cursor, then
-        // yellow, orange and red within the newest part of the trail.
-        const ff = f * f * f;
+      for (let k = 0; k < n; k++) {
+        const h = ph[k];
+        // Flames burn out sooner than the pilot light: a flick is a short, quick streak.
+        const life = secs * (1 - 0.5 * h);
+        const f = 1 - (t - pt[k]) / life;
+        if (f <= 0) continue;
+        // Tapers from a hairline at the tail to its full width at the cursor.
+        const w = lw * (0.3 + 1.1 * Math.pow(f, 1.6)) * (1 + 0.4 * h);
+        piece(k);
         if (pass === 0) {
-          // Glow: sky blue around the pilot light, red-orange around a flame. Two faint wide
-          // strokes read as a soft halo without a (slow) canvas blur. Butt caps: no brighter
-          // blobs where buckets meet.
-          g.lineCap = "butt";
-          const c = mix(GLOW_SLOW, GLOW_FAST, h);
-          const a = (0.14 + 0.14 * h) * f * f;
-          g.strokeStyle = rgba(c, a);
-          g.lineWidth = w * 4 + 4 * scale;
-          g.stroke(p);
-          g.strokeStyle = rgba(c, a * 1.4);
-          g.lineWidth = w * 2.2 + 2 * scale;
-          g.stroke(p);
-          g.lineCap = "round";
-          g.strokeStyle = `rgba(0,0,0,${0.2 * f})`;
-          g.lineWidth = w + 2;
-          g.stroke(p);
+          // A narrow halo: sky blue around the pilot light, red-orange around a flame.
+          g.strokeStyle = rgba(mix(GLOW_SLOW, GLOW_FAST, h), (0.16 + 0.12 * h) * f * f);
+          g.lineWidth = w * 2.6 + 1;
+          g.stroke();
         } else if (pass === 1) {
-          g.strokeStyle = rgba(mix(ramp(SLOW_STOPS, f), ramp(FAST_STOPS, ff), h), 1);
+          g.strokeStyle = rgba(mix(ramp(SLOW_STOPS, f), ramp(FAST_STOPS, f * f * f), h), 1);
           g.lineWidth = w;
-          g.stroke(p);
+          g.stroke();
         } else {
-          // The white-hot core near the cursor.
-          const k = mix([f > 0.6 ? (f - 0.6) / 0.4 : 0, 0, 0, 0], [ff > 0.5 ? (ff - 0.5) / 0.5 : 0, 0, 0, 0], h)[0];
-          if (k <= 0) continue;
-          const c = mix([224, 242, 254, 1], [255, 251, 230, 1], h);
-          g.strokeStyle = rgba(c, k * 0.9);
-          g.lineWidth = Math.max(1, w * 0.35);
-          g.stroke(p);
+          // The white-hot core right at the cursor.
+          const k0 = f > 0.7 ? (f - 0.7) / 0.3 : 0;
+          if (k0 <= 0) continue;
+          g.strokeStyle = rgba(mix([224, 242, 254, 1], [255, 251, 230, 1], h), k0 * (0.6 + 0.4 * h));
+          g.lineWidth = Math.max(0.75, w * 0.4);
+          g.stroke();
         }
       }
     }
