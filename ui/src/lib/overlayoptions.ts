@@ -8,8 +8,13 @@ export const SECS_MAX = 3;
 export const SECS_STEP = 0.05;
 export const SECS_DEFAULT = 1;
 
+/** "rocket": colored by cursor speed (blue pilot light when slow, red-orange flame on flicks);
+ * "classic": the pale yellow trail of v1.4-v1.9. */
+export type TrailStyle = "rocket" | "classic";
+
 export interface OverlayOptions {
   trail: boolean;
+  trailStyle: TrailStyle;
   /** "Trail & bubbles" (s, 0.25-3): the trail's length, and how long a bubble lives (it goes with
    * the trail piece of its moment). Also used when the trail itself is off. */
   trailSecs: number;
@@ -27,6 +32,7 @@ export interface OverlayOptions {
 
 export const DEFAULT_OPTIONS: OverlayOptions = {
   trail: true,
+  trailStyle: "rocket",
   trailSecs: SECS_DEFAULT,
   clicks: true,
   dot: true,
@@ -68,6 +74,7 @@ export function migrateOptions(raw: Record<string, unknown>): OverlayOptions {
   delete r.v;
   const o = { ...DEFAULT_OPTIONS, bubbleCats: {}, ...r } as OverlayOptions;
   o.trailSecs = clampSecs(o.trailSecs);
+  if (o.trailStyle !== "rocket" && o.trailStyle !== "classic") o.trailStyle = DEFAULT_OPTIONS.trailStyle;
   if (typeof o.bubbleCats !== "object" || !o.bubbleCats) o.bubbleCats = {};
   return o;
 }

@@ -230,6 +230,8 @@ export function mapper(d: InputData, t: number, rect: { x: number; y: number; w:
   return { x: (nx: number) => ax + bx * nx, y: (ny: number) => ay + by * ny, w: bx, h: by, ox: ax, oy: ay };
 }
 
+type Mapper = ReturnType<typeof mapper>;
+
 /** Cursor dwell heatmap for [a, b] (same rule as the Rust one: dwell per sample, max 0.5 s). */
 export function heatmapFor(d: InputData, a: number, b: number, w = 96, h = 54): Float32Array {
   const v = new Float32Array(w * h);
@@ -307,6 +309,85 @@ function heatImage(raw: Float32Array, w: number, h: number): HTMLCanvasElement {
 
 const BTN_COLOR: Record<number, string> = { 1: "#4dabf7", 2: "#ff6b6b", 3: "#ffd43b", 4: "#b197fc", 5: "#b197fc" };
 const TRAIL_BUCKETS = 8;
+/** Rocket trail buckets: by age (tail -> tip; finer near the tip, where the colors change
+ * fastest) and by heat (slow -> flick). */
+const ROCKET_AGE = 16;
+const ROCKET_HEAT = 6;
+
+type Rgba = [number, number, number, number];
+/** Pilot light along the trail, tail (0) -> tip (1). */
+const SLOW_STOPS: [number, Rgba][] = [
+  [0, [30, 58, 138, 0.12]],
+  [0.5, [59, 130, 246, 0.7]],
+  [0.85, [56, 189, 248, 1]],
+  [1, [224, 242, 254, 1]],
+];
+/** Flame along the trail: grey smoke, deep red, red, orange, yellow, white-hot tip. */
+const FAST_STOPS: [number, Rgba][] = [
+  [0, [110, 110, 110, 0.15]],
+  [0.3, [201, 42, 42, 0.8]],
+  [0.55, [240, 62, 62, 1]],
+  [0.75, [253, 126, 20, 1]],
+  [0.9, [255, 212, 59, 1]],
+  [1, [255, 251, 230, 1]],
+];
+const GLOW_SLOW: Rgba = [56, 189, 248, 1];
+const GLOW_FAST: Rgba = [240, 72, 50, 1];
+
+function mix(a: Rgba, b: Rgba, k: number): Rgba {
+  return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k, a[3] + (b[3] - a[3]) * k];
+}
+
+export function ramp(stops: [number, Rgba][], f: number): Rgba {
+  if (f <= stops[0][0]) return stops[0][1];
+  for (let i = 1; i < stops.length; i++) {
+    const [p, c] = stops[i];
+    if (f <= p) {
+      const [p0, c0] = stops[i - 1];
+      return mix(c0, c, (f - p0) / (p - p0));
+    }
+  }
+  return stops[stops.length - 1][1];
+}
+
+function rgba(c: Rgba, alpha: number): string {
+  return `rgba(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])},${(c[3] * alpha).toFixed(3)})`;
+}
+
+/** Cursor speed (screen heights per second, 16:9) at which the trail starts to heat up / is a
+ * full flame. */
+export const HEAT_COOL = 0.6;
+export const HEAT_HOT = 3;
+
+/**
+ * Heat of each cursor sample, 0 (slow, pilot light) .. 1 (flick, full flame): the cursor speed
+ * over the last 50 ms (not across stroke breaks), eased between HEAT_COOL and HEAT_HOT.
+ */
+export function trailHeat(mt: ArrayLike<number>, mx: ArrayLike<number>, my: ArrayLike<number>, mb: ArrayLike<number>, win = 0.05): Float32Array {
+  const n = mt.length;
+  const out = new Float32Array(n);
+  let j = 0; // first sample of the window
+  let start = 0; // first sample of the current stroke
+  // Running path length from the stroke start, so the window length is a difference.
+  const len = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    if (mb[i] || i === 0) {
+      start = i;
+      len[i] = 0;
+    } else {
+      const dx = (mx[i] - mx[i - 1]) * (16 / 9);
+      const dy = my[i] - my[i - 1];
+      len[i] = len[i - 1] + Math.hypot(dx, dy);
+    }
+    if (j < start) j = start;
+    while (j < i && mt[i] - mt[j] > win) j++;
+    const dt = Math.max(mt[i] - mt[j], 1 / 120);
+    const v = (len[i] - len[j]) / dt;
+    const k = Math.min(1, Math.max(0, (v - HEAT_COOL) / (HEAT_HOT - HEAT_COOL)));
+    out[i] = k * k * (3 - 2 * k);
+  }
+  return out;
+}
 const STRIP_BEFORE = 2.5;
 const STRIP_AFTER = 0.5;
 
@@ -369,31 +450,8 @@ export class Overlay {
     const gap = inGap(d, t);
 
     if (o.trail && hi > 0) {
-      const t0 = t - o.trailSecs;
-      const lo = Math.max(1, lowerBound(d.mt, t0));
-      g.lineCap = "round";
-      g.lineJoin = "round";
-      // Fade: older segments in fainter buckets (one stroke per bucket keeps it fast).
-      for (let b = 0; b < TRAIL_BUCKETS; b++) {
-        const a0 = t0 + (o.trailSecs * b) / TRAIL_BUCKETS;
-        const a1 = t0 + (o.trailSecs * (b + 1)) / TRAIL_BUCKETS;
-        const s = Math.max(lo, lowerBound(d.mt, a0));
-        const e = Math.min(hi, upperBound(d.mt, a1) - 1);
-        if (e < s) continue;
-        g.beginPath();
-        for (let i = s; i <= e; i++) {
-          if (d.mb[i]) continue; // a new stroke starts here (focus came back, window moved)
-          g.moveTo(m.x(d.mx[i - 1]), m.y(d.my[i - 1]));
-          g.lineTo(m.x(d.mx[i]), m.y(d.my[i]));
-        }
-        const f = (b + 1) / TRAIL_BUCKETS;
-        g.strokeStyle = `rgba(0,0,0,${0.35 * f})`;
-        g.lineWidth = lw * (1 + f) + 2;
-        g.stroke();
-        g.strokeStyle = `rgba(255,236,153,${0.95 * f})`;
-        g.lineWidth = lw * (1 + f);
-        g.stroke();
-      }
+      if (o.trailStyle === "classic") this.drawClassicTrail(g, m, t, o.trailSecs, hi, lw);
+      else this.drawRocketTrail(g, m, t, o.trailSecs, hi, lw, rect.h);
     }
 
     if (o.clicks) {
@@ -457,6 +515,116 @@ export class Overlay {
     if (o.keys) {
       const bottom = Math.min(vis.y + vis.h, cssH - insetBottom);
       this.drawKeys(g, { x: vis.x, y: vis.y, w: vis.w, h: Math.max(0, bottom - vis.y) }, t, fit === "contain" ? rect.h : vis.h);
+    }
+  }
+
+  /** The v1.4 trail: pale yellow, older segments fainter. */
+  private drawClassicTrail(g: CanvasRenderingContext2D, m: Mapper, t: number, secs: number, hi: number, lw: number) {
+    const d = this.d;
+    const t0 = t - secs;
+    const lo = Math.max(1, lowerBound(d.mt, t0));
+    g.lineCap = "round";
+    g.lineJoin = "round";
+    // Fade: older segments in fainter buckets (one stroke per bucket keeps it fast).
+    for (let b = 0; b < TRAIL_BUCKETS; b++) {
+      const a0 = t0 + (secs * b) / TRAIL_BUCKETS;
+      const a1 = t0 + (secs * (b + 1)) / TRAIL_BUCKETS;
+      const s = Math.max(lo, lowerBound(d.mt, a0));
+      const e = Math.min(hi, upperBound(d.mt, a1) - 1);
+      if (e < s) continue;
+      g.beginPath();
+      for (let i = s; i <= e; i++) {
+        if (d.mb[i]) continue; // a new stroke starts here (focus came back, window moved)
+        g.moveTo(m.x(d.mx[i - 1]), m.y(d.my[i - 1]));
+        g.lineTo(m.x(d.mx[i]), m.y(d.my[i]));
+      }
+      const f = (b + 1) / TRAIL_BUCKETS;
+      g.strokeStyle = `rgba(0,0,0,${0.35 * f})`;
+      g.lineWidth = lw * (1 + f) + 2;
+      g.stroke();
+      g.strokeStyle = `rgba(255,236,153,${0.95 * f})`;
+      g.lineWidth = lw * (1 + f);
+      g.stroke();
+    }
+  }
+
+  /** How hot each cursor sample is (0 slow .. 1 fast flick), computed once. */
+  private speedHeat: Float32Array | null = null;
+  private sampleHeat(): Float32Array {
+    if (!this.speedHeat) this.speedHeat = trailHeat(this.d.mt, this.d.mx, this.d.my, this.d.mb);
+    return this.speedHeat;
+  }
+
+  /**
+   * The rocket exhaust trail: each segment colored by its age (tail -> tip) and by how fast the
+   * cursor moved there. Slow moves burn like a blue pilot light; flicks ignite into a wide
+   * red-orange flame with a white-hot core. Segments are grouped by (age, heat) bucket so a frame
+   * is a few dozen strokes, whatever the sample rate.
+   */
+  private drawRocketTrail(g: CanvasRenderingContext2D, m: Mapper, t: number, secs: number, hi: number, lw: number, videoH: number) {
+    const d = this.d;
+    const heat = this.sampleHeat();
+    const t0 = t - secs;
+    const lo = Math.max(1, lowerBound(d.mt, t0));
+    if (hi < lo) return;
+    const paths = new Map<number, Path2D>();
+    for (let i = lo; i <= hi; i++) {
+      if (d.mb[i]) continue; // a new stroke starts here (focus came back, window moved)
+      const f = (d.mt[i] - t0) / secs;
+      const b = Math.min(ROCKET_AGE - 1, Math.max(0, Math.floor(f * f * ROCKET_AGE)));
+      const h = Math.min(ROCKET_HEAT - 1, Math.round(heat[i] * (ROCKET_HEAT - 1)));
+      const key = b * ROCKET_HEAT + h;
+      let p = paths.get(key);
+      if (!p) paths.set(key, (p = new Path2D()));
+      p.moveTo(m.x(d.mx[i - 1]), m.y(d.my[i - 1]));
+      p.lineTo(m.x(d.mx[i]), m.y(d.my[i]));
+    }
+    g.lineCap = "round";
+    g.lineJoin = "round";
+    const scale = Math.max(1, videoH / 720);
+    // Oldest first, so the hot tip is drawn over the cooling tail. Three passes keep the glow
+    // under every flame and the cores on top.
+    const keys = [...paths.keys()].sort((a, b) => a - b);
+    for (let pass = 0; pass < 3; pass++) {
+      for (const key of keys) {
+        const p = paths.get(key)!;
+        const f = Math.sqrt((Math.floor(key / ROCKET_HEAT) + 0.5) / ROCKET_AGE);
+        const h = (key % ROCKET_HEAT) / (ROCKET_HEAT - 1);
+        const w = lw * (1 + f) * (1 + 1.1 * h);
+        // The flame cools faster than the pilot light: white-hot only right at the cursor, then
+        // yellow, orange and red within the newest part of the trail.
+        const ff = f * f * f;
+        if (pass === 0) {
+          // Glow: sky blue around the pilot light, red-orange around a flame. Two faint wide
+          // strokes read as a soft halo without a (slow) canvas blur. Butt caps: no brighter
+          // blobs where buckets meet.
+          g.lineCap = "butt";
+          const c = mix(GLOW_SLOW, GLOW_FAST, h);
+          const a = (0.14 + 0.14 * h) * f * f;
+          g.strokeStyle = rgba(c, a);
+          g.lineWidth = w * 4 + 4 * scale;
+          g.stroke(p);
+          g.strokeStyle = rgba(c, a * 1.4);
+          g.lineWidth = w * 2.2 + 2 * scale;
+          g.stroke(p);
+          g.lineCap = "round";
+          g.strokeStyle = `rgba(0,0,0,${0.2 * f})`;
+          g.lineWidth = w + 2;
+          g.stroke(p);
+        } else if (pass === 1) {
+          g.strokeStyle = rgba(mix(ramp(SLOW_STOPS, f), ramp(FAST_STOPS, ff), h), 1);
+          g.lineWidth = w;
+          g.stroke(p);
+        } else {
+          // The white-hot core near the cursor.
+          const k = mix([f > 0.6 ? (f - 0.6) / 0.4 : 0, 0, 0, 0], [ff > 0.5 ? (ff - 0.5) / 0.5 : 0, 0, 0, 0], h)[0];
+          if (k <= 0) continue;
+          const c = mix([224, 242, 254, 1], [255, 251, 230, 1], h);
+          g.strokeStyle = rgba(c, k * 0.9);
+          g.lineWidth = Math.max(1, w * 0.35);
+          g.stroke(p);
+        }
+      }
     }
   }
 
