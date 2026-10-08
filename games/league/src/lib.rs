@@ -200,6 +200,9 @@ pub struct LeagueIntegration {
     /// The in-game API has said whether this is spectator mode (checked once per match).
     live_decided: bool,
     live_checks: u32,
+    /// Since when nothing is recorded until the in-game API says (`SessionCheck::Unsure`), for
+    /// the hold's safety net.
+    hold_started: Option<Instant>,
     /// Items and summoner spells from Data Dragon (filled in the background once per match).
     static_data: std::sync::Arc<std::sync::Mutex<Option<std::sync::Arc<ddragon::StaticData>>>>,
     static_started: bool,
@@ -263,6 +266,7 @@ impl LeagueIntegration {
             watch_hint: None,
             live_decided: false,
             live_checks: 0,
+            hold_started: None,
             static_data: Default::default(),
             static_started: false,
             items: items::ItemTracker::new(),
@@ -313,6 +317,7 @@ impl LeagueIntegration {
         self.watch_hint = None;
         self.live_decided = false;
         self.live_checks = 0;
+        self.hold_started = None;
         self.static_data = Default::default();
         self.static_started = false;
         self.items = items::ItemTracker::new();
@@ -640,6 +645,16 @@ impl GameIntegration for LeagueIntegration {
 
     async fn poll(&mut self) -> anyhow::Result<PollUpdate> {
         let mut u = PollUpdate::default();
+        // The safety net of a hold (nothing recorded until the in-game API says): it never said,
+        // so record anyway. Before the in-game read: it also covers an API that never answers.
+        if let Some(t) = self.hold_started {
+            if !self.live_decided && watch::hold_gives_up(self.live_checks, t.elapsed()) {
+                self.hold_started = None;
+                log::info!("in-game API: no verdict after {} reads / {} s: recording anyway (spectator mode found later still deletes it)", self.live_checks, t.elapsed().as_secs());
+                u.playing = true;
+                return Ok(u);
+            }
+        }
         let stats: GameStats = match self.get("gamestats").await {
             Ok(s) => s,
             Err(e) => {
@@ -669,6 +684,7 @@ impl GameIntegration for LeagueIntegration {
                     }
                     watch::LiveVerdict::Playing => {
                         self.live_decided = true;
+                        self.hold_started = None;
                         u.playing = true;
                     }
                     watch::LiveVerdict::Undecided => {}
@@ -793,9 +809,29 @@ impl cv_core::game::WatchDetection for LeagueIntegration {
         self.watch_hint = None;
         self.live_decided = false;
         self.live_checks = 0;
+        self.hold_started = None;
+        let c = self.ask_client().await;
+        if let SessionCheck::Unsure(_) = c {
+            self.hold_started = Some(Instant::now());
+        }
+        self.watch_hint = match c {
+            SessionCheck::Watching(k) | SessionCheck::Unsure(k) => Some(k),
+            _ => None,
+        };
+        c
+    }
+
+    fn record_spectating(&self) -> bool {
+        self.record_spectating
+    }
+}
+
+impl LeagueIntegration {
+    /// The League client's verdict (see `watch`); can't tell → the in-game API decides.
+    async fn ask_client(&self) -> SessionCheck {
         let Some(lcu) = queues::find_lockfile(&self.client_dir).and_then(|l| queues::Lcu::new(&l)) else {
-            log::info!("session check: League client not found; the in-game API decides");
-            return SessionCheck::Unknown;
+            log::info!("session check: League client not found; nothing recorded until the in-game API says");
+            return watch::hold_when_unknown(SessionCheck::Unknown);
         };
         let mut facts = watch::ClientFacts::default();
         for attempt in 0..2 {
@@ -820,24 +856,27 @@ impl cv_core::game::WatchDetection for LeagueIntegration {
         log::info!("session check: League client phase {:?}, playing replay {:?}, watch {:?} -> {c:?}", facts.phase, facts.playing_replay, facts.watch_phase);
         if c == SessionCheck::Playing {
             // Spectating a friend's game looks like your own match to the client: are you one
-            // of its players?
-            let (me, session) = tokio::join!(lcu.get_raw("/lol-summoner/v1/current-summoner"), lcu.get_raw("/lol-gameflow/v1/session"));
-            let roster = match (me, session) {
-                (Ok((200, me)), Ok((200, session))) => watch::in_roster(&me, &session),
-                _ => None,
-            };
-            c = watch::refine_with_roster(c, roster);
-            log::info!("session check: you are one of the match's players: {roster:?} -> {c:?}");
+            // of its players? Asked up to 3 times (a busy client may not answer at once).
+            let (mut roster, mut tft) = (None, false);
+            for attempt in 0..3 {
+                if attempt > 0 {
+                    tokio::time::sleep(Duration::from_millis(300)).await;
+                }
+                let (me, session) = tokio::join!(lcu.get_raw("/lol-summoner/v1/current-summoner"), lcu.get_raw("/lol-gameflow/v1/session"));
+                if let Ok((200, session)) = &session {
+                    tft = watch::is_tft(session);
+                    if let Ok((200, me)) = &me {
+                        roster = watch::in_roster(me, session);
+                    }
+                }
+                if roster.is_some() || tft {
+                    break;
+                }
+            }
+            c = watch::refine_with_roster(c, roster, tft);
+            log::info!("session check: you are one of the match's players: {roster:?} (TFT {tft}) -> {c:?}");
         }
-        self.watch_hint = match c {
-            SessionCheck::Watching(k) | SessionCheck::Unsure(k) => Some(k),
-            _ => None,
-        };
-        c
-    }
-
-    fn record_spectating(&self) -> bool {
-        self.record_spectating
+        watch::hold_when_unknown(c)
     }
 }
 

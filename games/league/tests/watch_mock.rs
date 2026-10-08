@@ -82,3 +82,44 @@ async fn spectating_a_friend_the_client_calls_a_match_waits_for_the_game() {
     assert_eq!(w, Some(WatchKind::Spectate));
     assert!(!p);
 }
+
+#[tokio::test]
+async fn players_the_client_cant_show_wait_for_the_game() {
+    // v1.8.1: the client reports your match but its players can't be read: nothing is recorded
+    // until the in-game API says spectator mode (never as "spectating": could be a replay)...
+    let (c, w, p) = run(Watch::SpectateUnreadable, 3028, false).await;
+    assert_eq!(c, SessionCheck::Unsure(WatchKind::Unknown));
+    assert_eq!(w, Some(WatchKind::Unknown));
+    assert!(!p);
+    // ... or your champion, and recording starts.
+    let (c, w, p) = run(Watch::MatchUnreadable, 3029, false).await;
+    assert_eq!(c, SessionCheck::Unsure(WatchKind::Unknown));
+    assert_eq!(w, None);
+    assert!(p, "the in-game API confirms your champion");
+}
+
+#[tokio::test]
+async fn no_league_client_waits_for_the_game() {
+    // The client can't be found (no lockfile): the in-game API decides before anything is recorded.
+    let opts = MockOptions { port: 3030, speed: 10.0, length: 300.0, loading_secs: 1.0, linger_secs: 30.0, watch: Watch::Spectate, ..Default::default() };
+    let mock = cv_mock_league::spawn(opts).unwrap();
+    let dir = std::env::temp_dir().join(format!("cv-watch-noclient-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut l = LeagueIntegration::new();
+    l.configure(&serde_json::json!({ "api_base": mock.base_url, "client_dir": dir.to_string_lossy() }));
+    l.start().await.unwrap();
+    assert_eq!(l.session_check().await, SessionCheck::Unsure(WatchKind::Unknown));
+    let mut watching = None;
+    for _ in 0..40 {
+        if let Ok(u) = l.poll().await {
+            if u.watching.is_some() {
+                watching = u.watching;
+                break;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(150)).await;
+    }
+    mock.stop();
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(watching, Some(WatchKind::Unknown));
+}

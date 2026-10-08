@@ -73,6 +73,14 @@
   (ffmpeg below-normal priority, GPU encoder). Linux, x264 standing in for the GPU: a 30 s
   1080p60 12 Mbps clip with a mic track (46.8 MB) → 18.98 MB at 1080p30 in 17 s; 100 s 720p
   (53.7 MB) → 18.45 MB at 540p30; both first try. Details in docs/HISTORY.md "Share (Discord)".
+- **Spectating caught earlier (2026-10-08, owner's request), not yet tried on Windows:** when the
+  League client can't tell (not reachable, or the match's players can't be read after 3 tries),
+  nothing is recorded until the in-game API says: spectator mode → not recorded; your champion →
+  recording starts (your own game then misses its loading screen). TFT, when the client says
+  so, records at once as before. Safety net: no verdict after 60 in-game reads or 3 min →
+  recorded anyway, the late check still deletes it. Your id in the players list now counts as
+  "you're playing" even alone with bots (Practice Tool, Co-op vs AI). Details in
+  docs/HISTORY.md "Spectating: when the client can't tell".
 
 ## Performance rules (hard requirements)
 - Recording is done by GameRecorder's **built-in recorder** (see "Built-in recorder" below). No
@@ -97,6 +105,7 @@
 - [x] 36. Time-synced scoreboard: all 10 players saved as changes only, card + overlay (O / Tab) following playback and scrubbing, final-only fallback for old recordings (v1.8 part 2)
 - [x] 37. Smaller files: measured (software stand-ins + PC script), HEVC / AV1 recording and quality-based rate control as options with H.264 fallback; defaults unchanged until the GPU numbers (v1.8 part 3)
 - [x] 38. Share: one click to the clipboard, "Fit for Discord" copy under 19.5 MB (on by default), copies cleared after 24 h
+- [x] 39. Spectating caught before recording also when the client can't tell (the in-game API decides; safety net records anyway)
 - [ ] Owner's real-game check of v1.8 (see "Next steps")
 - [ ] Owner's `scripts/encoder-compare.ps1` run, then switch the defaults where the numbers allow
 
@@ -136,9 +145,10 @@
   check is the safety net; the log says "session check: ..." and "in-game API: spectator mode").
   Spectating: the client reports a spectated game like your own match (owner's check). Since
   2026-10-07 the match's players are compared with your account first, so it isn't recorded at
-  all; the player-list format comes from the LCU's documented shape, not a capture. If the
-  list can't be read, it falls back to the old way (recorded, then deleted when the in-game API
-  says spectator mode ~10 s in).
+  all; the player-list format comes from the LCU's documented shape, not a capture. Since
+  2026-10-08, if the list (or the client) can't be read, nothing is recorded until the in-game
+  API says (log: "session check: ... -> Unsure(Unknown)"); only a hold the in-game API never
+  settles (60 reads / 3 min) records anyway and falls back to the old late delete.
 - Unverified without the owner's tests: the ult kinds on real recast / command icons (Annie's
   Tibbers, Ivern's Daisy...: the detector is calibrated on synthetic recast icons), the ability
   bubbles on a real game with rebound keys, and the v1.6 player's numbers in WebView2 (they
@@ -189,6 +199,11 @@
 
 
 ## Next steps
+- **Owner, spectating caught earlier (~5 min, no Riot needed):** Settings > Advanced >
+  Simulate, What = "Spectating, players unreadable": the status says "Checking whether this is
+  a replay…", then "not recorded", and no folder is left. What = "A match, players unreadable":
+  recorded from the end of the loading screen. Then, when a friend plays, spectate them once:
+  nothing should appear in Games and the log shows "session check: ...".
 - **Owner, Share (~5 min):** Clips page, "Fit for Discord" ticked: Share a 30 s hotkey clip,
   Ctrl+V in a Discord chat, send it; it should upload (no Nitro prompt) and play in the embed.
   Untick it and share again: the original file is pasted. Then share once during a Practice

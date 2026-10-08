@@ -54,6 +54,12 @@ pub enum Watch {
     /// false, no watch state), only the session's players don't include you; the in-game API is
     /// in spectator mode.
     SpectateLive,
+    /// Like `SpectateLive`, but the session's players can't be read (no team lists): the app
+    /// waits for the in-game API, which says spectator mode (v1.8.1).
+    SpectateUnreadable,
+    /// A match you play whose players can't be read: the app waits for the in-game API, which
+    /// shows your champion, and records from then on (v1.8.1).
+    MatchUnreadable,
 }
 
 impl Watch {
@@ -64,11 +70,13 @@ impl Watch {
             "replay-late" => Watch::ReplayLate,
             "replay-unsure" => Watch::ReplayUnsure,
             "spectate-live" => Watch::SpectateLive,
+            "spectate-unreadable" => Watch::SpectateUnreadable,
+            "match-unreadable" => Watch::MatchUnreadable,
             _ => Watch::None,
         }
     }
     fn spectator(self) -> bool {
-        self != Watch::None
+        !matches!(self, Watch::None | Watch::MatchUnreadable)
     }
 }
 
@@ -275,9 +283,12 @@ impl Script {
         let path = path.split('?').next().unwrap_or(path);
         // The League client answers from the start (during the loading screen too).
         let w = self.opts.watch;
-        let has_session = matches!(w, Watch::None | Watch::ReplayLate | Watch::SpectateLive);
+        let has_session = matches!(w, Watch::None | Watch::ReplayLate | Watch::SpectateLive | Watch::SpectateUnreadable | Watch::MatchUnreadable);
         match path {
             "/lol-gameflow/v1/session" if !has_session => return Some(json!({"errorCode":"RPC_ERROR","httpStatus":404,"implementationDetails":{},"message":"No gameflow session exists."})),
+            "/lol-gameflow/v1/session" if matches!(w, Watch::SpectateUnreadable | Watch::MatchUnreadable) => {
+                return Some(json!({ "phase": "InProgress", "gameData": { "queue": self.opts.queue.clone(), "isCustomGame": false } }));
+            }
             "/lol-gameflow/v1/session" => {
                 // The match's players (LCU format, shortened): you, unless you're spectating.
                 let player = |name: &str, n: u64| json!({ "puuid": format!("puuid-{}", name.to_lowercase()), "summonerId": 1000 + n, "championId": 103 + n });
@@ -294,7 +305,7 @@ impl Script {
             "/lol-summoner/v1/current-summoner" => {
                 return Some(json!({ "puuid": format!("puuid-{}", self.me_short().to_lowercase()), "summonerId": 1000, "gameName": self.me_short(), "tagLine": "EUW" }))
             }
-            "/lol-gameflow/v1/watch" if w == Watch::SpectateLive => return None,
+            "/lol-gameflow/v1/watch" if matches!(w, Watch::SpectateLive | Watch::SpectateUnreadable | Watch::MatchUnreadable) => return None,
             "/lol-gameflow/v1/gameflow-phase" => return Some(json!(if has_session { "InProgress" } else { "None" })),
             "/lol-gameflow/v1/watch" => {
                 return Some(
@@ -422,5 +433,14 @@ mod tests {
         assert_eq!(get(&late, "/lol-gameflow/v1/gameflow-phase"), json!("InProgress"));
         assert!(get(&late, "/liveclientdata/activeplayer")["message"].as_str().unwrap().contains("Spectator mode"));
         assert_eq!(Watch::parse("replay-unsure"), Watch::ReplayUnsure);
+        // The match's players can't be read: a match of yours to the client, the game decides.
+        for w in [Watch::SpectateUnreadable, Watch::MatchUnreadable] {
+            let s = Script { opts: opts(w), start: Instant::now() };
+            assert_eq!(get(&s, "/lol-gameflow/v1/gameflow-phase"), json!("InProgress"));
+            assert!(get(&s, "/lol-gameflow/v1/session")["gameData"].get("teamOne").is_none());
+        }
+        let s = Script { opts: opts(Watch::MatchUnreadable), start: Instant::now() };
+        assert!(get(&s, "/liveclientdata/activeplayer").get("championStats").is_some());
+        assert_eq!(Watch::parse("match-unreadable"), Watch::MatchUnreadable);
     }
 }

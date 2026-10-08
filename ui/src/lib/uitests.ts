@@ -267,6 +267,7 @@ async function watch(): Promise<Check[]> {
     ["replay", "Replay"],
     ["spectate", "Spectating"],
     ["spectate-live", "Spectating a friend (the client reports it like your match; you're not one of its players)"],
+    ["spectate-unreadable", "Spectating, the client's player list unreadable (the game decides)"],
     ["replay-late", "Replay (client can't tell, found by the game a few seconds in)"],
     ["replay-unsure", "Replay (no game session in the client, the game decides)"],
   ] as const) {

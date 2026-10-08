@@ -362,7 +362,7 @@ fn main() {
                 let length = arg.split_once('=').and_then(|(_, v)| v.parse().ok()).unwrap_or(120.0);
                 // `--simulate-queue=<id>`: the queue the fake League client reports (450 = ARAM...).
                 let queue = std::env::args().find_map(|a| a.strip_prefix("--simulate-queue=").and_then(|v| v.parse().ok()));
-                // `--simulate-watch=replay|spectate|spectate-live|replay-late|replay-unsure`: spectator mode.
+                // `--simulate-watch=replay|spectate|spectate-live|spectate-unreadable|match-unreadable|replay-late|replay-unsure`: spectator mode.
                 let watch = std::env::args().find_map(|a| a.strip_prefix("--simulate-watch=").map(str::to_string));
                 let st = handle.state::<Arc<AppState>>().inner().clone();
                 tauri::async_runtime::spawn(async move {

@@ -496,6 +496,8 @@
               <option value="replay">A replay</option>
               <option value="spectate">Spectating</option>
               <option value="spectate-live">Spectating a friend</option>
+              <option value="spectate-unreadable">Spectating, players unreadable</option>
+              <option value="match-unreadable">A match, players unreadable</option>
               <option value="replay-late">A replay found late</option>
             </select>
           </label>
