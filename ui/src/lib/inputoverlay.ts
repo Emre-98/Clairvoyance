@@ -324,12 +324,13 @@ const SLOW_STOPS: [number, Rgba][] = [
  * white-hot tip (in-between stops so it shades gradually instead of in bands). */
 const FAST_STOPS: [number, Rgba][] = [
   [0, [150, 32, 32, 0.15]],
-  [0.25, [190, 40, 42, 0.8]],
-  [0.45, [232, 56, 56, 1]],
-  [0.6, [246, 88, 44, 1]],
-  [0.72, [252, 120, 28, 1]],
-  [0.82, [254, 160, 40, 1]],
-  [0.92, [255, 212, 59, 1]],
+  [0.18, [190, 40, 42, 0.8]],
+  [0.3, [232, 56, 56, 1]],
+  [0.42, [246, 88, 44, 1]],
+  [0.55, [252, 120, 28, 1]],
+  [0.75, [254, 150, 36, 1]],
+  [0.88, [255, 190, 50, 1]],
+  [0.95, [255, 222, 90, 1]],
   [1, [255, 251, 230, 1]],
 ];
 
@@ -664,7 +665,7 @@ export class Overlay {
           g.lineWidth = w * 2.6 + 1;
           g.stroke();
         } else if (pass === 1) {
-          const c = heatMix(ramp(SLOW_STOPS, f), ramp(FAST_STOPS, fh * fh * fh), h);
+          const c = heatMix(ramp(SLOW_STOPS, f), ramp(FAST_STOPS, Math.pow(fh, 2.5)), h);
           c[3] = 1;
           // Fades out completely at the tail, so its end flows away instead of dropping off.
           g.strokeStyle = rgba(c, tp);
