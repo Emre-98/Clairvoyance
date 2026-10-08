@@ -28,6 +28,8 @@ export interface InputData {
   heat: { w: number; h: number; v: Float32Array } | null;
   /** Key presses with their release, for the keys strip. */
   keys: KeyBar[];
+  /** Mouse button presses with their release, for the keys strip's mouse lane. */
+  buttons: KeyBar[];
 }
 
 export interface KeyBar {
@@ -36,7 +38,17 @@ export interface KeyBar {
   t1: number;
   label: string;
   lane: number;
+  /** Mouse button (1 left, 2 right, 3 middle, 4/5 side), 0 for a key. */
+  btn?: number;
 }
+
+/** Keys strip label of a mouse button. */
+export function btnName(btn: number): string {
+  return ({ 1: "LMB", 2: "RMB", 3: "MMB", 4: "M4", 5: "M5" } as Record<number, string>)[btn] ?? `M${btn}`;
+}
+
+/** The keys strip lane of the mouse buttons (under the three key lanes). */
+const MOUSE_LANE = 3;
 
 export function vkName(vk: number): string {
   if ((vk >= 0x41 && vk <= 0x5a) || (vk >= 0x30 && vk <= 0x39)) return String.fromCharCode(vk);
@@ -123,7 +135,26 @@ export function parse(buf: ArrayBuffer): InputData {
       }
     }
   }
-  return { rate, mt, mx, my, mb, ct, cx, cy, cc, kt, kc, gaps, wt, wm, heat, keys };
+  // Mouse button bars, the same way (left / right clicks in the strip's mouse lane).
+  const buttons: KeyBar[] = [];
+  const held = new Map<number, KeyBar>();
+  for (let i = 0; i < nc; i++) {
+    const btn = cc[i] & 0x7f;
+    if (cc[i] & 0x80) {
+      const b = { vk: 0, btn, t0: ct[i], t1: ct[i] + 0.12, label: btnName(btn), lane: MOUSE_LANE };
+      const prev = held.get(btn);
+      if (prev) prev.t1 = Math.min(prev.t1, b.t0);
+      held.set(btn, b);
+      buttons.push(b);
+    } else {
+      const b = held.get(btn);
+      if (b) {
+        b.t1 = Math.min(Math.max(ct[i], b.t0 + 0.05), b.t0 + 3);
+        held.delete(btn);
+      }
+    }
+  }
+  return { rate, mt, mx, my, mb, ct, cx, cy, cc, kt, kc, gaps, wt, wm, heat, keys, buttons };
 }
 
 /** Index of the first element >= v (sorted array). */
@@ -429,12 +460,12 @@ export class Overlay {
     }
   }
 
-  /** A strip of the keys pressed from 2.5 s before to 0.5 s after `t`, one lane per key group. */
+  /** A strip of the keys and mouse buttons pressed from 2.5 s before to 0.5 s after `t`, one
+   * lane per key group plus one for the mouse. */
   private drawKeys(g: CanvasRenderingContext2D, rect: { x: number; y: number; w: number; h: number }, t: number, sizeH = rect.h) {
-    const keys = this.d.keys;
     const W = Math.max(220, Math.min(rect.w * 0.36, 520));
     const laneH = Math.max(15, Math.min(22, sizeH / 30));
-    const H = laneH * 3 + 10;
+    const H = laneH * (MOUSE_LANE + 1) + 10;
     const x0 = rect.x + 12;
     const y0 = rect.y + rect.h - H - 12;
     const span = STRIP_BEFORE + STRIP_AFTER;
@@ -448,30 +479,37 @@ export class Overlay {
     g.clip();
     g.font = `600 ${Math.round(laneH * 0.62)}px system-ui, sans-serif`;
     g.textBaseline = "middle";
-    // Keys are sorted by press time: find the ones overlapping the window.
-    const from = t - STRIP_BEFORE - 3;
-    let s = 0;
-    let lo = 0;
-    let hi = keys.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (keys[mid].t0 < from) lo = mid + 1;
-      else hi = mid;
-    }
-    s = lo;
-    for (let i = s; i < keys.length && keys[i].t0 <= t + STRIP_AFTER; i++) {
-      const k = keys[i];
-      if (k.t1 < t - STRIP_BEFORE) continue;
-      const a = px(k.t0);
-      const w = Math.max(px(k.t1) - a, g.measureText(k.label).width + 10);
-      const y = y0 + 5 + k.lane * laneH;
-      const held = k.t0 <= t && t <= k.t1;
-      const future = k.t0 > t;
-      g.fillStyle = held ? "rgba(255,236,153,0.95)" : future ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.32)";
-      roundRect(g, a, y, w, laneH - 3, 4);
-      g.fill();
-      g.fillStyle = held ? "#1b1b1b" : "rgba(255,255,255,0.92)";
-      g.fillText(k.label, a + 5, y + (laneH - 3) / 2 + 0.5);
+    for (const bars of [this.d.keys, this.d.buttons]) {
+      // Bars are sorted by press time: find the ones overlapping the window.
+      const from = t - STRIP_BEFORE - 3;
+      let lo = 0;
+      let hi = bars.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (bars[mid].t0 < from) lo = mid + 1;
+        else hi = mid;
+      }
+      for (let i = lo; i < bars.length && bars[i].t0 <= t + STRIP_AFTER; i++) {
+        const k = bars[i];
+        if (k.t1 < t - STRIP_BEFORE) continue;
+        const a = px(k.t0);
+        const w = Math.max(px(k.t1) - a, g.measureText(k.label).width + 10);
+        const y = y0 + 5 + k.lane * laneH;
+        const held = k.t0 <= t && t <= k.t1;
+        const future = k.t0 > t;
+        // A held mouse button takes its click ring's color (left blue, right red).
+        const heldFill = k.btn ? (BTN_COLOR[k.btn] ?? "#fff") : "rgba(255,236,153,0.95)";
+        g.fillStyle = held ? heldFill : future ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.32)";
+        roundRect(g, a, y, w, laneH - 3, 4);
+        g.fill();
+        if (k.btn && !held) {
+          // Not held: a thin edge in the button's color tells left from right at a glance.
+          g.fillStyle = BTN_COLOR[k.btn] ?? "#fff";
+          g.fillRect(a, y + 2, 2, laneH - 7);
+        }
+        g.fillStyle = held ? "#1b1b1b" : "rgba(255,255,255,0.92)";
+        g.fillText(k.label, a + 5, y + (laneH - 3) / 2 + 0.5);
+      }
     }
     // Now.
     const nx = px(t);
