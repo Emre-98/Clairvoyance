@@ -590,6 +590,16 @@ export class Overlay {
       ly = y;
     }
     const n = px.length;
+    // Smooth out the mouse's pixel steps and jitter: each inner point moves toward its
+    // neighbors (1-2-1, twice); stroke ends and the newest point (the cursor) stay put.
+    for (let pass = 0; pass < 2; pass++) {
+      const sx = px.slice(), sy = py.slice();
+      for (let k = 1; k < n - 1; k++) {
+        if (brk[k] || brk[k + 1]) continue;
+        px[k] = (sx[k - 1] + 2 * sx[k] + sx[k + 1]) / 4;
+        py[k] = (sy[k - 1] + 2 * sy[k] + sy[k + 1]) / 4;
+      }
+    }
     g.lineCap = "butt";
     g.lineJoin = "round";
     // Piece k runs from the midpoint before point k to the midpoint after it (the ends of a
@@ -612,11 +622,11 @@ export class Overlay {
         const f = 1 - (t - pt[k]) / life;
         if (f <= 0) continue;
         // Full width and opacity over the newer half of its life, then tapering to a hairline
-        // and fading out. The same for pilot light and flame (only the colors differ), so where
+        // and fading out completely. The same for pilot light and flame (only the colors differ), so where
         // a cooling flame meets the pilot light there is no step in width or opacity, even when
         // the cursor slows down and a lot of time is packed into a few pixels.
         const tp = f >= 0.5 ? 1 : (f / 0.5) * (f / 0.5) * (3 - (2 * f) / 0.5);
-        const w = lw * (0.35 + 1.25 * tp);
+        const w = lw * (0.25 + 1.05 * tp);
         piece(k);
         if (pass === 0) {
           // A narrow halo: sky blue around the pilot light, red-orange around a flame.
@@ -626,7 +636,8 @@ export class Overlay {
         } else if (pass === 1) {
           const c = mix(ramp(SLOW_STOPS, f), ramp(FAST_STOPS, f * f * f), h);
           c[3] = 1;
-          g.strokeStyle = rgba(c, 0.12 + 0.88 * tp);
+          // Fades out completely at the tail, so its end flows away instead of dropping off.
+          g.strokeStyle = rgba(c, tp);
           g.lineWidth = w;
           g.stroke();
         } else {
