@@ -591,8 +591,8 @@ export class Overlay {
     }
     const n = px.length;
     // Smooth out the mouse's pixel steps and jitter: each inner point moves toward its
-    // neighbors (1-2-1, twice); stroke ends and the newest point (the cursor) stay put.
-    for (let pass = 0; pass < 2; pass++) {
+    // neighbors (1-2-1, three times); stroke ends and the newest point (the cursor) stay put.
+    for (let pass = 0; pass < 3; pass++) {
       const sx = px.slice(), sy = py.slice();
       for (let k = 1; k < n - 1; k++) {
         if (brk[k] || brk[k + 1]) continue;
@@ -617,15 +617,20 @@ export class Overlay {
     for (let pass = 0; pass < 3; pass++) {
       for (let k = 0; k < n; k++) {
         const h = ph[k];
-        // Flames burn out sooner than the pilot light: a flick is a short, quick streak.
-        const life = secs * (1 - 0.5 * h);
-        const f = 1 - (t - pt[k]) / life;
+        const age = t - pt[k];
+        // Fades over the whole trail time, the same for pilot light and flame (a flame that
+        // left earlier would leave a gap between older and newer blue on long trails).
+        const f = 1 - age / secs;
         if (f <= 0) continue;
-        // Full width and opacity over the newer half of its life, then tapering to a hairline
+        // A flame's colors cool on a faster clock (white-hot -> red -> embers), so a flick
+        // still reads as a quick streak.
+        const fh = Math.max(0, 1 - age / (secs * (1 - 0.5 * h)));
+        // Full width and opacity over the newest 40% of its life, then tapering to a hairline
         // and fading out completely. The same for pilot light and flame (only the colors differ), so where
         // a cooling flame meets the pilot light there is no step in width or opacity, even when
         // the cursor slows down and a lot of time is packed into a few pixels.
-        const tp = f >= 0.5 ? 1 : (f / 0.5) * (f / 0.5) * (3 - (2 * f) / 0.5);
+        const u = Math.min(1, f / 0.6);
+        const tp = u * u * (3 - 2 * u);
         const w = lw * (0.25 + 1.05 * tp);
         piece(k);
         if (pass === 0) {
@@ -634,7 +639,7 @@ export class Overlay {
           g.lineWidth = w * 2.6 + 1;
           g.stroke();
         } else if (pass === 1) {
-          const c = mix(ramp(SLOW_STOPS, f), ramp(FAST_STOPS, f * f * f), h);
+          const c = mix(ramp(SLOW_STOPS, f), ramp(FAST_STOPS, fh * fh * fh), h);
           c[3] = 1;
           // Fades out completely at the tail, so its end flows away instead of dropping off.
           g.strokeStyle = rgba(c, tp);
@@ -642,7 +647,8 @@ export class Overlay {
           g.stroke();
         } else {
           // The white-hot core right at the cursor.
-          const k0 = f > 0.8 ? (f - 0.8) / 0.2 : 0;
+          const fc = f + (fh - f) * h;
+          const k0 = fc > 0.8 ? (fc - 0.8) / 0.2 : 0;
           if (k0 <= 0) continue;
           g.strokeStyle = rgba(mix([224, 242, 254, 1], [255, 251, 230, 1], h), k0 * (0.6 + 0.4 * h));
           g.lineWidth = Math.max(0.75, w * 0.4);
