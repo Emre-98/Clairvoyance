@@ -63,6 +63,17 @@
     overlay 20/20, bubbles 20/20, frame stepping 27/27. Details in docs/HISTORY.md: "Richer timeline",
     "Time-synced scoreboard", "Smaller files (v1.8 part 3)".
 
+- **v1.8 sharing (2026-10-08, owner's request), not yet tried on Windows:** a Share button on
+  every clip puts it on the clipboard as a file (Ctrl+V in Discord). "Fit for Discord" (saved
+  setting, on by default, a tick on the Clips / game page and in Settings) makes an H.264 copy
+  under 19.5 MB (Discord's free limit is 20 MB since 2026-08-13): bitrate from the length,
+  1080p60 → 1080p30 → 720p60 → 720p30 → 540p30, microphone mixed into the game track, one
+  retry if the encoder overshoots; clips that already fit are shared as they are; up to ~3.5 min.
+  Copies live in `<data>\Share`, deleted at start-up and after 24 h. Allowed during a game
+  (ffmpeg below-normal priority, GPU encoder). Linux, x264 standing in for the GPU: a 30 s
+  1080p60 12 Mbps clip with a mic track (46.8 MB) → 18.98 MB at 1080p30 in 17 s; 100 s 720p
+  (53.7 MB) → 18.45 MB at 540p30; both first try. Details in docs/HISTORY.md "Share (Discord)".
+
 ## Performance rules (hard requirements)
 - Recording is done by GameRecorder's **built-in recorder** (see "Built-in recorder" below). No
   injection into the game: capture uses Windows Graphics Capture, which is Vanguard-safe.
@@ -85,6 +96,7 @@
 - [x] 35. Richer timeline: tower / inhibitor / objective details + gold, completed-item chips (undo-safe), summoner spell chips (key + recording), APM chart behind the markers (v1.8 part 1)
 - [x] 36. Time-synced scoreboard: all 10 players saved as changes only, card + overlay (O / Tab) following playback and scrubbing, final-only fallback for old recordings (v1.8 part 2)
 - [x] 37. Smaller files: measured (software stand-ins + PC script), HEVC / AV1 recording and quality-based rate control as options with H.264 fallback; defaults unchanged until the GPU numbers (v1.8 part 3)
+- [x] 38. Share: one click to the clipboard, "Fit for Discord" copy under 19.5 MB (on by default), copies cleared after 24 h
 - [ ] Owner's real-game check of v1.8 (see "Next steps")
 - [ ] Owner's `scripts/encoder-compare.ps1` run, then switch the defaults where the numbers allow
 
@@ -177,6 +189,11 @@
 
 
 ## Next steps
+- **Owner, Share (~5 min):** Clips page, "Fit for Discord" ticked: Share a 30 s hotkey clip,
+  Ctrl+V in a Discord chat, send it; it should upload (no Nitro prompt) and play in the embed.
+  Untick it and share again: the original file is pasted. Then share once during a Practice
+  Tool game (alt-tab) and watch FPS; the log line "share ...: ... in N ms" gives the encode
+  time and size.
 - **Owner, encoder measurement (v1.8 part 3, ~10 min):** Clairvoyance's ffmpeg downloaded
   (Settings > Clips). Start a Practice Tool game, then in PowerShell in the repo folder:
   `powershell -ExecutionPolicy Bypass -File scripts\encoder-compare.ps1`, switch to League within

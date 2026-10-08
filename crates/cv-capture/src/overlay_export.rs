@@ -87,7 +87,7 @@ pub fn ffmpeg_args(p: &ExportParams) -> Vec<String> {
     a
 }
 
-fn command(exe: &Path) -> Command {
+pub(crate) fn command(exe: &Path) -> Command {
     #[cfg_attr(not(windows), allow(unused_mut))] // flags are set on Windows only
     let mut c = Command::new(exe);
     #[cfg(windows)]

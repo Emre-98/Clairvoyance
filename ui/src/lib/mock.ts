@@ -203,6 +203,7 @@ const settings: Settings = {
   games: { league: { riot_id: "Tester#EUW", ult_key: "R" } },
   disabled_games: [],
   ffmpeg_path: "",
+  share_fit_discord: true,
 };
 
 const live: LiveStatus =
@@ -495,6 +496,17 @@ export async function invoke(cmd: string, args: any = {}): Promise<any> {
     case "cleanup_now":
       await new Promise((r) => setTimeout(r, 700));
       return { thumbs_made: 0, removed: [], freed_bytes: 0, still_over: false, skipped_busy: false };
+    case "share_clip": {
+      const c = clips.find((c) => c.session_id === args.id && c.file === args.file);
+      if (!c) throw "That clip's file is missing.";
+      await new Promise((r) => setTimeout(r, 400));
+      const fit = settings.share_fit_discord;
+      const small = c.size_bytes <= 19_500_000;
+      return { path: c.path, bytes: fit && !small ? 18_900_000 : c.size_bytes, width: 1920, height: 1080, fps: fit && !small ? 30 : 60, fitted: fit && !small, copied: true };
+    }
+    case "set_share_fit_discord":
+      settings.share_fit_discord = args.on;
+      return;
     case "set_clip_keep": {
       const c = clips.find((c) => c.session_id === args.id && c.file === args.file);
       if (c) c.keep = args.keep;

@@ -52,6 +52,8 @@ pub struct VideoInfo {
     pub keyframes: usize,
     pub keyframe_interval_avg: f64,
     pub keyframe_interval_max: f64,
+    /// Audio tracks (the game's, then the microphone's when it's recorded).
+    pub audio_tracks: usize,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -595,6 +597,7 @@ pub fn info(path: &Path) -> io::Result<VideoInfo> {
         keyframes: 0,
         keyframe_interval_avg: 0.0,
         keyframe_interval_max: 0.0,
+        audio_tracks: p.tracks.iter().filter(|t| !t.video).count(),
     };
     if let Some(v) = p.tracks.iter().find(|t| t.video) {
         let ts = v.timescale as f64;

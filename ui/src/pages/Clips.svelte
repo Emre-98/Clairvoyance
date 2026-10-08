@@ -13,6 +13,8 @@
   import Icon from "../components/Icon.svelte";
   import ChampionIcon from "../components/ChampionIcon.svelte";
   import VirtualGrid from "../components/VirtualGrid.svelte";
+  import ShareButton from "../components/ShareButton.svelte";
+  import ShareFitToggle from "../components/ShareFitToggle.svelte";
 
   let clips = $state<ClipEntry[]>(cache ?? []);
   let loaded = $state(cache != null);
@@ -72,10 +74,13 @@
       <h1>Clips</h1>
       <p class="muted" style="margin:6px 0 0">Saved with <kbd>{app.settings?.hotkey_clip}</kbd>, made automatically from big moments, or cut in the clip editor.</p>
     </div>
+    <div class="headtools">
+    <ShareFitToggle />
     <div class="seg">
       {#each [["all", "All"], ["replay", "Hotkey"], ["event", "Auto"], ["editor", "Edited"]] as [v, l]}
         <button class:on={source === v} onclick={() => (source = v)}>{l}</button>
       {/each}
+    </div>
     </div>
   </div>
 
@@ -113,7 +118,8 @@
           </div>
           <div class="actions">
             <button class="btn ghost small" onclick={() => go({ page: "game", id: c.session_id })}>Game</button>
-            <button class="btn ghost small" onclick={() => api.reveal(c.path)}><Icon name="folder" size={14} />Show</button>
+            <button class="btn ghost small icon" title="Show in folder" aria-label="Show in folder" onclick={() => api.reveal(c.path)}><Icon name="folder" size={15} /></button>
+            <ShareButton id={c.session_id} file={c.file} />
             <div class="spacer"></div>
             <button class="btn ghost small icon keepbtn" class:on={c.keep} title={c.keep ? "Kept (click to un-keep)" : "Keep: never auto-delete this clip"} aria-pressed={c.keep} onclick={() => toggleKeep(c)}><Icon name="pin" size={15} /></button>
             <button class="btn ghost small icon" title="Delete" onclick={() => remove(c)}><Icon name="trash" size={15} /></button>
@@ -130,6 +136,7 @@
       <div class="row" style="margin-bottom:10px">
         <h3>{playing.title}</h3>
         <div class="spacer"></div>
+        <ShareButton id={playing.session_id} file={playing.file} extraClass="" />
         <button class="btn small" onclick={() => api.openPath(playing!.path)}><Icon name="external" size={14} />Open in player</button>
         <button class="btn small icon" onclick={() => (playing = null)}><Icon name="x" size={15} /></button>
       </div>
@@ -140,6 +147,11 @@
 {/if}
 
 <style>
+  .headtools {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
   .seg {
     display: flex;
     background: var(--bg-2);

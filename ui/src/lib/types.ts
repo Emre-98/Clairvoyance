@@ -340,6 +340,21 @@ export interface Settings {
   games: Record<string, Record<string, unknown>>;
   disabled_games: string[];
   ffmpeg_path: string;
+  /** Share makes a copy under Discord's free upload limit (on by default). */
+  share_fit_discord: boolean;
+}
+
+/** What Share put on the clipboard. */
+export interface Shared {
+  path: string;
+  bytes: number;
+  width: number;
+  height: number;
+  fps: number;
+  /** A Discord copy (made or reused), not the clip itself. */
+  fitted: boolean;
+  /** On the clipboard (else only `path` is usable). */
+  copied: boolean;
 }
 
 export interface ConfigField {

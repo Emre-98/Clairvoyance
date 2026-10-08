@@ -3,6 +3,12 @@
 Newest first. `scripts/release.ps1` adds a section for each release; the section becomes the
 release notes on GitHub and in the in-app "Update available" card.
 
+## [Unreleased]
+
+- New Share button on every clip (Clips page, the clip player and a game's clip list): one click puts the clip on the clipboard, so Ctrl+V in Discord attaches it
+- "Fit for Discord" (on by default, a tick on the Clips page and in Settings > Events & clips): Share makes a copy under 19.5 MB, just under Discord's free 20 MB limit. Short clips stay 1080p60, a 30 s clip is 1080p at 30 fps, longer ones step down to 720p or 540p. It's H.264 so it plays in Discord even when you record in HEVC / AV1, and your microphone is mixed into the game sound. Clips that already fit are shared as they are. Turn it off to share the original file
+- The Discord copies are kept out of sight in the app's data folder and deleted at the next start or after 24 hours. Sharing works during a game too (low priority)
+
 ## [1.8.0] - 2026-10-07
 
 - Timeline: towers, inhibitors and objectives now say who got them, which lane and tier, and how much gold you got; kills and objectives show the champions involved

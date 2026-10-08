@@ -21,6 +21,7 @@ mod modes;
 mod perftest;
 mod platform;
 mod report;
+mod share;
 mod state;
 mod tray;
 mod updater;
@@ -295,6 +296,8 @@ fn main() {
             log::info!("GPU: {gpu:?}");
             let shared = Arc::new(RwLock::new(settings.clone()));
 
+            // Discord copies of shared clips only need to outlive the paste: a new start clears them.
+            share::sweep(&paths.data_dir.join(share::SHARE_DIR), std::time::Duration::ZERO);
             let ffmpeg = Arc::new(ffmpeg::Ffmpeg::new(settings.ffmpeg_path.clone(), paths.data_dir.join("ffmpeg"), gpu.as_ref().map(|g| g.encoder.clone()).unwrap_or_default()));
             let recorder = Arc::new(cv_capture::NativeRecorder::new());
             // League: Data Dragon cache and the user's ult_rules.json override live here.
