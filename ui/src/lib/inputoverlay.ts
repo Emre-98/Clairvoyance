@@ -608,11 +608,11 @@ export class Overlay {
       for (let k = 0; k < n; k++) {
         const h = ph[k];
         // Flames burn out sooner than the pilot light: a flick is a short, quick streak.
-        const life = secs * (1 - 0.5 * h);
+        const life = secs * (1 - 0.35 * h);
         const f = 1 - (t - pt[k]) / life;
         if (f <= 0) continue;
         // Tapers from a hairline at the tail to its full width at the cursor.
-        const w = lw * (0.3 + 1.1 * Math.pow(f, 1.6)) * (1 + 0.4 * h);
+        const w = lw * (0.45 + 0.95 * Math.pow(f, 1.3)) * (1 + 0.4 * h);
         piece(k);
         if (pass === 0) {
           // A narrow halo: sky blue around the pilot light, red-orange around a flame.
@@ -620,7 +620,7 @@ export class Overlay {
           g.lineWidth = w * 2.6 + 1;
           g.stroke();
         } else if (pass === 1) {
-          g.strokeStyle = rgba(mix(ramp(SLOW_STOPS, f), ramp(FAST_STOPS, f * f * f), h), 1);
+          g.strokeStyle = rgba(mix(ramp(SLOW_STOPS, f), ramp(FAST_STOPS, Math.pow(f, 2.5)), h), 1);
           g.lineWidth = w;
           g.stroke();
         } else {
