@@ -28,6 +28,10 @@ pub struct MockOptions {
     pub queue: Value,
     /// What runs: a match you play (default) or spectator mode (see [`Watch`]).
     pub watch: Watch,
+    /// Real seconds after the loading screen in which the in-game API has no champion of yours
+    /// yet and answers `activeplayer` like spectator mode. The real game does that for an
+    /// instant before your champion is spawned (owner's PC, 2026-10-09); a huge value = always.
+    pub no_champion_secs: f64,
 }
 
 /// Spectator modes of the fake game (v1.7.1, "don't record replays"), answering like the real
@@ -43,8 +47,9 @@ pub enum Watch {
     /// Spectating a live game: no gameflow session of yours, the client's watch state
     /// "WatchInProgress", the in-game API in spectator mode.
     Spectate,
-    /// A replay the client doesn't reveal (it reports a match in progress, as if it couldn't
-    /// tell): only the in-game API shows it, a few seconds in (the "found late" path).
+    /// The client reports a match in progress with you among its players, and the in-game API
+    /// stays in spectator mode. The client's word is final (2026-10-09): recorded as your match.
+    /// (Before, this was "a replay found late": deleted a few seconds in.)
     ReplayLate,
     /// A replay with no replay flag in the client (no gameflow session, nothing else): the
     /// app waits for the in-game API.
@@ -99,7 +104,18 @@ pub fn queue_json(id: i64) -> Value {
 
 impl Default for MockOptions {
     fn default() -> Self {
-        Self { port: 2998, speed: 4.0, length: 600.0, loading_secs: 8.0, linger_secs: 8.0, player: "Tester#EUW".into(), champion: "Ahri".into(), queue: queue_json(400), watch: Watch::None }
+        Self {
+            port: 2998,
+            speed: 4.0,
+            length: 600.0,
+            loading_secs: 8.0,
+            linger_secs: 8.0,
+            player: "Tester#EUW".into(),
+            champion: "Ahri".into(),
+            queue: queue_json(400),
+            watch: Watch::None,
+            no_champion_secs: 0.0,
+        }
     }
 }
 
@@ -303,7 +319,8 @@ impl Script {
                 } }));
             }
             "/lol-summoner/v1/current-summoner" => {
-                return Some(json!({ "puuid": format!("puuid-{}", self.me_short().to_lowercase()), "summonerId": 1000, "gameName": self.me_short(), "tagLine": "EUW" }))
+                let tag = self.opts.player.split('#').nth(1).unwrap_or("");
+                return Some(json!({ "puuid": format!("puuid-{}", self.me_short().to_lowercase()), "summonerId": 1000, "gameName": self.me_short(), "tagLine": tag }));
             }
             "/lol-gameflow/v1/watch" if matches!(w, Watch::SpectateLive | Watch::SpectateUnreadable | Watch::MatchUnreadable) => return None,
             "/lol-gameflow/v1/gameflow-phase" => return Some(json!(if has_session { "InProgress" } else { "None" })),
@@ -328,10 +345,12 @@ impl Script {
         }
         let t = self.game_time()?;
         let game_mode = self.opts.queue["gameMode"].as_str().filter(|m| !m.is_empty()).unwrap_or("CLASSIC").to_string();
+        // Spectator mode, or a match whose champions aren't spawned yet: no champion of yours.
+        let no_champion = w.spectator() || self.start.elapsed().as_secs_f64() < self.opts.loading_secs + self.opts.no_champion_secs;
         Some(match path.trim_start_matches("/liveclientdata/") {
             "gamestats" => json!({"gameMode": game_mode, "gameTime": t, "mapName": "Map11", "mapNumber": 11, "mapTerrain": "Default"}),
-            "activeplayername" if w.spectator() => json!("Unknown"),
-            "activeplayer" if w.spectator() => {
+            "activeplayername" if no_champion => json!("Unknown"),
+            "activeplayer" if no_champion => {
                 json!({"errorCode":"RPC_ERROR","httpStatus":400,"implementationDetails":{},"message":"Spectator mode doesn't currently support this feature"})
             }
             "activeplayername" => json!(self.me()),
@@ -441,6 +460,13 @@ mod tests {
         }
         let s = Script { opts: opts(Watch::MatchUnreadable), start: Instant::now() };
         assert!(get(&s, "/liveclientdata/activeplayer").get("championStats").is_some());
+        // A match whose champions aren't spawned yet answers like spectator mode (the client
+        // still lists you among its players).
+        let early = Script { opts: MockOptions { no_champion_secs: 60.0, ..opts(Watch::None) }, start: Instant::now() };
+        assert!(get(&early, "/liveclientdata/activeplayer")["message"].as_str().unwrap().contains("Spectator mode"));
+        assert_eq!(get(&early, "/liveclientdata/activeplayername"), json!("Unknown"));
+        assert!(get(&early, "/liveclientdata/gamestats").get("gameTime").is_some());
+        assert_eq!(get(&early, "/lol-gameflow/v1/session")["gameData"]["teamOne"][0]["puuid"], json!("puuid-tester"));
         assert_eq!(Watch::parse("match-unreadable"), Watch::MatchUnreadable);
     }
 }

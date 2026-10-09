@@ -200,6 +200,13 @@ pub struct LeagueIntegration {
     /// The in-game API has said whether this is spectator mode (checked once per match).
     live_decided: bool,
     live_checks: u32,
+    /// Its answers so far ("spectator mode" has to be repeated before it counts).
+    live: watch::LiveCheck,
+    /// The League client listed the account logged in now among this match's players (read at
+    /// every game start): final, the in-game API can't make it spectating any more.
+    client_player: bool,
+    /// That account's Riot ID (read with it), used when the in-game API doesn't name you.
+    client_me: Option<String>,
     /// Since when nothing is recorded until the in-game API says (`SessionCheck::Unsure`), for
     /// the hold's safety net.
     hold_started: Option<Instant>,
@@ -266,6 +273,9 @@ impl LeagueIntegration {
             watch_hint: None,
             live_decided: false,
             live_checks: 0,
+            live: Default::default(),
+            client_player: false,
+            client_me: None,
             hold_started: None,
             static_data: Default::default(),
             static_started: false,
@@ -317,6 +327,9 @@ impl LeagueIntegration {
         self.watch_hint = None;
         self.live_decided = false;
         self.live_checks = 0;
+        self.live = Default::default();
+        self.client_player = false;
+        self.client_me = None;
         self.hold_started = None;
         self.static_data = Default::default();
         self.static_started = false;
@@ -443,8 +456,15 @@ impl LeagueIntegration {
         let gold = self.get::<ActivePlayer>("activeplayer").await.ok().map(|a| a.current_gold);
         self.players_checked = Some(Instant::now());
 
+        // Who plays: the game's own answer, else the account logged in to the League client now.
+        // The saved Riot ID only when neither says: it may be another account's.
+        let active = active_name.filter(|n| !n.trim().is_empty() && !n.trim().eq_ignore_ascii_case("unknown"));
+        let mut names: Vec<String> = active.into_iter().chain(self.client_me.clone()).collect();
+        if names.is_empty() {
+            names.push(self.riot_id.clone());
+        }
         let mut me: Vec<String> = Vec::new();
-        for n in [active_name.clone().unwrap_or_default(), self.riot_id.clone()] {
+        for n in names {
             let l = n.trim().to_lowercase();
             if l.is_empty() {
                 continue;
@@ -672,8 +692,17 @@ impl GameIntegration for LeagueIntegration {
         if !self.live_decided && self.live_checks < 60 {
             self.live_checks += 1;
             if let Ok((status, body)) = self.get_raw("activeplayer").await {
-                match watch::classify_active_player(status, &body) {
-                    watch::LiveVerdict::Spectator => {
+                let verdict = watch::classify_active_player(status, &body);
+                if verdict == watch::LiveVerdict::Spectator && self.live.spectator_reads() == 0 {
+                    // A real match says this too for an instant before your champion is spawned.
+                    log::info!("in-game API: no champion of yours (HTTP {status}, like spectator mode); it counts only if it keeps saying so");
+                }
+                match self.live.settle(verdict, Instant::now()) {
+                    Some(watch::LiveVerdict::Spectator) if self.client_player => {
+                        self.live_decided = true;
+                        log::warn!("in-game API: spectator mode, but the League client lists your account among this match's players: kept as your match");
+                    }
+                    Some(watch::LiveVerdict::Spectator) => {
                         self.live_decided = true;
                         let k = self.watch_hint.unwrap_or(WatchKind::Unknown);
                         log::info!("in-game API: spectator mode ({})", k.label().to_lowercase());
@@ -682,12 +711,12 @@ impl GameIntegration for LeagueIntegration {
                         u.phase = if stats.game_time > 0.0 { MatchPhase::InProgress } else { MatchPhase::Loading };
                         return Ok(u);
                     }
-                    watch::LiveVerdict::Playing => {
+                    Some(watch::LiveVerdict::Playing) => {
                         self.live_decided = true;
                         self.hold_started = None;
                         u.playing = true;
                     }
-                    watch::LiveVerdict::Undecided => {}
+                    _ => {}
                 }
             }
         }
@@ -809,6 +838,9 @@ impl cv_core::game::WatchDetection for LeagueIntegration {
         self.watch_hint = None;
         self.live_decided = false;
         self.live_checks = 0;
+        self.live = Default::default();
+        self.client_player = false;
+        self.client_me = None;
         self.hold_started = None;
         let c = self.ask_client().await;
         if let SessionCheck::Unsure(_) = c {
@@ -827,8 +859,9 @@ impl cv_core::game::WatchDetection for LeagueIntegration {
 }
 
 impl LeagueIntegration {
-    /// The League client's verdict (see `watch`); can't tell → the in-game API decides.
-    async fn ask_client(&self) -> SessionCheck {
+    /// The League client's verdict (see `watch`); can't tell → the in-game API decides. Asked
+    /// anew at every game start: the lockfile and the account change when you log in to another.
+    async fn ask_client(&mut self) -> SessionCheck {
         let Some(lcu) = queues::find_lockfile(&self.client_dir).and_then(|l| queues::Lcu::new(&l)) else {
             log::info!("session check: League client not found; nothing recorded until the in-game API says");
             return watch::hold_when_unknown(SessionCheck::Unknown);
@@ -863,6 +896,9 @@ impl LeagueIntegration {
                     tokio::time::sleep(Duration::from_millis(300)).await;
                 }
                 let (me, session) = tokio::join!(lcu.get_raw("/lol-summoner/v1/current-summoner"), lcu.get_raw("/lol-gameflow/v1/session"));
+                if let Ok((200, me)) = &me {
+                    self.client_me = watch::account_name(me);
+                }
                 if let Ok((200, session)) = &session {
                     tft = watch::is_tft(session);
                     if let Ok((200, me)) = &me {
@@ -874,7 +910,8 @@ impl LeagueIntegration {
                 }
             }
             c = watch::refine_with_roster(c, roster, tft);
-            log::info!("session check: you are one of the match's players: {roster:?} (TFT {tft}) -> {c:?}");
+            self.client_player = roster == Some(true);
+            log::info!("session check: you are one of the match's players: {roster:?} (TFT {tft}, account read: {}) -> {c:?}", self.client_me.is_some());
         }
         watch::hold_when_unknown(c)
     }
