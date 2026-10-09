@@ -1,0 +1,20 @@
+# Real lines of Steam's logs\content_log.txt about Deadlock (app 1422450) for the same two runs: Steam writes
+# them with no launch option. Updates are disabled while a match is on (renewed every 6 minutes).
+[2026-10-09 09:25:47] AppID 1422450 state changed : Fully Installed,App Running,
+[2026-10-09 09:28:21] App 1422450 updates disabled for 300 seconds (until Fri Oct  9 09:33:21 2026)
+[2026-10-09 09:28:21] AppID 1422450 state changed : Fully Installed,App Running,Updated Disabled by app,
+[2026-10-09 09:34:21] App 1422450 updates disabled for 300 seconds (until Fri Oct  9 09:39:21 2026)
+[2026-10-09 09:40:21] App 1422450 updates disabled for 300 seconds (until Fri Oct  9 09:45:21 2026)
+[2026-10-09 09:46:21] App 1422450 updates disabled for 300 seconds (until Fri Oct  9 09:51:21 2026)
+[2026-10-09 09:52:21] App 1422450 updates disabled for 300 seconds (until Fri Oct  9 09:57:21 2026)
+[2026-10-09 09:58:21] App 1422450 updates disabled for 300 seconds (until Fri Oct  9 10:03:21 2026)
+[2026-10-09 10:04:21] App 1422450 updates disabled for 300 seconds (until Fri Oct  9 10:09:21 2026)
+[2026-10-09 10:09:07] App 1422450 updates now enabled
+[2026-10-09 10:09:07] AppID 1422450 state changed : Fully Installed,App Running,
+[2026-10-09 10:10:54] AppID 1422450 state changed : Fully Installed,
+[2026-10-09 10:12:31] AppID 1422450 state changed : Fully Installed,App Running,
+[2026-10-09 10:15:44] App 1422450 updates disabled for 300 seconds (until Fri Oct  9 10:20:44 2026)
+[2026-10-09 10:15:44] AppID 1422450 state changed : Fully Installed,App Running,Updated Disabled by app,
+[2026-10-09 10:17:12] App 1422450 updates now enabled
+[2026-10-09 10:17:12] AppID 1422450 state changed : Fully Installed,App Running,
+[2026-10-09 10:20:18] AppID 1422450 state changed : Fully Installed,

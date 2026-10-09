@@ -1,0 +1,57 @@
+# Real lines of Deadlock's console.log (-condebug), owner's PC, 2026-10-09, build 10931: only the lines about
+# what the game is doing (state changes), in order. Run 1: Hideout -> bot match 113291198 played to the end
+# (found 09:28:20, in progress 09:29:01, PostGame 10:09:07, left 10:09:17) -> Hideout -> quit.
+10/09 09:26:11 Local bot match: Init. -citadel_local_lobby='', -citadel_local_report_port=0
+10/09 09:26:12 [HostStateManager] CHostStateMgr::QueueNewRequest( Idle (levelload), 1 )
+10/09 09:26:13 [HostStateManager] Host activate: Idle (levelload)
+10/09 09:26:13 [Hideout] Hideout Lobby Connection State: Invalid (-1)
+10/09 09:26:14 [Server] SV:  Spawn Server: <empty>
+10/09 09:26:14 [Client] Map: "<empty>"
+10/09 09:26:14 [Hideout] Hideout Lobby Connection State: Invalid (-1)
+10/09 09:26:14 [HostStateManager] CHostStateMgr::QueueNewRequest( Loading (dl_hideout), 2 )
+10/09 09:26:21 [Server] SV:  Spawn Server: dl_hideout
+10/09 09:26:22 [Client] Map: "dl_hideout"
+10/09 09:26:22 [HostStateManager] Host activate: Loading (dl_hideout)
+10/09 09:26:22 [Hideout] Hideout Lobby Connection State: NoLobby (0)
+10/09 09:26:22 ChangeGameState: WaitingForPlayersToJoin (2)
+10/09 09:26:22 ChangeGameState: HeroSelection (3)
+10/09 09:26:22 ChangeGameState: MatchIntro (4)
+10/09 09:26:22 ChangeGameState: WaitForMapToLoad (5)
+10/09 09:26:22 ChangeGameState: PreGameWait (6)
+10/09 09:26:22 ChangeGameState: GameInProgress (7)
+10/09 09:26:22 OnGameStateChanged: HeroSelection (3)
+10/09 09:26:23 OnGameStateChanged: GameInProgress (7)
+10/09 09:28:19 [GCClient] Send msg 9010 (k_EMsgClientToGCStartMatchmaking), 252 bytes
+10/09 09:28:20 Lobby 174168628287162241 for Match 113291198 created
+10/09 09:28:21 [HostStateManager] CHostStateMgr::QueueNewRequest( Remote Connect (=[A:1:0:0]), 3 )
+10/09 09:28:21 [Citadel Play Controller] CCitadel_PlayController::OnMatchFormed
+10/09 09:28:21 [Client] Map: "start"
+10/09 09:28:25 [HostStateManager] Host activate: Remote Connect (=[A:1:0:0])
+10/09 09:28:25 [Hideout] Hideout Lobby Connection State: Invalid (-1)
+10/09 09:28:26 OnGameStateChanged: MatchIntro (4)
+10/09 09:28:31 OnGameStateChanged: WaitForMapToLoad (5)
+10/09 09:28:32 OnGameStateChanged: PreGameWait (6)
+10/09 09:29:01 OnGameStateChanged: GameInProgress (7)
+10/09 10:09:07 OnGameStateChanged: PostGame (8)
+10/09 10:09:08 Lobby 174168628287162241 for Match 113291198 destroyed
+10/09 10:09:17 OnGameStateChanged: End (11)
+10/09 10:09:17 [Client] CL:  disconnect
+10/09 10:09:17 [Client] Disconnected from server: NETWORK_DISCONNECT_DISCONNECT_BY_USER
+10/09 10:09:17 [HostStateManager] CHostStateMgr::QueueNewRequest( Idle (levelload), 4 )
+10/09 10:09:17 [HostStateManager] Host activate: Idle (levelload)
+10/09 10:09:18 [Server] SV:  Spawn Server: <empty>
+10/09 10:09:18 [Client] Map: "<empty>"
+10/09 10:09:18 [Hideout] Hideout Lobby Connection State: Invalid (-1)
+10/09 10:09:18 [HostStateManager] CHostStateMgr::QueueNewRequest( Loading (dl_hideout), 5 )
+10/09 10:09:20 [Server] SV:  Spawn Server: dl_hideout
+10/09 10:09:20 [Client] Map: "dl_hideout"
+10/09 10:09:20 [HostStateManager] Host activate: Loading (dl_hideout)
+10/09 10:09:20 [Hideout] Hideout Lobby Connection State: NoLobby (0)
+10/09 10:09:21 ChangeGameState: WaitingForPlayersToJoin (2)
+10/09 10:09:21 ChangeGameState: HeroSelection (3)
+10/09 10:09:21 ChangeGameState: MatchIntro (4)
+10/09 10:09:21 ChangeGameState: WaitForMapToLoad (5)
+10/09 10:09:21 ChangeGameState: PreGameWait (6)
+10/09 10:09:21 ChangeGameState: GameInProgress (7)
+10/09 10:09:21 OnGameStateChanged: HeroSelection (3)
+10/09 10:09:21 OnGameStateChanged: GameInProgress (7)

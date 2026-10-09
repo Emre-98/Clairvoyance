@@ -4,7 +4,7 @@ use cv_core::game::{ConfigField, GameIntegration};
 use serde::Serialize;
 
 pub fn all() -> Vec<Box<dyn GameIntegration>> {
-    vec![Box::new(cv_game_league::LeagueIntegration::new()), Box::new(cv_game_cs2::Cs2Integration::new())]
+    vec![Box::new(cv_game_league::LeagueIntegration::new()), Box::new(cv_game_cs2::Cs2Integration::new()), Box::new(cv_game_deadlock::DeadlockIntegration::new())]
 }
 
 /// One shared, unconfigured instance of every game, for what doesn't need a running game (the

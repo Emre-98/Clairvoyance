@@ -12,7 +12,8 @@ only for background on a feature.
 - Encoder: crates/cv-capture/src/win/video_enc.rs (codec / rate-control choice: encopts.rs; muxer
   for H.264 / HEVC / AV1: mp4.rs). Settings: crates/cv-core/src/settings.rs. Encoder measurement:
   scripts/encoder-compare.ps1 (owner's PC), scripts/encoder-test/ (Linux, software stand-ins)
-- Deadlock (in progress): games/deadlock (paths.rs: Steam / game folders; diag.rs: the "log match
+- Deadlock: games/deadlock (signals.rs: match detection from Steam's log + the console log; lib.rs: the
+  game; paths.rs: Steam / game folders; diag.rs: the "log match
   signals" developer option), wired in app/src/devopts.rs; plan and owner steps in PLAN.md "Deadlock"
 - Mock game: crates/cv-mock-league. Game-integration trait: crates/cv-core/src/game.rs (optional
   capabilities: CursorInput, RecordingCheck, WatchDetection, ModeRules), docs/ADDING_A_GAME.md
