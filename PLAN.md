@@ -494,11 +494,22 @@ Replay file, what a real one holds (owner's run of 2026-10-09 12:27-12:31, game 
   kill streak (64); 360 item purchase (102); 338 ability notify (178); 345 currency changed
   (235); 353 player respawned (47); 362 Street Brawl scoring (4: so the mode can be told from
   the replay); 346 game over (tick 71,362).
-- **Clocks:** the summary's start time was 10:56:33 and Steam's "updates disabled" line
-  10:56:34, so the two agree on when the match was found. "Game over" is at 1,115 s of the
-  demo while Steam's "updates now enabled" came 1,183 s after the match was found, so the
-  demo's tick 0 is about 68 s after the match was found (one match: to be checked against a
-  recording of the same match, which this one isn't: it was played on 10:56, before v1.12.0).
+- **Clocks, checked against a recording** (match 113330844, Street Brawl, found 12:46:25,
+  recorded by v1.12.0; frames taken from the video with the app's ffmpeg): the replay's first
+  two kills (ticks 6,801 and 7,647 = 106.3 s and 119.5 s) appear in the kill feed at 146.0 s
+  and 158.9 s of the video (each ±0.4 s), so **the replay's tick 0 is 39.6 s into the video =
+  41.5 s after the match was found**. Neither simple anchor gives that by itself: the
+  summary's start time is the "match found" second (12:46:24 vs Steam's 12:46:25; 10:56:33 vs
+  10:56:34 in the other match), but "game over" (tick 49,039) falls 15 s before Steam's
+  "updates now enabled", and in the other match the same arithmetic would give 26 s. So either
+  tick 0 is always about 41.5 s after "found" (the console log's `GameInProgress` came 41 s
+  after it in both bot matches) or the end gap is constant: one recorded match can't tell.
+  More recorded matches with their replays decide it; your own key presses (from v1.13) against
+  the replay's ability events are a second, independent way to line the two up.
+- The HUD prints the match id in the bottom right corner of the video ("MATCH: 113330844"),
+  and its round clock read 1:10 at 145.6 s of the video (clock zero = 36 s after tick 0).
+- **When a replay exists** (owner, 2026-10-09): bot matches give no replay; a match just
+  played only offered its replay after the game was closed and opened again.
 - **Which recording a replay belongs to** (no match id without `-condebug`): the summary's
   start time against the recording's start, plus the owner's account id (`userdata\<id>`)
   among the players.
