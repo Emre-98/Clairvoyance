@@ -36,6 +36,15 @@ pub enum EventKind {
     ItemCompleted,
     /// A summoner spell cast (League: D / F press checked against the slot's cooldown).
     SummonerSpell,
+    /// An ability key pressed, in games that can't tell live whether it was a cast (Deadlock:
+    /// abilities 1-3; the ultimate is `UltPressed`). Hidden by default.
+    AbilityPressed,
+    /// The key of an active item slot pressed (Deadlock: item slots 1-4). Hidden by default.
+    ItemPressed,
+    /// The melee attack key pressed. Hidden by default.
+    Melee,
+    /// The parry / block key pressed. Hidden by default.
+    Parry,
     /// Round/phase boundaries for games that have them (CS2 rounds).
     Round,
     ManualMarker,
@@ -45,7 +54,7 @@ pub enum EventKind {
 }
 
 impl EventKind {
-    pub const ALL: [EventKind; 24] = [
+    pub const ALL: [EventKind; 28] = [
         EventKind::Kill,
         EventKind::Death,
         EventKind::Assist,
@@ -65,6 +74,10 @@ impl EventKind {
         EventKind::Objective,
         EventKind::ItemCompleted,
         EventKind::SummonerSpell,
+        EventKind::AbilityPressed,
+        EventKind::ItemPressed,
+        EventKind::Melee,
+        EventKind::Parry,
         EventKind::Round,
         EventKind::ManualMarker,
         EventKind::Clip,
@@ -93,6 +106,10 @@ impl EventKind {
             EventKind::Objective => "objective",
             EventKind::ItemCompleted => "item_completed",
             EventKind::SummonerSpell => "summoner_spell",
+            EventKind::AbilityPressed => "ability_pressed",
+            EventKind::ItemPressed => "item_pressed",
+            EventKind::Melee => "melee",
+            EventKind::Parry => "parry",
             EventKind::Round => "round",
             EventKind::ManualMarker => "manual_marker",
             EventKind::Clip => "clip",
@@ -123,6 +140,10 @@ impl EventKind {
             EventKind::Objective => "Objective",
             EventKind::ItemCompleted => "Item",
             EventKind::SummonerSpell => "Summoner",
+            EventKind::AbilityPressed => "Ability",
+            EventKind::ItemPressed => "Item",
+            EventKind::Melee => "Melee",
+            EventKind::Parry => "Parry",
             EventKind::Round => "Round",
             EventKind::ManualMarker => "Marked",
             EventKind::Clip => "Clip saved",

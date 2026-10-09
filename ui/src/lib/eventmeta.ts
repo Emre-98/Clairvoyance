@@ -1,6 +1,6 @@
 import type { EventKind } from "./types";
 
-export type Group = "kills" | "deaths" | "assists" | "ult" | "recasts" | "forms" | "unconfirmed" | "structures" | "objectives" | "items" | "summoners" | "rounds" | "markers" | "game";
+export type Group = "kills" | "deaths" | "assists" | "ult" | "recasts" | "forms" | "unconfirmed" | "structures" | "objectives" | "items" | "summoners" | "abilities" | "itemkeys" | "melee" | "rounds" | "markers" | "game";
 
 export interface KindMeta {
   label: string;
@@ -29,6 +29,10 @@ export const KIND: Record<EventKind, KindMeta> = {
   objective: { label: "Objective", color: "var(--ev-epic)", icon: "hex", group: "objectives" },
   item_completed: { label: "Item completed", color: "var(--ev-item)", icon: "bag", group: "items" },
   summoner_spell: { label: "Summoner spell", color: "var(--ev-summoner)", icon: "spark", group: "summoners" },
+  ability_pressed: { label: "Ability pressed", color: "var(--ev-ability)", icon: "ability", group: "abilities" },
+  item_pressed: { label: "Item key pressed", color: "var(--ev-itemkey)", icon: "slot", group: "itemkeys" },
+  melee: { label: "Melee", color: "var(--ev-melee)", icon: "sword", group: "melee" },
+  parry: { label: "Parry", color: "var(--ev-melee)", icon: "shield", group: "melee" },
   round: { label: "Round", color: "var(--ev-neutral)", icon: "flag", group: "rounds" },
   manual_marker: { label: "Marker", color: "var(--ev-marker)", icon: "bookmark", group: "markers" },
   clip: { label: "Clip", color: "var(--ev-clip)", icon: "film", group: "markers" },
@@ -48,6 +52,9 @@ export const GROUPS: { id: Group; label: string; color: string; icon: string }[]
   { id: "objectives", label: "Objectives", color: "var(--ev-epic)", icon: "flame" },
   { id: "items", label: "Items", color: "var(--ev-item)", icon: "bag" },
   { id: "summoners", label: "Summoner spells", color: "var(--ev-summoner)", icon: "spark" },
+  { id: "abilities", label: "Abilities", color: "var(--ev-ability)", icon: "ability" },
+  { id: "itemkeys", label: "Item keys", color: "var(--ev-itemkey)", icon: "slot" },
+  { id: "melee", label: "Melee & parry", color: "var(--ev-melee)", icon: "sword" },
   { id: "rounds", label: "Rounds", color: "var(--ev-neutral)", icon: "flag" },
   { id: "markers", label: "Markers & clips", color: "var(--ev-marker)", icon: "bookmark" },
   { id: "game", label: "Game", color: "var(--ev-neutral)", icon: "flag" },
@@ -105,6 +112,12 @@ export const ICONS: Record<string, string> = {
   // A shop bag (completed item) and a four-point spark (summoner spell).
   bag: "M5 8h14l-1 13H6zM9 8V6a3 3 0 0 1 6 0v2",
   spark: "M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z",
+  // Key presses (Deadlock): a diamond in a diamond (ability), a square slot with a charge mark
+  // (active item), a sword (melee) and a shield (parry).
+  ability: "M12 2l10 10-10 10L2 12zM12 8l4 4-4 4-4-4z",
+  slot: "M5 5h14v14H5zM13 8l-3 4.5h4L11 16",
+  sword: "M20 4L9 15M20 4h-5M20 4v5M6.5 12.5l5 5M4 20l4.5-4.5",
+  shield: "M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6z",
   bookmark: "M6 3h12v18l-6-4-6 4z",
   film: "M4 4h16v16H4zM8 4v16M16 4v16M4 9h4M4 15h4M16 9h4M16 15h4",
   play: "M7 4l13 8-13 8z",

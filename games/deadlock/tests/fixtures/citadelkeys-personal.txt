@@ -1,0 +1,583 @@
+"KeyBindings"
+{
+	"Name"		"DEFAULT"
+	"Version"		"1"
+	"AlgorithmicUpdateVersion"		"5"
+	"Keys"
+	{
+		"AbilityMelee"
+		{
+			"Key"		"Q"
+		}
+		"Ability1"
+		{
+			"Key"		"1"
+		}
+		"Ability2"
+		{
+			"Key"		"2"
+		}
+		"Ability3"
+		{
+			"Key"		"3"
+		}
+		"Ability4"
+		{
+			"Key"		"4"
+		}
+		"Item1"
+		{
+			"Key"		"Z"
+		}
+		"Item2"
+		{
+			"Key"		"X"
+		}
+		"Item3"
+		{
+			"Key"		"C"
+		}
+		"Item4"
+		{
+			"Key"		"V"
+		}
+		"Mantle"
+		{
+			"Key"		"SPACE"
+		}
+		"OpenHeroSheet"
+		{
+			"Key"		"B"
+		}
+		"Roll"
+		{
+			"Key"		"SHIFT"
+		}
+		"Crouch"
+		{
+			"Key"		"CTRL"
+		}
+		"PushToTalk"
+		{
+			"Key"		"T"
+		}
+		"Scoreboard"
+		{
+			"Key"		"TAB"
+		}
+		"Reload"
+		{
+			"Key"		"R"
+		}
+		"ExtraInfo"
+		{
+			"Key"		"ALT"
+		}
+		"AltCast"
+		{
+			"Key"		"MOUSE3"
+		}
+		"ReplayDeath"
+		{
+			"Key"		"R"
+		}
+		"StopReplayDeath"
+		{
+			"Key"		"R"
+		}
+		"MoveForward"
+		{
+			"Key"		"W"
+		}
+		"MoveBackwards"
+		{
+			"Key"		"S"
+		}
+		"MoveLeft"
+		{
+			"Key"		"A"
+		}
+		"MoveRight"
+		{
+			"Key"		"D"
+		}
+		"Attack"
+		{
+			"Key"		"MOUSE1"
+		}
+		"ADS"
+		{
+			"Key"		"MOUSE2"
+		}
+		"Chat"
+		{
+			"Key"		"ENTER"
+			"Modifier"		"SHIFT"
+		}
+		"ChatTeam"
+		{
+			"Key"		"ENTER"
+		}
+		"Ping"
+		{
+			"Key"		"MOUSE3"
+		}
+		"MouseWheel"
+		{
+			"Key"		"Y"
+		}
+		"HeldItem"
+		{
+			"Key"		"F"
+		}
+		"SwitchPlayerCam1"
+		{
+			"Key"		"F1"
+		}
+		"SwitchPlayerCam2"
+		{
+			"Key"		"F2"
+		}
+		"SwitchPlayerCam3"
+		{
+			"Key"		"F3"
+		}
+		"SwitchPlayerCam4"
+		{
+			"Key"		"F4"
+		}
+		"SwitchPlayerCam5"
+		{
+			"Key"		"F5"
+		}
+		"AbilityUpgrade1"
+		{
+			"Key"		"1"
+			"Modifier"		"ALT"
+		}
+		"AbilityUpgrade2"
+		{
+			"Key"		"2"
+			"Modifier"		"ALT"
+		}
+		"AbilityUpgrade3"
+		{
+			"Key"		"3"
+			"Modifier"		"ALT"
+		}
+		"AbilityUpgrade4"
+		{
+			"Key"		"4"
+			"Modifier"		"ALT"
+		}
+		"ToggleSpectatorCamera"
+		{
+			"Key"		"C"
+		}
+		"ToggleFreeCursor"
+		{
+			"Key"		"J"
+		}
+		"ToggleSpectatorTeam"
+		{
+			"Key"		"SPACE"
+		}
+		"SpectatorNextTarget"
+		{
+			"Key"		"MOUSE1"
+		}
+		"SpectatorPrevTarget"
+		{
+			"Key"		"MOUSE2"
+		}
+		"SpectatorChase"
+		{
+			"Key"		"MWHEELDOWN"
+		}
+		"SpectatorInEye"
+		{
+			"Key"		"MWHEELUP"
+		}
+		"SpectatorFlyUp"
+		{
+			"Key"		"SHIFT"
+		}
+		"SpectatorFlyDown"
+		{
+			"Key"		"CTRL"
+		}
+		"ToggleReplayCamera"
+		{
+			"Key"		"C"
+		}
+		"ToggleReplayTeam"
+		{
+			"Key"		"SPACE"
+		}
+		"ReplayNextTarget"
+		{
+			"Key"		"MOUSE1"
+		}
+		"ReplayPrevTarget"
+		{
+			"Key"		"MOUSE2"
+		}
+		"ReplayChase"
+		{
+			"Key"		"MWHEELDOWN"
+		}
+		"ReplayInEye"
+		{
+			"Key"		"MWHEELUP"
+		}
+		"ReplayFlyUp"
+		{
+			"Key"		"SHIFT"
+		}
+		"ReplayFlyDown"
+		{
+			"Key"		"CTRL"
+		}
+		"ReplayIncreaseSpeed"
+		{
+			"Key"		"="
+		}
+		"ReplayDecreaseSpeed"
+		{
+			"Key"		"-"
+		}
+		"ReplayTogglePause"
+		{
+			"Key"		"P"
+		}
+		"DevConsole"
+		{
+			"Key"		"F7"
+		}
+		"Pause"
+		{
+			"Key"		"P"
+		}
+		"Teleport"
+		{
+			"Key"		"G"
+		}
+		"CancelAbility"
+		{
+			"Key"		"SPACE"
+			"Key2"		"NONE"
+		}
+		"PurchaseQuickbuy"
+		{
+			"Key"		"G"
+			"Key2"		"NONE"
+		}
+		"CrouchToggle"
+		{
+			"Key"		"NONE"
+			"Key2"		"NONE"
+		}
+		"MoveUp"
+		{
+			"Key"		"SHIFT"
+			"Key2"		"NONE"
+		}
+		"MoveDown"
+		{
+			"Key"		"CTRL"
+			"Key2"		"NONE"
+		}
+		"MinimapZoomIn"
+		{
+			"Key"		"MWHEELUP"
+			"Modifier"		"ALT"
+			"Key2"		"NONE"
+		}
+		"MinimapZoomOut"
+		{
+			"Key"		"MWHEELDOWN"
+			"Modifier"		"ALT"
+			"Key2"		"NONE"
+		}
+		"ItemQuickCastMode"
+		{
+			"Key"		"0"
+			"Key2"		"NONE"
+		}
+		"Zipline"
+		{
+			"Key"		"SPACE"
+			"Key2"		"NONE"
+		}
+		"Cosmetic1"
+		{
+			"Key"		"E"
+			"Key2"		"5"
+		}
+		"SpectatorToggleFreeCursor"
+		{
+			"Key"		"J"
+			"Key2"		"NONE"
+		}
+		"SpectatorFOWTeamAmber"
+		{
+			"Key"		"F3"
+			"Key2"		"NONE"
+		}
+		"SpectatorFOWTeamSapphire"
+		{
+			"Key"		"F4"
+			"Key2"		"NONE"
+		}
+		"SpectatorFOWTeamBoth"
+		{
+			"Key"		"F1"
+			"Key2"		"NONE"
+		}
+		"SpectatorFOWTeamTarget"
+		{
+			"Key"		"F2"
+			"Key2"		"NONE"
+		}
+		"HideoutUse"
+		{
+			"Key"		"E"
+			"Key2"		"NONE"
+		}
+		"HideoutNews"
+		{
+			"Key"		"N"
+			"Key2"		"NONE"
+		}
+		"HideoutCancelMatchmaking"
+		{
+			"Key"		"C"
+			"Key2"		"NONE"
+		}
+		"HideoutAcceptRequest"
+		{
+			"Key"		"Z"
+			"Key2"		"NONE"
+		}
+		"HideoutRejectRequest"
+		{
+			"Key"		"X"
+			"Key2"		"NONE"
+		}
+		"HideoutSurveyOption1"
+		{
+			"Key"		"1"
+			"Key2"		"NONE"
+		}
+		"HideoutSurveyOption2"
+		{
+			"Key"		"2"
+			"Key2"		"NONE"
+		}
+		"HideoutSurveyOption3"
+		{
+			"Key"		"3"
+			"Key2"		"NONE"
+		}
+		"HideoutSurveyOption4"
+		{
+			"Key"		"4"
+			"Key2"		"NONE"
+		}
+		"HideoutSurveyOption5"
+		{
+			"Key"		"5"
+			"Key2"		"NONE"
+		}
+		"HideoutSurveySkip"
+		{
+			"Key"		"0"
+			"Key2"		"NONE"
+		}
+		"OpenMainMenu"
+		{
+			"Key"		"ESCAPE"
+			"Key2"		"NONE"
+		}
+		"CursorSelect"
+		{
+			"Key"		"MOUSE1"
+			"Key2"		"NONE"
+		}
+		"CursorContext"
+		{
+			"Key"		"MOUSE2"
+			"Key2"		"NONE"
+		}
+		"CursorMiddle"
+		{
+			"Key"		"MOUSE3"
+			"Key2"		"NONE"
+		}
+		"MenuBack"
+		{
+			"Key"		"ESCAPE"
+			"Key2"		"NONE"
+		}
+		"MenuUp"
+		{
+			"Key"		"UPARROW"
+			"Key2"		"NONE"
+		}
+		"MenuDown"
+		{
+			"Key"		"DOWNARROW"
+			"Key2"		"NONE"
+		}
+		"MenuLeft"
+		{
+			"Key"		"LEFTARROW"
+			"Key2"		"NONE"
+		}
+		"MenuRight"
+		{
+			"Key"		"RIGHTARROW"
+			"Key2"		"NONE"
+		}
+		"PostGameScoreboard"
+		{
+			"Key"		"S"
+			"Key2"		"NONE"
+		}
+		"PostGameGraphs"
+		{
+			"Key"		"G"
+			"Key2"		"NONE"
+		}
+		"Interact"
+		{
+			"Key"		"E"
+			"Key2"		"NONE"
+		}
+		"CosmeticMenu"
+		{
+			"Key"		"5"
+			"Key2"		"NONE"
+		}
+		"SpectatorPlayer1"
+		{
+			"Key"		"1"
+			"Key2"		"NONE"
+		}
+		"SpectatorPlayer2"
+		{
+			"Key"		"2"
+			"Key2"		"NONE"
+		}
+		"SpectatorPlayer3"
+		{
+			"Key"		"3"
+			"Key2"		"NONE"
+		}
+		"SpectatorPlayer4"
+		{
+			"Key"		"4"
+			"Key2"		"NONE"
+		}
+		"SpectatorPlayer5"
+		{
+			"Key"		"5"
+			"Key2"		"NONE"
+		}
+		"SpectatorPlayer6"
+		{
+			"Key"		"6"
+			"Key2"		"NONE"
+		}
+		"SpectatorPlayer7"
+		{
+			"Key"		"7"
+			"Key2"		"NONE"
+		}
+		"SpectatorPlayer8"
+		{
+			"Key"		"8"
+			"Key2"		"NONE"
+		}
+		"SpectatorPlayer9"
+		{
+			"Key"		"9"
+			"Key2"		"NONE"
+		}
+		"SpectatorPlayer10"
+		{
+			"Key"		"0"
+			"Key2"		"NONE"
+		}
+		"SpectatorPlayer11"
+		{
+			"Key"		"-"
+			"Key2"		"NONE"
+		}
+		"SpectatorPlayer12"
+		{
+			"Key"		"="
+			"Key2"		"NONE"
+		}
+		"HideoutCameraIn"
+		{
+			"Key"		"MWHEELUP"
+			"Key2"		"NONE"
+		}
+		"HideoutCameraOut"
+		{
+			"Key"		"MWHEELDOWN"
+			"Key2"		"NONE"
+		}
+		"ShopPurchaseSearchMatch"
+		{
+			"Key"		"ENTER"
+			"Key2"		"NONE"
+		}
+		"ShopTabBuild"
+		{
+			"Key"		"1"
+			"Key2"		"NONE"
+		}
+		"ShopTabRecommended"
+		{
+			"Key"		"2"
+			"Key2"		"NONE"
+		}
+		"ShopTabAllItems"
+		{
+			"Key"		"3"
+			"Key2"		"NONE"
+		}
+		"ShopTabWeapon"
+		{
+			"Key"		"4"
+			"Key2"		"NONE"
+		}
+		"ShopTabSpirit"
+		{
+			"Key"		"5"
+			"Key2"		"NONE"
+		}
+		"ShopTabVitality"
+		{
+			"Key"		"6"
+			"Key2"		"NONE"
+		}
+		"ShopFocusSearch"
+		{
+			"Key"		"BACKSPACE"
+			"Key2"		"NONE"
+		}
+		"ShopTierUp"
+		{
+			"Key"		"UPARROW"
+			"Key2"		"NONE"
+		}
+		"ShopTierDown"
+		{
+			"Key"		"DOWNARROW"
+			"Key2"		"NONE"
+		}
+	}
+}

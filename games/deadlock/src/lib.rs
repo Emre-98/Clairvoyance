@@ -9,16 +9,22 @@
 //! match is found (just before the loading screen) to just after the end screen. The Hideout, the
 //! sandbox and spectating are never recorded: they give no match signal ([`signals`]). Nothing
 //! has to be set up; with `-condebug` in Deadlock's launch options the timing is a little
-//! tighter. The timeline of a match (kills, objectives, items) is still to come.
+//! tighter.
+//!
+//! Timeline: your own key presses during the match (abilities, the ultimate, item slots, melee,
+//! parry), with the binds read from the game's own file ([`binds`], [`keys`]). Kills, objectives
+//! and items come from the replay file later.
 
+pub mod binds;
 pub mod diag;
+pub mod keys;
 pub mod paths;
 mod platform;
 pub mod signals;
 
 use async_trait::async_trait;
 use chrono::{Datelike, NaiveDateTime};
-use cv_core::game::{CaptureTarget, ConfigField, GameIntegration, MatchPhase, PollUpdate};
+use cv_core::game::{CaptureTarget, ConfigField, GameIntegration, KeyMark, KeyPress, MatchPhase, PollUpdate};
 use cv_core::{EventKind, GameEvent};
 use signals::{Detector, Follower};
 use std::path::PathBuf;
@@ -36,6 +42,7 @@ fn now() -> NaiveDateTime {
     chrono::Local::now().naive_local()
 }
 
+#[derive(Default)]
 pub struct DeadlockIntegration {
     /// Settings > Games: Steam's folder, for when it isn't found by itself.
     steam_folder: String,
@@ -44,18 +51,15 @@ pub struct DeadlockIntegration {
     detector: Detector,
     /// The "match over" event of the current match was returned.
     end_sent: bool,
+    /// Your key presses of the current match, with the binds read when it started.
+    keys: keys::Tracker,
+    binds_logged: bool,
     complained: bool,
-}
-
-impl Default for DeadlockIntegration {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 impl DeadlockIntegration {
     pub fn new() -> Self {
-        Self { steam_folder: String::new(), steam_log: None, console_log: None, detector: Detector::default(), end_sent: false, complained: false }
+        Self::default()
     }
 
     fn steam_root(&self) -> Option<PathBuf> {
@@ -102,7 +106,7 @@ impl GameIntegration for DeadlockIntegration {
         CaptureTarget { exe: "deadlock.exe".into(), display_capture_only: false }
     }
     fn supports_events(&self) -> bool {
-        false
+        true
     }
     fn match_only(&self) -> bool {
         true
@@ -142,6 +146,17 @@ impl GameIntegration for DeadlockIntegration {
         }
         self.detector = Detector::default();
         self.end_sent = false;
+        // The binds as the game has them now (a small file; changes count from the next match).
+        let binds = binds::load(steam.as_deref());
+        if !self.binds_logged || *self.keys.binds() != binds {
+            self.binds_logged = true;
+            let source = if binds.from_file { "the game's file" } else { "the defaults: no binds file found" };
+            log::info!("Deadlock: key binds ({source}): {}", binds.summary());
+            for unseen in binds.unseen() {
+                log::info!("Deadlock: {unseen} can't be followed live (only keyboard keys are seen)");
+            }
+        }
+        self.keys = keys::Tracker::new(binds);
         let now = now();
         self.read_logs(now);
         // A match that ended before now (an earlier session's, or one the app missed) is history.
@@ -178,6 +193,16 @@ impl GameIntegration for DeadlockIntegration {
     async fn stop(&mut self) {
         self.detector.clear();
         self.end_sent = false;
+        self.keys = keys::Tracker::new(self.keys.binds().clone());
+    }
+
+    /// The engine only passes keys pressed while Deadlock has the focus and the match is in
+    /// progress.
+    fn on_key(&mut self, key: &KeyPress, game_time: f64) -> Option<GameEvent> {
+        self.keys.press(key, game_time)
+    }
+    fn take_key_marks(&mut self) -> Vec<KeyMark> {
+        self.keys.take_marks()
     }
 }
 
