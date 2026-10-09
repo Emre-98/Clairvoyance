@@ -8,6 +8,11 @@ use std::time::Duration;
 
 async fn run(watch: Watch, port: u16, spectating_setting: bool) -> (SessionCheck, Option<WatchKind>, bool) {
     let opts = MockOptions { port, speed: 10.0, length: 300.0, loading_secs: 1.0, linger_secs: 30.0, watch, ..Default::default() };
+    run_opts(opts, spectating_setting).await
+}
+
+async fn run_opts(opts: MockOptions, spectating_setting: bool) -> (SessionCheck, Option<WatchKind>, bool) {
+    let port = opts.port;
     let mock = cv_mock_league::spawn(opts).unwrap();
     let dir = std::env::temp_dir().join(format!("cv-watch-{port}-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -57,12 +62,36 @@ async fn spectating_is_seen_by_the_client_and_the_game() {
 
 #[tokio::test]
 async fn replay_the_client_hides_is_found_by_the_game() {
-    let (c, w, _) = run(Watch::ReplayLate, 3023, false).await;
-    assert_eq!(c, SessionCheck::Playing, "the client reports a match");
-    assert_eq!(w, Some(WatchKind::Unknown), "the in-game API reveals spectator mode");
     let (c, w, _) = run(Watch::ReplayUnsure, 3026, false).await;
     assert_eq!(c, SessionCheck::Unsure(WatchKind::Unknown));
     assert_eq!(w, Some(WatchKind::Unknown));
+}
+
+#[tokio::test]
+async fn the_clients_word_that_you_play_is_final() {
+    // The client lists your account among the match's players; the in-game API stays in
+    // spectator mode. Never taken for a replay / spectating (before: deleted a few seconds in).
+    let (c, w, _) = run(Watch::ReplayLate, 3023, false).await;
+    assert_eq!(c, SessionCheck::Playing, "the client reports your match");
+    assert_eq!(w, None, "the in-game API can't make it spectating");
+}
+
+#[tokio::test]
+async fn spectator_answer_before_the_champion_spawns_isnt_spectating() {
+    // Owner's PC, 2026-10-09 (first ranked game after switching accounts): the in-game API
+    // came up 20 ms before the champions were spawned and answered "spectator mode" once; the
+    // recording was deleted. Here that window is 0.5 s (several reads at this test's pace).
+    let opts = |port, watch| MockOptions { port, speed: 10.0, length: 300.0, loading_secs: 1.0, linger_secs: 30.0, watch, no_champion_secs: 0.5, ..Default::default() };
+    // Your match, the client lists you: recorded from the start, never "watching".
+    let (c, w, p) = run_opts(opts(3031, Watch::None), false).await;
+    assert_eq!(c, SessionCheck::Playing);
+    assert_eq!(w, None, "one early answer isn't spectator mode");
+    assert!(p, "then the in-game API shows your champion");
+    // Your match, the client can't show its players: held, and the hold ends in "playing".
+    let (c, w, p) = run_opts(opts(3032, Watch::MatchUnreadable), false).await;
+    assert_eq!(c, SessionCheck::Unsure(WatchKind::Unknown));
+    assert_eq!(w, None);
+    assert!(p);
 }
 
 #[tokio::test]

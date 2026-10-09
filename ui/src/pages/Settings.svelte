@@ -525,7 +525,7 @@
               <option value="spectate-live">Spectating a friend</option>
               <option value="spectate-unreadable">Spectating, players unreadable</option>
               <option value="match-unreadable">A match, players unreadable</option>
-              <option value="replay-late">A replay found late</option>
+              <option value="replay-late">A match, the game says spectator mode</option>
             </select>
           </label>
           <button class="btn primary" onclick={simulate} disabled={app.status?.state !== "idle"}><Icon name="play" size={14} fill />Simulate a League game</button>

@@ -1,8 +1,9 @@
 //! Plays a scripted match against the fake Live Client API over real HTTP.
 
-use cv_core::game::{GameIntegration, GameResult, MatchPhase, ModeRules};
+use cv_core::game::{GameIntegration, GameResult, MatchPhase, ModeRules, SessionCheck, WatchDetection};
 use cv_core::EventKind;
 use cv_game_league::LeagueIntegration;
+use cv_mock_league::MockOptions;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn full_mock_match() {
@@ -108,6 +109,100 @@ async fn mode_from_the_fake_league_client() {
         assert!(catalog.iter().any(|c| c.key == "q450" && c.available == Some(true)));
         mock.stop();
     }
+}
+
+/// What one game of the fake League gave.
+struct Played {
+    check: SessionCheck,
+    /// A poll said "spectator mode".
+    watched: bool,
+    player: Option<cv_core::game::PlayerInfo>,
+    /// Own kills on the timeline.
+    kills: usize,
+    sb: cv_core::scoreboard::Scoreboard,
+}
+
+/// A short fake game for an account; its in-game API and its fake client are on `port`.
+fn account_game(port: u16, player: &str, champion: &str, no_champion_secs: f64) -> MockOptions {
+    MockOptions { port, speed: 60.0, length: 240.0, loading_secs: 0.5, linger_secs: 2.0, player: player.into(), champion: champion.into(), no_champion_secs, ..Default::default() }
+}
+
+/// The League settings for that game; the saved Riot ID stays account A's throughout.
+fn account_config(port: u16, dir: &std::path::Path) -> serde_json::Value {
+    serde_json::json!({ "api_base": format!("http://127.0.0.1:{port}/liveclientdata"), "riot_id": "First#EUW", "client_dir": dir.to_string_lossy() })
+}
+
+/// One game played the way the engine does it: `start`, the session check, then polls until
+/// the match is over.
+async fn play_one(lol: &mut LeagueIntegration, dir: &std::path::Path, opts: MockOptions) -> Played {
+    lol.configure(&account_config(opts.port, dir));
+    let mock = cv_mock_league::spawn(opts).unwrap();
+    // The client was restarted for this account: a new port (and password) in its lockfile.
+    std::fs::write(dir.join("lockfile"), mock.lockfile_text()).unwrap();
+    lol.start().await.unwrap();
+    let check = lol.session_check().await;
+    let (mut watched, mut player, mut kills) = (false, None, 0);
+    let mut sb = cv_core::scoreboard::Scoreboard::default();
+    for _ in 0..300 {
+        let Ok(u) = lol.poll().await else { break };
+        watched |= u.watching.is_some();
+        kills += u.events.iter().filter(|e| e.kind == EventKind::Kill).count();
+        if let Some(r) = u.scoreboard {
+            sb.record(r);
+        }
+        if u.player.is_some() {
+            player = u.player;
+        }
+        if u.phase == MatchPhase::Ended {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    lol.stop().await;
+    mock.stop();
+    Played { check, watched, player, kills, sb }
+}
+
+/// Owner's PC, 2026-10-09: a game on account A, log out, log in to account B, a game on B. B's
+/// game was deleted 3 s in as "replay or spectating" (the in-game API had answered "spectator
+/// mode" once, before the champions were spawned) and nothing was recorded for the rest of it.
+/// Here B's game is the worst case: the in-game API never shows a champion of yours, and the
+/// saved Riot ID is still account A's.
+#[tokio::test(flavor = "multi_thread")]
+async fn switching_accounts_between_games() {
+    let dir = std::env::temp_dir().join(format!("cv-accounts-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut lol = LeagueIntegration::new();
+    for restart_app in [false, true] {
+        let base: u16 = if restart_app { 29990 } else { 29987 };
+
+        // Account A.
+        let a = play_one(&mut lol, &dir, account_game(base, "First#EUW", "Ahri", 0.0)).await;
+        assert_eq!(a.check, SessionCheck::Playing);
+        assert!(!a.watched);
+        assert_eq!(a.player.map(|p| p.name).as_deref(), Some("First#EUW"));
+        assert_eq!(a.kills, 4);
+
+        // Log out, log in to account B (with or without restarting Clairvoyance in between).
+        if restart_app {
+            lol = LeagueIntegration::new();
+        }
+        let b = play_one(&mut lol, &dir, account_game(base + 1, "Second Acc#TR1", "Riven", f64::MAX)).await;
+        assert_eq!(b.check, SessionCheck::Playing, "the client lists the account logged in now among the match's players");
+        assert!(!b.watched, "never taken for a replay / spectating (restart: {restart_app})");
+        let p = b.player.expect("account B is found although the saved Riot ID is account A's");
+        assert_eq!((p.name.as_str(), p.character.as_deref()), ("Second Acc#TR1", Some("Riven")));
+        assert_eq!(b.kills, 4, "B's kills are on the timeline");
+        let me: Vec<&str> = b.sb.players.iter().filter(|p| p.me).map(|p| p.name.as_str()).collect();
+        assert_eq!(me, vec!["Second Acc#TR1"], "the scoreboard marks account B");
+
+        // And back to account A (a short "no champion yet" moment at its start): nothing of B is left.
+        let a = play_one(&mut lol, &dir, account_game(base + 2, "First#EUW", "Ahri", 0.3)).await;
+        assert_eq!(a.check, SessionCheck::Playing);
+        assert!(!a.watched);
+        assert_eq!(a.player.map(|p| p.name).as_deref(), Some("First#EUW"));
+    }
+    std::fs::remove_dir_all(dir).ok();
 }
 
 /// Completed-item chips against the fake game's shop script (`cv_mock_league::SHOP`): buy and

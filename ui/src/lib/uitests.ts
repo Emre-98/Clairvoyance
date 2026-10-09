@@ -268,7 +268,6 @@ async function watch(): Promise<Check[]> {
     ["spectate", "Spectating"],
     ["spectate-live", "Spectating a friend (the client reports it like your match; you're not one of its players)"],
     ["spectate-unreadable", "Spectating, the client's player list unreadable (the game decides)"],
-    ["replay-late", "Replay (client can't tell, found by the game a few seconds in)"],
     ["replay-unsure", "Replay (no game session in the client, the game decides)"],
   ] as const) {
     const f0 = await folders();
@@ -284,6 +283,9 @@ async function watch(): Promise<Check[]> {
   }
   const r = await play(400, 90);
   out.push({ name: "A normal match is still recorded", pass: r.added.length === 1 && !!r.added[0].video_path, details: r });
+  // The client lists you among the match's players: recorded even if the game's API says spectator mode.
+  const late = await play(400, 90, undefined, "replay-late");
+  out.push({ name: "A match the game's API calls spectator mode is recorded (the client lists you as a player)", pass: late.added.length === 1 && !!late.added[0].video_path, details: late });
   return out;
 }
 

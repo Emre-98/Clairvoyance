@@ -152,6 +152,32 @@
     build, obfuscated vs plain: start-up 255 vs 258 ms, Settings open 14.2 vs 14.1 ms, first-run
     Setup 467 vs 377 ms (once). Layout --quick 66/66 (all Settings sections).
 
+- **League: a real game taken for spectating after an account switch (2026-10-09, owner's
+  report), fixed, not yet tried in a real game; written without a local compiler (CI only):**
+  - *What happened (the app's log + League's own game log, 18:44:54):* first game on the second
+    account, Ranked Solo/Duo. The client check was right ("you are one of the match's players:
+    Some(true)", new lockfile and account read fine), recording started, and 3 s later the
+    in-game API answered "spectator mode" once: 20 ms **before** the champions were spawned
+    (League's log: API read at 5.326 s, `GAMESTATE_SPAWN` at 5.346 s). That single answer deleted
+    the recording and the rest of the game was ignored. Nothing was cached from the first
+    account; the account switch only happened to be the game where the read hit that instant
+    (the ten games before it read 0.3-1 s after the spawn). Whether the second account answers
+    like that every time can't be told from the logs: the fix covers both.
+  - *Fix (`games/league/src/watch.rs`, `lib.rs`):* "spectator mode" counts only after 3 answers
+    in a row over 1.5 s (`LiveCheck`; your champion settles it at once); and when the client
+    lists the account logged in now among the match's players, that is final (the in-game API
+    can't turn it into spectating; log: "kept as your match"). "You" on the timeline / scoreboard
+    is the game's own answer, else the account logged in to the client now; the saved Riot ID
+    is used only when neither says (before, it was always added). Lockfile, account and players
+    were and are read again at every game start.
+  - *Unchanged:* replays (client says so) never recorded; not in the match's players / players
+    unreadable / client not found → nothing recorded until the in-game API says, now 2 s later.
+  - *Simulator:* "A replay found late" became "A match, the game says spectator mode" (recorded).
+  - Tests: `watch.rs` (roster per account, the repeated-answer rule), `watch_mock.rs` (the early
+    answer with and without a readable roster), `mock_match.rs` `switching_accounts_between_games`
+    (A, then B with a new lockfile, an in-game API that never shows a champion and A's Riot ID
+    still saved, then A again; with and without a new `LeagueIntegration`).
+
 ## Performance rules (hard requirements)
 - Recording is done by GameRecorder's **built-in recorder** (see "Built-in recorder" below). No
   injection into the game: capture uses Windows Graphics Capture, which is Vanguard-safe.
@@ -229,6 +255,10 @@
   2026-10-08, if the list (or the client) can't be read, nothing is recorded until the in-game
   API says (log: "session check: ... -> Unsure(Unknown)"); only a hold the in-game API never
   settles (60 reads / 3 min) records anyway and falls back to the old late delete.
+  Since 2026-10-09 the in-game API's "spectator mode" needs 3 answers in a row (a real match
+  says it once before the champions spawn), and it never overrides a client that lists you
+  among the match's players: a replay the client would report as your running match with you
+  in it (never seen) would be recorded.
 - Unverified without the owner's tests: the ult kinds on real recast / command icons (Annie's
   Tibbers, Ivern's Daisy...: the detector is calibrated on synthetic recast icons), the ability
   bubbles on a real game with rebound keys, and the v1.6 player's numbers in WebView2 (they
@@ -491,6 +521,15 @@ Key presses on the timeline (`games/deadlock/src/binds.rs`, `keys.rs`; 2026-10-0
 Next: the replay file (milestone 46; needs the owner's replay run first), then the fallback buffer and the modes (milestones 43-44).
 
 ## Next steps
+- **Owner, League account switch (after installing the build with the fix):** (1) play a game
+  on account A, log out of the League client, log in to account B, play a game (any queue)
+  without restarting Clairvoyance: both are in Games, B's with B's champion, KDA and "you" on
+  the scoreboard. (2) The same with Clairvoyance closed and started again between the two.
+  (3) Spectate a friend's live game once: nothing in Games, the tray says "Spectating: not
+  recorded". (4) Settings > Advanced > Simulate, What = "A match, the game says spectator
+  mode": recorded. In the log each game has "session check: you are one of the match's
+  players: Some(true)"; a line "in-game API: no champion of yours ..." followed by a normal
+  recording is the old bug being caught.
 - **Owner, move releases to Clairvoyance-releases (2026-10-09; RELEASING.md "Moving releases to
   Clairvoyance-releases"):** create the public repo with a README, the seal key + `RELEASES_TOKEN`,
   then release 1.14.0 (the bridge) while this repo is public, check both latest.json addresses,

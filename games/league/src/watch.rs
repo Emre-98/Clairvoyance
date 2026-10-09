@@ -31,9 +31,22 @@
 //! - a hold the in-game API doesn't settle (no answer either way after ~60 reads, or not
 //!   answering at all for 3 min) records anyway: the late check still deletes a replay /
 //!   spectated game found after that, so a real game is never lost.
+//!
+//! Two rules keep a match you play from being taken for spectating (owner's PC, 2026-10-09: the
+//! first ranked game after switching accounts was deleted 3 s in):
+//! - the in-game API answers "spectator mode" for a real match too, in the instant between the
+//!   API coming up and your champion being spawned (that game: one such answer 20 ms before the
+//!   spawn). So spectator mode only counts once it has been answered [`SPECTATOR_READS`] times in
+//!   a row over [`SPECTATOR_FOR`] ([`LiveCheck`]); your champion settles it at once;
+//! - when the client lists the account logged in now among the match's players, that is final:
+//!   the in-game API can't turn it into spectating any more.
+//!
+//! Nothing here is kept between games: the lockfile (port + password change whenever the client
+//! restarts, e.g. after logging in to another account), the account and the match's players are
+//! read again at every game start.
 
 use cv_core::game::{SessionCheck, WatchKind};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// What the League client (LCU) says when the game process appears.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -90,6 +103,17 @@ pub fn in_roster(me: &serde_json::Value, session: &serde_json::Value) -> Option<
         }
     }
     None
+}
+
+/// The Riot ID of the account logged in to the client (`/lol-summoner/v1/current-summoner`):
+/// "Name#TAG", as the in-game API names its players.
+pub fn account_name(me: &serde_json::Value) -> Option<String> {
+    let s = |k: &str| me[k].as_str().map(str::trim).filter(|v| !v.is_empty());
+    match (s("gameName"), s("tagLine")) {
+        (Some(n), Some(t)) => Some(format!("{n}#{t}")),
+        (Some(n), None) => Some(n.to_string()),
+        _ => s("displayName").map(str::to_string),
+    }
 }
 
 /// The client's verdict refined by the match's players: a "match of yours" you aren't playing
@@ -153,6 +177,46 @@ pub fn classify_active_player(status: u16, body: &str) -> LiveVerdict {
     LiveVerdict::Undecided
 }
 
+/// "Spectator mode" answers in a row before the in-game API is believed, and over how long (the
+/// engine reads once per second; a real match's false answer lasts well under a second).
+pub const SPECTATOR_READS: u32 = 3;
+pub const SPECTATOR_FOR: Duration = Duration::from_millis(1500);
+
+/// The in-game API's answers at the start of a match, until they settle what runs.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct LiveCheck {
+    spectator_reads: u32,
+    spectator_since: Option<Instant>,
+}
+
+impl LiveCheck {
+    /// One more answer, read at `now`. `Some` once it is settled: your champion at once,
+    /// spectator mode only when nothing else was answered for a while.
+    pub fn settle(&mut self, v: LiveVerdict, now: Instant) -> Option<LiveVerdict> {
+        match v {
+            LiveVerdict::Playing => {
+                *self = Self::default();
+                Some(LiveVerdict::Playing)
+            }
+            LiveVerdict::Undecided => {
+                *self = Self::default();
+                None
+            }
+            LiveVerdict::Spectator => {
+                self.spectator_reads += 1;
+                let since = *self.spectator_since.get_or_insert(now);
+                let long_enough = now.saturating_duration_since(since) >= SPECTATOR_FOR;
+                (self.spectator_reads >= SPECTATOR_READS && long_enough).then_some(LiveVerdict::Spectator)
+            }
+        }
+    }
+
+    /// "Spectator mode" answers in a row so far.
+    pub fn spectator_reads(&self) -> u32 {
+        self.spectator_reads
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -210,6 +274,67 @@ mod tests {
         assert_eq!(refine_with_roster(SessionCheck::Playing, Some(false), false), SessionCheck::Unsure(WatchKind::Spectate));
         assert_eq!(refine_with_roster(SessionCheck::Playing, Some(true), false), SessionCheck::Playing);
         assert_eq!(refine_with_roster(SessionCheck::Watching(WatchKind::Replay), Some(false), false), SessionCheck::Watching(WatchKind::Replay));
+    }
+
+    #[test]
+    fn the_roster_is_judged_for_the_account_logged_in_now() {
+        use serde_json::json;
+        // Two accounts on one PC. The match is account B's (the first one after logging out of
+        // A and in to B): only B's `current-summoner` says "you're playing".
+        let a = json!({"puuid": "p-a", "summonerId": 11, "gameName": "First", "tagLine": "EUW"});
+        let b = json!({"puuid": "p-b", "summonerId": 22, "gameName": "Second Acc", "tagLine": "TR1"});
+        let team = |p: &str, id: u64| json!([{"puuid": p, "summonerId": id}, {"puuid": "p-2", "summonerId": 2}]);
+        let match_of = |p: &str, id: u64| json!({"phase": "InProgress", "gameData": {"teamOne": team(p, id), "teamTwo": [{"puuid": "p-5", "summonerId": 5}]}});
+        let (game_a, game_b) = (match_of("p-a", 11), match_of("p-b", 22));
+        assert_eq!(in_roster(&a, &game_a), Some(true));
+        assert_eq!(in_roster(&b, &game_b), Some(true), "the account logged in now is one of its players");
+        // What an account kept from the session before would say: "not your match" -> held as
+        // spectating. So the account is read again at every game start, never kept.
+        assert_eq!(in_roster(&a, &game_b), Some(false));
+        assert_eq!(refine_with_roster(SessionCheck::Playing, in_roster(&a, &game_b), false), SessionCheck::Unsure(WatchKind::Spectate));
+        assert_eq!(refine_with_roster(SessionCheck::Playing, in_roster(&b, &game_b), false), SessionCheck::Playing);
+        // Its Riot ID, as the in-game API names players.
+        assert_eq!(account_name(&a).as_deref(), Some("First#EUW"));
+        assert_eq!(account_name(&b).as_deref(), Some("Second Acc#TR1"));
+        assert_eq!(account_name(&json!({"gameName": "Solo", "tagLine": ""})).as_deref(), Some("Solo"));
+        assert_eq!(account_name(&json!({"displayName": "Old Name"})).as_deref(), Some("Old Name"));
+        assert_eq!(account_name(&json!({"errorCode": "RPC_ERROR", "httpStatus": 404})), None);
+    }
+
+    #[test]
+    fn one_spectator_answer_before_the_spawn_isnt_spectating() {
+        use LiveVerdict::*;
+        let t0 = Instant::now();
+        let at = |ms: u64| t0 + Duration::from_millis(ms);
+        // Owner's PC, 2026-10-09: "spectator mode" 20 ms before the champion was spawned, then
+        // the champion. (Before: the first answer deleted the recording.)
+        let mut c = LiveCheck::default();
+        assert_eq!(c.settle(Spectator, at(0)), None);
+        assert_eq!(c.spectator_reads(), 1);
+        assert_eq!(c.settle(Playing, at(1000)), Some(Playing));
+        assert_eq!(c.spectator_reads(), 0);
+        // Your champion settles it at once.
+        assert_eq!(LiveCheck::default().settle(Playing, at(0)), Some(Playing));
+        // A replay / spectating keeps saying so: believed at the third read (2 s at one per second).
+        let mut c = LiveCheck::default();
+        assert_eq!(c.settle(Undecided, at(0)), None, "loading screen");
+        assert_eq!(c.settle(Spectator, at(1000)), None);
+        assert_eq!(c.settle(Spectator, at(2000)), None);
+        assert_eq!(c.settle(Spectator, at(3000)), Some(Spectator));
+        // Reads in quick succession don't count as "for a while".
+        let mut c = LiveCheck::default();
+        for ms in [0, 100, 200, 300] {
+            assert_eq!(c.settle(Spectator, at(ms)), None, "{ms} ms");
+        }
+        assert_eq!(c.settle(Spectator, at(1500)), Some(Spectator));
+        // Anything else in between starts the count again.
+        let mut c = LiveCheck::default();
+        assert_eq!(c.settle(Spectator, at(0)), None);
+        assert_eq!(c.settle(Spectator, at(1000)), None);
+        assert_eq!(c.settle(Undecided, at(2000)), None);
+        assert_eq!(c.settle(Spectator, at(3000)), None);
+        assert_eq!(c.settle(Spectator, at(4000)), None);
+        assert_eq!(c.settle(Spectator, at(5000)), Some(Spectator));
     }
 
     #[test]
