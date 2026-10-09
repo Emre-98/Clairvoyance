@@ -30,7 +30,7 @@ async fn a_match_from_the_logs_to_the_engine() {
     append(&content, &steam_line(60, "AppID 1422450 state changed : Fully Installed,App Running,"));
 
     let mut game = DeadlockIntegration::new();
-    assert!(game.match_only() && !game.supports_events());
+    assert!(game.match_only() && game.supports_events());
     game.configure(&serde_json::json!({ "steam_folder": steam.to_string_lossy() }));
     game.start().await.unwrap();
     let u = game.poll().await.unwrap();
@@ -48,6 +48,13 @@ async fn a_match_from_the_logs_to_the_engine() {
     append(&console, &console_line("OnGameStateChanged: GameInProgress (7)"));
     assert_eq!(game.poll().await.unwrap().phase, MatchPhase::InProgress);
     assert_eq!(game.end_grace(), Duration::from_secs(2));
+
+    // Your keys during the match, with the game's default binds (this Steam folder has no binds file).
+    let key = |k: &str| cv_core::game::KeyPress { key: k.into(), ctrl: false, shift: false, alt: false };
+    let ult = game.on_key(&key("4"), 75.0).expect("the ultimate");
+    assert_eq!((ult.kind, ult.title.as_str()), (EventKind::UltPressed, "Ultimate"));
+    assert!(game.on_key(&key("W"), 76.0).is_none());
+    assert_eq!(game.take_key_marks().iter().map(|m| m.action.as_str()).collect::<Vec<_>>(), ["ult"]);
 
     // The engine starts the module again when the recording starts: the match is still known.
     game.start().await.unwrap();

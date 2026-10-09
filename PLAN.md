@@ -47,6 +47,16 @@
   (09:28:20-10:09:17 and 10:15:44-10:17:12 with the console log; 09:28:21-10:09:07 and
   10:15:44-10:17:12 from Steam's log alone). Written without a local compiler: checked by CI
   only. No timeline yet, no fallback buffer, no mode rules: see "Deadlock".
+- **Deadlock, key presses on the timeline (2026-10-09), not yet tried in a real game:** your
+  presses of abilities 1-3, the ultimate (ability 4), item slots 1-4, melee and parry become
+  timeline markers ("Ability 1", "Ultimate", "Item 2", "Melee", "Parry"), only while Deadlock
+  has the focus and the match is in progress. The binds are read from the game's own
+  `citadelkeys_personal.lst` at each match start (the `.vcfg` files turned out to hold console
+  binds only). Not counted: Alt+1-4 (ability upgrade), typing in the chat, keys while the shop
+  is open, the same key again within 1 s (melee 0.4 s). Every press is also kept as a key mark
+  for the replay check to come. New groups "Abilities", "Item keys", "Melee & parry" (hidden
+  until their chip is clicked, like the ult). Written without a local compiler: CI only. Details:
+  "Deadlock" > "Key presses on the timeline".
 - **Engineering upkeep (2026-10-07, after a full review of the code):** the architecture is
   sound and the project continues as is (no rewrite). Done: CI compiles and lints the Windows
   code (`windows` job) and checks rustfmt + clippy (Rust pinned to 1.99); engine session states
@@ -158,7 +168,9 @@
 - [ ] 43. Deadlock M1 fallback: capped rolling buffer on disk, health rules, matches cut out of it, game-neutral in the core
 - [ ] 44. Deadlock M1 modes + spectating / replays never saved
 - [ ] Owner: second bot match on the normal path = exactly one recording; one more without `-condebug` saved through the fallback
-- [ ] 45. Deadlock M2+: key presses live; kills, objectives, items, souls, scoreboard and auto clips from the replay file
+- [x] 45. Deadlock M2 part 1: key presses on the timeline (abilities, ultimate, item slots, melee, parry) with the game's own binds
+- [ ] Owner: one match with the key presses, then compare the markers with the video
+- [ ] 46. Deadlock M2 part 2: kills, objectives, items, souls, scoreboard, ult confirmation and auto clips from the replay file
 - [ ] Owner's real-game check of v1.8 (see "Next steps")
 - [ ] Owner's `scripts/encoder-compare.ps1` run, then switch the defaults where the numbers allow
 
@@ -279,9 +291,10 @@ Checked on the owner's PC (2026-10-09, read-only):
 - The exe is `game\bin\win64\deadlock.exe`; its window title in the Hideout / menu is "Deadlock".
 - `game\citadel` has `cfg`, `rpt`, `save`; **no `console.log`** (no `-condebug` yet) and no
   `replays` folder yet (no replay downloaded so far).
-- Key binds: `userdata\<id>\1422450\local\cfg\user_keys_0_slot0.vcfg` (only the changed binds;
-  the owner's has just F7 = console) and `remote\cfg\citadelkeys_personal.lst`; the defaults are
-  `game\citadel\cfg\user_keys_default.vcfg`.
+- Key binds: the gameplay binds are in `userdata\<id>\1422450\remote\cfg\citadelkeys_personal.lst`
+  (every action with its key, see "Key presses on the timeline"). `local\cfg\user_keys_0_slot0.vcfg`
+  and `game\citadel\cfg\user_keys_default.vcfg` are the engine's console binds only (the owner's
+  has just F7 = console; the default one has no ability in it).
 - Steam's recording folder is `userdata\<id>\gamerecordings` (`timelines\` empty: Steam's game
   recording is off or was never used). Launch options live in
   `userdata\<id>\config\localconfig.vdf` (`"LaunchOptions"` in the app's block; Steam writes
@@ -425,9 +438,49 @@ Milestone 1, the normal path as built (`games/deadlock/src/signals.rs`, `lib.rs`
   parsing, the time rules, the log follower, and the module against real files through
   `start` / `poll` / `stop` as the engine calls them.
 
-Next: the fallback buffer and the modes (milestones 43-44), then milestone 2+.
+Key presses on the timeline (`games/deadlock/src/binds.rs`, `keys.rs`; 2026-10-09, game build 6766):
+- **Where the binds are (read on the owner's PC):** `citadelkeys_personal.lst` is a Valve
+  KeyValues text: `"KeyBindings" { "Name" "DEFAULT" … "Keys" { "Ability1" { "Key" "1" } … } }`,
+  about 150 actions, each with `"Key"`, sometimes `"Modifier"` (`"ALT"`, `"SHIFT"`) and, for
+  newer actions, `"Key2"` (`"NONE"` = empty). The owner's values: `AbilityMelee` Q, `Ability1-4`
+  1 2 3 4, `Item1-4` Z X C V, `HeldItem` F (the game's settings call it "Melee parry / throw
+  held item"), `OpenHeroSheet` B ("Open shop"), `ChatTeam` Enter, `Chat` Shift+Enter,
+  `AbilityUpgrade1-4` Alt+1-4. The file is the test fixture
+  `games/deadlock/tests/fixtures/citadelkeys-personal.txt`.
+- The file of the Steam account that played last is read at every match start (6.7 KB, opened
+  for a moment, never written). Actions it doesn't list, or no file at all, use those defaults.
+  The log says once which binds are in effect ("Deadlock: key binds (the game's file): abilities
+  1 2 3 4, items Z X C V, melee Q, parry F").
+- A plain bind also counts with Shift / Ctrl / Alt held (casting while dashing or crouching),
+  unless that chord is bound to something itself (Alt+1 = upgrade ability 1: no marker).
+- Live gates (the engine already requires focus + match in progress): chat open (from the chat
+  binds until Enter / Escape, or 15 s without any key), shop open (from its bind until the bind
+  again / Escape, at most 90 s: there the number keys switch tabs and letters go to the search),
+  contact bounce (80 ms), the same action again within 1 s (melee 0.4 s). Filtered presses stay
+  in the session as key marks with the reason (`chat`, `shop`, `repeat`).
+- Timeline: `UltPressed` for ability 4; new game-neutral kinds `AbilityPressed`, `ItemPressed`,
+  `Melee`, `Parry` (core `events.rs`; UI groups "Abilities", "Item keys", "Melee & parry" with
+  their own icons). Titles are the game's own bind names; the hero's ability names come with
+  the replay file.
+- **Limits:** a press isn't a cast (cooldown, silenced, dead, empty item slot: unknown until
+  the replay check). Only keyboard keys are seen: an action bound to a mouse button, the wheel
+  or to Shift / Ctrl / Alt alone can't be followed (the log names them). Hero-specific binds
+  (`citadel_hero_settings.lst` > `heroes`, empty on the owner's PC: format unseen) aren't read.
+  `"Modifier2"` for a second key is assumed, not seen. Whether the shop really keeps the keys
+  the whole time it is open, and whether it closes by itself (death, damage), is unverified:
+  that is what the 90 s cap is for.
+- Tests (`cargo test -p cv-game-deadlock`): the owner's file parsed (every followed action, the
+  chords), changed / unbound / mouse binds, half-written files, Valve key names, every key's
+  event, mashing, modifiers, chat, shop, and the module's `on_key` / `take_key_marks`.
+
+Next: the replay file (milestone 46; needs the owner's replay run first), then the fallback buffer and the modes (milestones 43-44).
 
 ## Next steps
+- **Owner, Deadlock key presses (one match, any mode):** play normally and use every ability,
+  the ultimate, an active item, melee and parry at least once; type one chat line and open the
+  shop once. Afterwards open the match in Games and click the greyed chips "Ult", "Abilities",
+  "Item keys", "Melee & parry": each marker should sit on the moment you pressed the key in the
+  video. Nothing to send: the log and the session file are read afterwards.
 - **Owner, Deadlock's first recorded match (done 2026-10-09, v1.12.0):** worked, see "Current status".
 - **Owner, Deadlock (done 2026-10-09):** the two diagnostic runs. Switch "Deadlock: log match
   signals" off again (Settings > General). Still useful when you have a minute, with the option
