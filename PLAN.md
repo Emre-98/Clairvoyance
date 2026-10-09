@@ -362,6 +362,12 @@ are the test fixtures in `games/deadlock/tests/fixtures/`):
 - The diagnostic's own cost: 62.65 s of looking over 2,337 s (2.7 %) in run 1, 16.99 s over
   526 s (3.2 %) in run 2: above the 1 % target (it lists folders every second and follows ~45
   Steam logs). Fine for a one-off diagnostic; the integration will follow two files only.
+- **Switching the console log on automatically: tried, doesn't work** (owner's test,
+  2026-10-09 10:32-10:37, launch options empty, command line `-steam -console`): an
+  `autoexec.cfg` in `game\citadel\cfg` with `con_logfile "console_cv.log"` produced no log file
+  and `console.log` didn't grow. Editing Steam's `localconfig.vdf` (Steam overwrites it on exit)
+  and launching through `steam://run` (confirmation prompt, only from our app) are ruled out.
+  So the console log stays an opt-in extra for users who add `-condebug` themselves.
 
 Decision (owner's preference: no launch option for normal users): the **normal path is built
 on Steam's content log**, which needs nothing from the user: recording starts when updates are
