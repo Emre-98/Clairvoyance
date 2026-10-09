@@ -29,8 +29,15 @@
   the ult kinds and ability bubbles or the v1.6 player benchmark. They are dropped from the
   plan; what stays unverified is under "Known issues" and the scripts are kept in
   docs/HISTORY.md ("Owner test scripts (not run)") in case they become possible.
-- **Focus: League of Legends only** (owner, 2026-10-07). No CS2 or Dota 2 work for now; the CS2
-  module stays as it is.
+- **Focus: League of Legends and Deadlock** (owner; League only since 2026-10-07, lifted for
+  Deadlock on 2026-10-09). No CS2 or Dota 2 work for now; the CS2 module stays as it is.
+- **Deadlock, milestone 1 step 1 (2026-10-09): the match-signal diagnostic is built; waiting for
+  the owner's log.** New crate `games/deadlock` (`cv-game-deadlock`) with the developer option
+  "Deadlock: log match signals" (Settings > General > Developer tools) and "Copy log path". It is
+  not a game integration yet: nothing of Deadlock is recorded, and Deadlock isn't listed in
+  Settings > Games. Written on the owner's PC, which has no Rust / Node: compiled, linted and
+  unit-tested only by CI, **not yet run on Windows**. What it watches, what the owner should do
+  and what comes next: "Deadlock" below and "Next steps".
 - **Engineering upkeep (2026-10-07, after a full review of the code):** the architecture is
   sound and the project continues as is (no rewrite). Done: CI compiles and lints the Windows
   code (`windows` job) and checks rustfmt + clippy (Rust pinned to 1.99); engine session states
@@ -135,6 +142,14 @@
 - [x] 37. Smaller files: measured (software stand-ins + PC script), HEVC / AV1 recording and quality-based rate control as options with H.264 fallback; defaults unchanged until the GPU numbers (v1.8 part 3)
 - [x] 38. Share: one click to the clipboard, "Fit for Discord" copy under 19.5 MB (on by default), copies cleared after 24 h
 - [x] 39. Spectating caught before recording also when the client can't tell (the in-game API decides; safety net records anyway)
+- [x] 40. Deadlock M1 step 1: match-signal diagnostic ("Deadlock: log match signals" + "Copy log path")
+- [ ] Owner: one bot match with the diagnostic on, log sent (see "Next steps")
+- [ ] 41. Deadlock M1 step 2: signals chosen from the owner's log, their lateness measured, written under "Deadlock"
+- [ ] 42. Deadlock M1 normal path: live start / stop (`match_only`), pre-roll only if the start signal is late, exact trim, `-condebug` notice
+- [ ] 43. Deadlock M1 fallback: capped rolling buffer on disk, health rules, matches cut out of it, game-neutral in the core
+- [ ] 44. Deadlock M1 modes + spectating / replays never saved
+- [ ] Owner: second bot match on the normal path = exactly one recording; one more without `-condebug` saved through the fallback
+- [ ] 45. Deadlock M2+: key presses live; kills, objectives, items, souls, scoreboard and auto clips from the replay file
 - [ ] Owner's real-game check of v1.8 (see "Next steps")
 - [ ] Owner's `scripts/encoder-compare.ps1` run, then switch the defaults where the numbers allow
 
@@ -227,7 +242,106 @@
   factors (0.75 / 0.6 of H.264) are starting points, not measured on a GPU yet.
 
 
+## Deadlock (in progress)
+Goal: Deadlock support that feels built for Deadlock, with League's integration as the quality
+bar. Crate `games/deadlock` (`cv-game-deadlock`); no Deadlock code in `cv-core` / `cv-capture`
+(what the core needs is added game-neutrally and documented in docs/ADDING_A_GAME.md).
+
+Hard rules (owner, 2026-10-09):
+- VAC-safe: no memory reading, no injection, no in-game overlay (so no deadlock-rs, no
+  Overwolf event provider). Allowed: files the game or Steam writes, Valve's own replay files,
+  local key presses. The performance rules above apply.
+- No dependence on unofficial web services (deadlock-api.com ...); ask the owner first if one
+  would add a lot. Downloading replays ourselves: ask first; by default only replays the user
+  downloaded are used.
+- Only real matches are saved, one per game entry, from the loading screen to just after the
+  end screen. Nothing from the Hideout, menus, sandbox, replays or spectating (unless "Record
+  games you spectate" is on).
+- Normal path first; the on-disk fallback buffer is only a safety net, never above its cap
+  (default 75 min), and a long session is never stored in full.
+- **Normal users shouldn't have to add `-condebug`** (owner's preference, 2026-10-09). It is
+  needed for the diagnostic run only (to see everything once). When choosing the signals, prefer
+  any source that works without it; require it for users only if nothing else can tell a match's
+  start and end, and say so to the owner before building on it.
+
+Checked on the owner's PC (2026-10-09, read-only):
+- Steam `C:\Program Files (x86)\Steam`, Deadlock in the library `E:\SteamLibrary`
+  (`steamapps\common\Deadlock`, app id 1422450, `appmanifest_1422450.acf` → `installdir`).
+- The exe is `game\bin\win64\deadlock.exe`; its window title in the Hideout / menu is "Deadlock".
+- `game\citadel` has `cfg`, `rpt`, `save`; **no `console.log`** (no `-condebug` yet) and no
+  `replays` folder yet (no replay downloaded so far).
+- Key binds: `userdata\<id>\1422450\local\cfg\user_keys_0_slot0.vcfg` (only the changed binds;
+  the owner's has just F7 = console) and `remote\cfg\citadelkeys_personal.lst`; the defaults are
+  `game\citadel\cfg\user_keys_default.vcfg`.
+- Steam's recording folder is `userdata\<id>\gamerecordings` (`timelines\` empty: Steam's game
+  recording is off or was never used). Launch options live in
+  `userdata\<id>\config\localconfig.vdf` (`"LaunchOptions"` in the app's block; Steam writes
+  that file late), so the app can tell whether `-condebug` is set without touching Steam's files.
+- Unverified still: the console log's line format and flush delay, the replays folder, the
+  timeline file format, whether Steam saves a chosen recording folder as `BackgroundRecordPath`.
+
+Milestone 1 step 1, the diagnostic (`games/deadlock/src/diag.rs`, `app/src/devopts.rs`):
+- Switch: Settings > General > Developer tools > "Deadlock: log match signals" (stored as
+  `settings.games.deadlock.log_match_signals`; needs "Save changes"). A thread
+  ("deadlock-signals") idles until it's on; then it checks the process list every 2 s, and while
+  `deadlock.exe` (or `project8.exe`) runs it writes
+  `%LOCALAPPDATA%\Clairvoyance\logs\deadlock-signals-<date>-<time>.log`, one file per game run
+  (the 8 newest are kept, 256 MB cap each). "Copy log path" copies the newest one's path.
+- Each line: wall-clock time (ms), seconds since the log began, source, text. Sources:
+  - `console.log` (and any other `.log` in `game\citadel`, `game`, `game\bin\win64`): every new
+    line as written, so the game's own timestamp stays next to ours; looked at every 100 ms.
+    Lines that were in the file before watching began are marked `console.log*`.
+  - `window`: titles, classes and sizes of the game's visible windows + whether it has the
+    focus (every 300 ms, logged on change); `process`: running / exited.
+  - `replays` (`citadel\replays`, `citadel\addons\replays`), `game-folder`, `game-cfg`,
+    `game-rpt`, `game-save`: files added / changed / removed, with size and time (every 1 s).
+  - `steam-timeline` (`gamerecordings\timelines`, content of changed `.json` files copied in),
+    `steam-recording`, `steam-userdata` (`userdata\<id>\1422450`, small text files copied in
+    when they change, e.g. `pending_replay_requests.lst`).
+  - `steam-httpcache` (`appcache\httpcache`): file names, sizes and times only (every 3 s).
+  - Steam's own logs (`Steam\logs\*.txt` except the web helper's and the connection logs): new
+    lines only.
+- Read-only and without locks: files are opened for a moment with full sharing, folders are
+  only listed, window titles come from the window manager. Nothing in the game process.
+  Watching continues 60 s after the game closes (Steam writes its timeline file then). The last
+  line says how long the looking itself took (its CPU cost).
+- The log can contain player names, chat lines and Steam ids (it's the game's console output):
+  send it privately, don't attach it to a public issue.
+- Tests: `cargo test -p cv-game-deadlock` (Valve file parsing on the owner's file shapes, the
+  log follower: appearing / half-written lines / started over / gone, folder watching by name
+  only, content copies, log rows, pruning).
+
+Next (after the owner's log): choose the signals for match loading / started, ended (win /
+loss), left early, back in the Hideout, sandbox / replay / spectating; measure how late each
+arrives; note which sources still tell a match afterwards without `-condebug`. Then the normal
+path, the fallback and the modes (milestones 42-44), then milestone 2+.
+
 ## Next steps
+- **Owner, Deadlock match signals (~40 min, one bot match). This is what the Deadlock work is
+  waiting for.**
+  1. Get the build: merge the `deadlock` pull request once its checks are green, release it
+     (`scripts\release.ps1 <version>`), and let Clairvoyance update itself.
+  2. Steam > Library > right-click Deadlock > Properties > General > Launch options: add
+     `-condebug`. Deadlock must be closed while you do this, and started again afterwards.
+  3. Clairvoyance: Settings > General: tick "Developer tools", tick "Deadlock: log match
+     signals", "Save changes". Leave Clairvoyance running (the tray is enough).
+  4. Play, and note the clock time (to the second if you can, e.g. from the Windows clock) of
+     every step:
+     - start Deadlock, wait in the Hideout about 1 minute;
+     - start one bot match and note: when you click to start / the match is found, when the
+       loading screen appears, when you can move (the match really starts);
+     - play it to the end and note when the Patron dies / the Victory or Defeat banner shows;
+     - stay on the end screen about 30 seconds, then go back to the Hideout (note when);
+     - open the sandbox / practice range for a moment and leave it again (note both);
+     - close the game, and leave Clairvoyance running one more minute.
+  5. Settings > General > "Copy log path", then send that file with your notes (privately: it
+     can contain player names and Steam ids). If no file exists, send
+     `%LOCALAPPDATA%\Clairvoyance\logs\clairvoyance.log` instead.
+  Optional, each adds a source: turn on Steam's own game recording for that session (Steam >
+  Settings > Game Recording); and before you close the game, download the match's replay
+  (match history > "Download Replay") and wait until it has finished.
+  Performance check: the log's last line ("Looking took … s in total over … s") is the
+  diagnostic's cost; it should be well under 1 % of the session. Switch the option off afterwards.
 - **Owner, spectating caught earlier (~5 min, no Riot needed):** Settings > Advanced >
   Simulate, What = "Spectating, players unreadable": the status says "Checking whether this is
   a replay…", then "not recorded", and no folder is left. What = "A match, players unreadable":
@@ -259,7 +373,7 @@
   timeline and watch levels / items / KDA change with it (compare a moment with the in-game
   Tab screen you remember, e.g. right after a purchase); press O over the video, and hold Tab
   in fullscreen. Then Settings > Advanced > Save test report.
-- League only for now (no CS2 / Dota 2 work). Nice-to-haves: code-signing certificate for the installer;
+- League and Deadlock only for now (no CS2 / Dota 2 work). Nice-to-haves: code-signing certificate for the installer;
   optional WebP thumbnails if a WebP encoder is added.
 
 After each milestone: explain how to test it and how to measure its performance impact.

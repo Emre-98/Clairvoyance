@@ -99,3 +99,9 @@ it up automatically.
   markers.
 - **Dota 2**: has Game State Integration like CS2 (kills, deaths, Roshan, game clock), so a
   module would look very similar to `games/cs2`.
+- **Deadlock** (in progress, `games/deadlock`): Valve has no Game State Integration or other
+  live API for it, and it is VAC-protected, so the module may only read files the game or Steam
+  writes (the `-condebug` console log, replay files, Steam's recording timeline) and the user's
+  own key presses. So far the crate holds the developer diagnostic that logs every candidate
+  match signal with its time (`diag.rs`; see PLAN.md "Deadlock"). It is wired up in
+  `app/src/devopts.rs`, not in `app/src/games.rs`: it isn't a `GameIntegration` yet.

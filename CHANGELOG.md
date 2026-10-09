@@ -5,6 +5,7 @@ release notes on GitHub and in the in-app "Update available" card.
 
 ## [Unreleased]
 
+- First step towards Deadlock support: a developer option "Deadlock: log match signals" (Settings > General > Developer tools) that writes what Deadlock and Steam put on disk during a match to a log file, with a "Copy log path" button. Nothing of Deadlock is recorded yet
 - Fit for Discord now aims for 18 MB (was 19.5 MB), so shared clips stay clearly under Discord's 20 MB limit; if the graphics card's encoder overshoots, it tries again smaller and then with a stricter software encoder, and never hands you a file that's too big
 - Clairvoyance no longer records your desktop: it only ever captures the game window (before, it switched to the whole screen when the game window was slow to appear or showed no picture)
 - Simpler settings: technical options (encoder, codec, bitrate mode, screen capture, ffmpeg path), the recorder test, the CPU/RAM stat, Performance test and Advanced are now behind Settings > General > Developer tools

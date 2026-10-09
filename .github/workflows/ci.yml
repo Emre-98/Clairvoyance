@@ -23,9 +23,9 @@ jobs:
       - name: Rust formatting
         run: cargo fmt --all --check
       - name: Rust tests (core, games, recorder muxer)
-        run: cargo test -p cv-core -p cv-game-league -p cv-game-cs2 -p cv-capture
+        run: cargo test -p cv-core -p cv-game-league -p cv-game-cs2 -p cv-game-deadlock -p cv-capture
       - name: Clippy (portable crates)
-        run: cargo clippy -p cv-core -p cv-game-league -p cv-game-cs2 -p cv-capture -p cv-mock-league --all-targets -- -D warnings
+        run: cargo clippy -p cv-core -p cv-game-league -p cv-game-cs2 -p cv-game-deadlock -p cv-capture -p cv-mock-league --all-targets -- -D warnings
       - uses: actions/setup-node@v4
         with:
           node-version: 22
