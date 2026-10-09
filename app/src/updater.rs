@@ -1,5 +1,4 @@
-//! Self-updating from GitHub Releases (tauri-plugin-updater) of the public, releases-only
-//! repository Emre-98/Clairvoyance-releases (endpoint in tauri.conf.json; see RELEASING.md).
+//! Self-updating from GitHub Releases (tauri-plugin-updater).
 //!
 //! - Checks `latest.json` of the newest GitHub release a minute after start-up and then every
 //!   4 hours, but never while a game is running or recording (and not at all if the user turned

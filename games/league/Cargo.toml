@@ -4,8 +4,7 @@ description = "League of Legends module: Riot's official Live Client Data API (n
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license-file.workspace = true
-publish.workspace = true
+license.workspace = true
 
 [dependencies]
 cv-core.workspace = true

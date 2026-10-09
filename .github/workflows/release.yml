@@ -1,12 +1,8 @@
 # Builds, signs and publishes a release when a version tag (v1.2.3) is pushed.
-# Publishes to the public, releases-only repository Emre-98/Clairvoyance-releases (this source
-# repository is meant to become private): the installer (Clairvoyance_<v>_x64-setup.exe), its
-# updater signature (.sig) and latest.json, which installed copies check for updates. The release
-# notes get the SHA-256 checksum of every file. While this repository is still public, the same
-# release is also mirrored here, so copies that still check the old endpoint find the update
-# (the "bridge"; see RELEASING.md).
-# Secrets: TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD (the updater signing
-# key; never in the code) and RELEASES_TOKEN (a token that can write to Clairvoyance-releases).
+# Produces on GitHub Releases: the installer (Clairvoyance_<v>_x64-setup.exe), its updater
+# signature (.sig) and latest.json, which installed copies check for updates.
+# The signing key comes from the repository secrets TAURI_SIGNING_PRIVATE_KEY and
+# TAURI_SIGNING_PRIVATE_KEY_PASSWORD; it is never in the code. See RELEASING.md.
 name: Release
 
 on:
@@ -30,7 +26,6 @@ jobs:
     runs-on: windows-latest
     env:
       TAG: ${{ github.event.inputs.tag || github.ref_name }}
-      RELEASES_REPO: Emre-98/Clairvoyance-releases
     steps:
       - uses: actions/checkout@v4
         with:
@@ -78,17 +73,13 @@ jobs:
       - name: Test
         run: cargo test -p cv-core -p cv-game-league -p cv-game-cs2 -p cv-capture --release
 
-      - name: Build, sign and publish to the releases repository
+      - name: Build, sign and publish
         uses: tauri-apps/tauri-action@v0
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          owner: Emre-98
-          repo: Clairvoyance-releases
-          # The tag is created on the releases repository's own main branch (this commit isn't there).
-          releaseCommitish: main
           projectPath: app
           tauriScript: npx --prefix ${{ github.workspace }}/ui tauri
           tagName: ${{ env.TAG }}
@@ -98,47 +89,3 @@ jobs:
           prerelease: false
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
-
-      # The checksums go only into the GitHub release notes, not latest.json (the in-app
-      # "Update available" card shows the plain notes).
-      - name: SHA-256 checksums in the release notes
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
-        run: |
-          $dir = Join-Path $env:RUNNER_TEMP "release-files"
-          New-Item -ItemType Directory -Force $dir | Out-Null
-          gh release download $env:TAG --repo $env:RELEASES_REPO --dir $dir --clobber
-          if ($LASTEXITCODE -ne 0) { throw "Downloading the release files failed." }
-          $rows = Get-ChildItem $dir -File | Sort-Object Name | ForEach-Object {
-            "| ``$($_.Name)`` | ``$((Get-FileHash $_.FullName -Algorithm SHA256).Hash)`` |"
-          }
-          if (-not $rows) { throw "The release has no files." }
-          $body = "$env:NOTES`n`n### SHA-256 checksums`n`n| File | SHA-256 |`n| --- | --- |`n" + ($rows -join "`n") +
-            "`n`nCheck a download in PowerShell: ``Get-FileHash .\<file>`` (the hash must match the table).`n"
-          $notes = Join-Path $env:RUNNER_TEMP "release-notes.md"
-          [IO.File]::WriteAllText($notes, $body, (New-Object Text.UTF8Encoding $false))
-          gh release edit $env:TAG --repo $env:RELEASES_REPO --notes-file $notes
-          if ($LASTEXITCODE -ne 0) { throw "Updating the release notes failed." }
-          "RELEASE_FILES=$dir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "RELEASE_NOTES_FILE=$notes" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-
-      # Bridge: copies installed before the move check this repository's latest.json. Mirror the
-      # release here (same files; latest.json points at the installer in the releases repository)
-      # for as long as this repository is public. Once it's private this step skips itself.
-      - name: Mirror the release to this repository (while it's public)
-        if: ${{ !github.event.repository.private }}
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          $files = Get-ChildItem $env:RELEASE_FILES -File | ForEach-Object { $_.FullName }
-          gh release view $env:TAG --repo $env:GITHUB_REPOSITORY *> $null
-          if ($LASTEXITCODE -eq 0) {
-            gh release upload $env:TAG @files --repo $env:GITHUB_REPOSITORY --clobber
-            if ($LASTEXITCODE -ne 0) { throw "Uploading to the mirror release failed." }
-            gh release edit $env:TAG --repo $env:GITHUB_REPOSITORY --notes-file $env:RELEASE_NOTES_FILE
-          } else {
-            gh release create $env:TAG @files --repo $env:GITHUB_REPOSITORY --verify-tag --title "Clairvoyance $env:TAG" --notes-file $env:RELEASE_NOTES_FILE
-          }
-          if ($LASTEXITCODE -ne 0) { throw "Mirroring the release failed." }

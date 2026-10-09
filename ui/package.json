@@ -1,7 +1,6 @@
 {
   "name": "clairvoyance-ui",
   "private": true,
-  "license": "UNLICENSED",
   "version": "1.10.0",
   "type": "module",
   "scripts": {
