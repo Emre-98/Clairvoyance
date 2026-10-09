@@ -473,6 +473,38 @@ Key presses on the timeline (`games/deadlock/src/binds.rs`, `keys.rs`; 2026-10-0
   chords), changed / unbound / mouse binds, half-written files, Valve key names, every key's
   event, mashing, modifiers, chat, shop, and the module's `on_key` / `take_key_marks`.
 
+Replay file, what a real one holds (owner's run of 2026-10-09 12:27-12:31, game build 6766, no
+`-condebug`; looked at read-only with `scripts/demscan.pl`):
+- **Where it lands:** "Download Replay" writes `game\citadel\replays\<match id>.dem.partial`
+  (0 bytes at first), 9 s later it becomes `<match id>.dem` (119 MB for a 19 min match) and the
+  `.partial` is removed. The folder is created by the first download. The file name is the
+  match id.
+- **Playback is not a match:** during the download and 50 s of playback Steam's content log
+  said nothing ("updates disabled" never appeared), so the normal path recorded nothing (app
+  log: no session). `gameprocess_log.txt` only shows its usual "Game server change". What the
+  console log prints during playback is unseen (`-condebug` was off).
+- **Format:** `PBDEMS2`, Valve's Source 2 demo: a 16-byte header, then frames (varint command
+  with bit 64 = snappy-compressed, varint tick, varint size, protobuf). 73,922 ticks for
+  1,155 s = 64 ticks per second. `CDemoPacket` frames carry net messages in a bit stream.
+- **The timeline doesn't need entity decoding.** The Deadlock user messages in the packets are
+  enough (ids as seen, names from Valve's public protobufs, to be confirmed field by field):
+  316 post-match details, once, 74 KB: the whole match summary (match id, start time as Unix
+  seconds, duration, every player's account id, hero, team, items with purchase times, a stats
+  series, deaths with positions, objectives); 319 hero killed (47); 347 boss killed (5); 351
+  kill streak (64); 360 item purchase (102); 338 ability notify (178); 345 currency changed
+  (235); 353 player respawned (47); 362 Street Brawl scoring (4: so the mode can be told from
+  the replay); 346 game over (tick 71,362).
+- **Clocks:** the summary's start time was 10:56:33 and Steam's "updates disabled" line
+  10:56:34, so the two agree on when the match was found. "Game over" is at 1,115 s of the
+  demo while Steam's "updates now enabled" came 1,183 s after the match was found, so the
+  demo's tick 0 is about 68 s after the match was found (one match: to be checked against a
+  recording of the same match, which this one isn't: it was played on 10:56, before v1.12.0).
+- **Which recording a replay belongs to** (no match id without `-condebug`): the summary's
+  start time against the recording's start, plus the owner's account id (`userdata\<id>`)
+  among the players.
+- Still open: hero and item icons (inside the game's `pak01` VPKs as compiled textures), the
+  hero / item names for the ids, which message confirms an ult cast.
+
 Next: the replay file (milestone 46; needs the owner's replay run first), then the fallback buffer and the modes (milestones 43-44).
 
 ## Next steps
