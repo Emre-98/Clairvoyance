@@ -19,6 +19,8 @@ only for background on a feature.
   capabilities: CursorInput, RecordingCheck, WatchDetection, ModeRules), docs/ADDING_A_GAME.md
 - Clip export with the overlay: crates/cv-capture/src/overlay_export.rs, app/src/export.rs,
   ui/src/components/ClipEditor.svelte. Timeline filters: ui/src/lib/timelinefilters.ts
+- Copy protection: crates/cv-seal (tamper seal, `cv-seal keygen | seal | verify`), app/src/integrity.rs
+  (start-up check), cold-chunk obfuscation in ui/vite.config.ts. Setup in RELEASING.md
 - Share / Fit for Discord: crates/cv-capture/src/share.rs (size ladder, ffmpeg), app/src/share.rs
   (command, clipboard), ui/src/components/ShareButton.svelte, ShareFitToggle.svelte
 

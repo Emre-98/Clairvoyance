@@ -22,6 +22,7 @@ Publishing a version is one command; GitHub Actions does the building and signin
 3. Pushing the tag starts the **Release** workflow
    (https://github.com/Emre-98/Clairvoyance/actions). In about 10–15 minutes it:
    - runs the tests, builds the app and the installer on Windows,
+   - seals the executable against tampering (see "The tamper seal" below),
    - signs the update with the private key stored in the repository secrets,
    - creates the GitHub Release `v1.0.1` with `Clairvoyance_1.0.1_x64-setup.exe`,
      its `.sig` signature and `latest.json`.
@@ -29,8 +30,12 @@ Publishing a version is one command; GitHub Actions does the building and signin
    game) and show "Update available: v1.0.1" with the notes and an **Update now** button.
    To see it right away: Settings > General & updates > Check now.
 
+   The release is first created as a **draft**, the sealed executable is checked, and only then
+   is the release published (installed copies never see a draft).
+
 If the workflow fails, open it in the Actions tab, fix the problem, push the fix to `main`, and
-re-run it for the same tag with **Run workflow** (Release > Run workflow > tag `v1.0.1`).
+re-run it for the same tag with **Run workflow** (Release > Run workflow > tag `v1.0.1`). If it
+failed after creating the draft, delete that draft first (Releases page > the draft > Delete).
 Never reuse a version number that was already published.
 
 ## The signing key (important)
@@ -55,6 +60,34 @@ $k = "$env:USERPROFILE\Documents\Clairvoyance-signing-key"
 Get-Content "$k\clairvoyance-updater.key" -Raw | gh secret set TAURI_SIGNING_PRIVATE_KEY -R Emre-98/Clairvoyance
 Get-Content "$k\password.txt" -Raw | gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD -R Emre-98/Clairvoyance
 ```
+
+## The tamper seal
+
+Release builds refuse to start if their executable was changed after the build (renamed,
+rebranded or patched copies): the Release workflow signs the executable with a separate seal key
+(`crates/cv-seal`, run by `beforeBundleCommand` in `app/tauri.conf.json`) and the app checks
+that signature at start-up (`app/src/integrity.rs`). Dev builds and `scripts/build-windows.sh`
+test builds aren't sealed and don't check.
+
+**One-time setup** (before the first release with the seal), in PowerShell in the project folder:
+
+```powershell
+$k = "$env:USERPROFILE\Documents\Clairvoyance-signing-key"
+cargo run -q -p cv-seal -- keygen "$k\seal.key"      # prints the public key
+Get-Content "$k\seal.key" -Raw | gh secret set CV_SEAL_KEY -R Emre-98/Clairvoyance
+gh variable set CV_SEAL_PUBKEY -R Emre-98/Clairvoyance --body "<the public key it printed>"
+```
+
+`CV_SEAL_KEY` is a secret (never share or commit `seal.key`); `CV_SEAL_PUBKEY` is a plain
+repository variable (Settings > Secrets and variables > Actions > Variables). The Release
+workflow stops if either is missing.
+
+Unlike the updater key, the seal key can be replaced at any time: each version carries its own
+public key, so a new key only affects versions built with it. If `seal.key` is lost or leaked,
+run the setup again with a new file name and release a new version.
+
+To check a downloaded or installed executable by hand:
+`cargo run -q -p cv-seal -- verify "<path>\Clairvoyance.exe" <public key>`.
 
 ## Version numbers
 

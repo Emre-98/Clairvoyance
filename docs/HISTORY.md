@@ -179,6 +179,24 @@ Rules:
   overshoot. The encoder is the same pick as the overlay export (GPU, Media Foundation, x264).
 - Allowed during a game (owner): ffmpeg at below-normal priority, one share at a time.
 
+## Copy protection (tamper seal, cold UI obfuscation)
+2026-10-09, owner's request: hard blocks against reselling, without lag (an earlier try that
+obfuscated all UI code was dropped for its draw-time cost).
+- Seal format (`crates/cv-seal`): an 80-byte region (16-byte magic + 64-byte Ed25519 signature)
+  in the exe; signed message = "cv-seal-v1" + SHA-256 of the exe with the signature bytes, PE
+  checksum, certificate-table entry, the overlay after the last section (Authenticode can be
+  added later) and the 3 bytes after `__TAURI_BUNDLE_TYPE_VAR_` (Tauri's bundler writes the
+  package type after the build hooks) left out. Magic, marker prefix, public key and URL are
+  masked (XOR, unmasked behind `black_box`) so they exist once / not in plain form.
+- The public key is compiled in from `CV_SEAL_PUBKEY` (build.rs, per-version mask), the
+  private key is only in CI. A separate key from the updater's: it can be rotated freely.
+- Fails closed when the seal is missing or wrong, open when the exe can't be read (logged).
+  `ring` (already used by rustls) for SHA-256 / Ed25519: no new crates.
+- Limits: a skilled cracker can still patch out the check; it stops renames, rebrands and
+  edited copies, which is what reselling needs.
+- UI: only the Settings / Setup chunks are obfuscated (javascript-obfuscator, control-flow
+  flattening etc. allowed there); the code that runs per frame stays plain.
+
 ## Decisions made
 ### Stack: Tauri 2 (Rust backend + Svelte 5/TypeScript UI in WebView2)
 Compared:

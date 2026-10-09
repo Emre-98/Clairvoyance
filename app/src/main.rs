@@ -15,6 +15,7 @@ mod export;
 mod ffmpeg;
 mod games;
 mod input;
+mod integrity;
 mod logger;
 mod maintenance;
 mod migrate;
@@ -254,6 +255,7 @@ fn main() {
         log::info!("migration: {line}");
     }
     platform::lower_priority();
+    integrity::spawn_check();
 
     let settings = Settings::load(&paths.config_file);
     let paths = Paths { log_file, ..paths };

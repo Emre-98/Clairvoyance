@@ -7,11 +7,18 @@
   import Library from "./pages/Library.svelte";
   import Clips from "./pages/Clips.svelte";
   import GameDetail from "./pages/GameDetail.svelte";
-  import Settings from "./pages/Settings.svelte";
-  import Setup from "./pages/Setup.svelte";
+
+  // Settings and the first-run setup are loaded on demand: they're rarely open, and release builds
+  // obfuscate only these chunks (ui/vite.config.ts), never the library, player or overlay code.
+  // Settings is preloaded once the app is idle, so opening it stays instant.
+  let settingsPage: Promise<typeof import("./pages/Settings.svelte").default> | null = null;
+  const loadSettings = () => (settingsPage ??= import("./pages/Settings.svelte").then((m) => m.default));
+  const loadSetup = () => import("./pages/Setup.svelte").then((m) => m.default);
 
   let error = $state<string | null>(null);
-  boot().catch((e) => (error = String(e)));
+  boot()
+    .then(() => (window.requestIdleCallback ?? ((f: () => void) => setTimeout(f, 2000)))(() => void loadSettings()))
+    .catch((e) => (error = String(e)));
 
   // Block the WebView's own context menu / reload shortcuts for an app feel.
   function keys(e: KeyboardEvent) {
@@ -40,12 +47,12 @@
         {:else if app.route.page === "game"}
           {#key app.route.id}<GameDetail id={app.route.id} t={app.route.t} />{/key}
         {:else if app.route.page === "settings"}
-          <Settings section={app.route.section ?? "setup"} />
+          {#await loadSettings() then Settings}<Settings section={app.route.section ?? "setup"} />{/await}
         {/if}
         </div>
         {/key}
       </main>
-      {#if !app.settings.first_run_done}<Setup />{/if}
+      {#if !app.settings.first_run_done}{#await loadSetup() then Setup}<Setup />{/await}{/if}
     {/if}
   </div>
   <Toasts />

@@ -3,6 +3,9 @@
 # signature (.sig) and latest.json, which installed copies check for updates.
 # The signing key comes from the repository secrets TAURI_SIGNING_PRIVATE_KEY and
 # TAURI_SIGNING_PRIVATE_KEY_PASSWORD; it is never in the code. See RELEASING.md.
+# The executable is tamper-sealed (crates/cv-seal, secret CV_SEAL_KEY, variable CV_SEAL_PUBKEY):
+# the release is created as a draft, the sealed executable is verified, and only then published,
+# so a broken seal never reaches installed copies.
 name: Release
 
 on:
@@ -71,21 +74,53 @@ jobs:
         run: npm ci --prefix ui
 
       - name: Test
-        run: cargo test -p cv-core -p cv-game-league -p cv-game-cs2 -p cv-capture --release
+        run: cargo test -p cv-core -p cv-game-league -p cv-game-cs2 -p cv-capture -p cv-seal --release
 
-      - name: Build, sign and publish
+      - name: Check the seal key is set
+        shell: pwsh
+        env:
+          CV_SEAL_KEY: ${{ secrets.CV_SEAL_KEY }}
+          CV_SEAL_PUBKEY: ${{ vars.CV_SEAL_PUBKEY }}
+        run: |
+          if (-not $env:CV_SEAL_KEY) { throw "Secret CV_SEAL_KEY is missing (RELEASING.md, 'The tamper seal')." }
+          if (-not $env:CV_SEAL_PUBKEY) { throw "Variable CV_SEAL_PUBKEY is missing (RELEASING.md, 'The tamper seal')." }
+
+      # Builds (sealed by app/tauri.conf.json's beforeBundleCommand) and uploads a DRAFT release:
+      # installed copies don't see it until the next steps publish it.
+      - name: Build, sign and upload a draft
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          CV_SEAL_REQUIRED: "1"
+          CV_SEAL_KEY: ${{ secrets.CV_SEAL_KEY }}
+          CV_SEAL_PUBKEY: ${{ vars.CV_SEAL_PUBKEY }}
         with:
           projectPath: app
           tauriScript: npx --prefix ${{ github.workspace }}/ui tauri
           tagName: ${{ env.TAG }}
           releaseName: Clairvoyance ${{ env.TAG }}
           releaseBody: ${{ env.NOTES }}
-          releaseDraft: false
+          releaseDraft: true
           prerelease: false
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
+
+      # The executable that went into the installer (after Tauri's bundler touched it) must pass
+      # the same check the app runs at start-up.
+      - name: Verify the seal
+        shell: pwsh
+        env:
+          CV_SEAL_PUBKEY: ${{ vars.CV_SEAL_PUBKEY }}
+        run: |
+          cargo run -q --release -p cv-seal -- verify target/release/clairvoyance.exe $env:CV_SEAL_PUBKEY
+          if ($LASTEXITCODE -ne 0) { throw "The sealed executable doesn't verify: the draft release stays unpublished." }
+
+      - name: Publish the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit $env:TAG --repo $env:GITHUB_REPOSITORY --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { throw "Publishing the release failed." }

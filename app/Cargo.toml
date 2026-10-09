@@ -17,6 +17,7 @@ cv-game-league.workspace = true
 cv-game-cs2 = { path = "../games/cs2" }
 cv-game-deadlock = { path = "../games/deadlock" }
 cv-mock-league = { path = "../crates/cv-mock-league" }
+cv-seal = { path = "../crates/cv-seal" }
 serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true

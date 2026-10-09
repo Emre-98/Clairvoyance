@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/cv-core", "crates/cv-capture", "crates/cv-mock-league", "games/league", "games/cs2", "games/deadlock", "app"]
+members = ["crates/cv-core", "crates/cv-capture", "crates/cv-mock-league", "crates/cv-seal", "games/league", "games/cs2", "games/deadlock", "app"]
 
 [workspace.package]
 version = "1.13.0"
