@@ -1,6 +1,10 @@
 # Builds, signs and publishes a release when a version tag (v1.2.3) is pushed.
-# Produces on GitHub Releases: the installer (Clairvoyance_<v>_x64-setup.exe), its updater
-# signature (.sig) and latest.json, which installed copies check for updates.
+# Publishes to the public, releases-only repository Emre-98/Clairvoyance-releases (this source
+# repository is private): the installer (Clairvoyance_<v>_x64-setup.exe), its updater signature
+# (.sig) and latest.json, which installed copies check for updates, plus SHA-256 checksums in the
+# notes. While this repository is public, each release is also mirrored here so copies that still
+# check the old address find it (the bridge; RELEASING.md). Secret RELEASES_TOKEN: a token that can
+# write to Clairvoyance-releases.
 # The signing key comes from the repository secrets TAURI_SIGNING_PRIVATE_KEY and
 # TAURI_SIGNING_PRIVATE_KEY_PASSWORD; it is never in the code. See RELEASING.md.
 # The executable is tamper-sealed (crates/cv-seal, secret CV_SEAL_KEY, variable CV_SEAL_PUBKEY):
@@ -29,6 +33,7 @@ jobs:
     runs-on: windows-latest
     env:
       TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      RELEASES_REPO: Emre-98/Clairvoyance-releases
     steps:
       - uses: actions/checkout@v4
         with:
@@ -81,22 +86,28 @@ jobs:
         env:
           CV_SEAL_KEY: ${{ secrets.CV_SEAL_KEY }}
           CV_SEAL_PUBKEY: ${{ vars.CV_SEAL_PUBKEY }}
+          RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
         run: |
           if (-not $env:CV_SEAL_KEY) { throw "Secret CV_SEAL_KEY is missing (RELEASING.md, 'The tamper seal')." }
           if (-not $env:CV_SEAL_PUBKEY) { throw "Variable CV_SEAL_PUBKEY is missing (RELEASING.md, 'The tamper seal')." }
+          if (-not $env:RELEASES_TOKEN) { throw "Secret RELEASES_TOKEN is missing (RELEASING.md, 'The releases token')." }
 
-      # Builds (sealed by app/tauri.conf.json's beforeBundleCommand) and uploads a DRAFT release:
-      # installed copies don't see it until the next steps publish it.
+      # Builds (sealed by app/tauri.conf.json's beforeBundleCommand) and uploads a DRAFT release to
+      # the releases repository: installed copies don't see it until the next steps publish it.
       - name: Build, sign and upload a draft
         uses: tauri-apps/tauri-action@v0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASES_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           CV_SEAL_REQUIRED: "1"
           CV_SEAL_KEY: ${{ secrets.CV_SEAL_KEY }}
           CV_SEAL_PUBKEY: ${{ vars.CV_SEAL_PUBKEY }}
         with:
+          owner: Emre-98
+          repo: Clairvoyance-releases
+          # The tag is created on the releases repository's own main branch (this commit isn't there).
+          releaseCommitish: main
           projectPath: app
           tauriScript: npx --prefix ${{ github.workspace }}/ui tauri
           tagName: ${{ env.TAG }}
@@ -120,7 +131,50 @@ jobs:
       - name: Publish the release
         shell: pwsh
         env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          gh release edit $env:TAG --repo $env:RELEASES_REPO --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { throw "Publishing the release failed." }
+
+      # Checksums go only into the GitHub notes, not latest.json (the in-app card shows plain notes).
+      - name: SHA-256 checksums in the release notes
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP "release-files"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          gh release download $env:TAG --repo $env:RELEASES_REPO --dir $dir --clobber
+          if ($LASTEXITCODE -ne 0) { throw "Downloading the release files failed." }
+          $rows = Get-ChildItem $dir -File | Sort-Object Name | ForEach-Object {
+            "| ``$($_.Name)`` | ``$((Get-FileHash $_.FullName -Algorithm SHA256).Hash)`` |"
+          }
+          if (-not $rows) { throw "The release has no files." }
+          $body = "$env:NOTES`n`n### SHA-256 checksums`n`n| File | SHA-256 |`n| --- | --- |`n" + ($rows -join "`n") +
+            "`n`nCheck a download in PowerShell: ``Get-FileHash .\<file>`` (the hash must match the table).`n"
+          $notes = Join-Path $env:RUNNER_TEMP "release-notes.md"
+          [IO.File]::WriteAllText($notes, $body, (New-Object Text.UTF8Encoding $false))
+          gh release edit $env:TAG --repo $env:RELEASES_REPO --notes-file $notes
+          if ($LASTEXITCODE -ne 0) { throw "Updating the release notes failed." }
+          "RELEASE_FILES=$dir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "RELEASE_NOTES_FILE=$notes" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      # Bridge: copies on <= 1.13 check this repository's latest.json. While this repository is
+      # public, mirror the release here (same files; latest.json points at the installer in the
+      # releases repository). Once it's private this step skips itself.
+      - name: Mirror the release to this repository (while it's public)
+        if: ${{ !github.event.repository.private }}
+        shell: pwsh
+        env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release edit $env:TAG --repo $env:GITHUB_REPOSITORY --draft=false --latest
-          if ($LASTEXITCODE -ne 0) { throw "Publishing the release failed." }
+          $files = Get-ChildItem $env:RELEASE_FILES -File | ForEach-Object { $_.FullName }
+          gh release view $env:TAG --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:TAG @files --repo $env:GITHUB_REPOSITORY --clobber
+            if ($LASTEXITCODE -ne 0) { throw "Uploading to the mirror release failed." }
+            gh release edit $env:TAG --repo $env:GITHUB_REPOSITORY --notes-file $env:RELEASE_NOTES_FILE --draft=false --latest
+          } else {
+            gh release create $env:TAG @files --repo $env:GITHUB_REPOSITORY --verify-tag --latest --title "Clairvoyance $env:TAG" --notes-file $env:RELEASE_NOTES_FILE
+          }
+          if ($LASTEXITCODE -ne 0) { throw "Mirroring the release failed." }

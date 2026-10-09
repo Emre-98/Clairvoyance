@@ -28,7 +28,7 @@
       "nsis"
     ],
     "publisher": "Emre-98",
-    "homepage": "https://github.com/Emre-98/Clairvoyance",
+    "homepage": "https://github.com/Emre-98/Clairvoyance-releases",
     "copyright": "MIT License",
     "category": "Video",
     "shortDescription": "Records your games automatically, with every kill, death and objective on a timeline.",
@@ -52,7 +52,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc2OTJFNjg5N0ZCMDdGNkIKUldScmY3Qi9pZWFTZHJNaGlEOWFZWFR2UFlNU2piN1hTNklkVlBNOFdpU3l6ODFZM2NDcjA0MVMK",
       "endpoints": [
-        "https://github.com/Emre-98/Clairvoyance/releases/latest/download/latest.json"
+        "https://github.com/Emre-98/Clairvoyance-releases/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"

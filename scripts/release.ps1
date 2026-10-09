@@ -86,5 +86,5 @@ Invoke-Git push origin $tag
 Write-Host ""
 Write-Host "Pushed $tag. GitHub Actions is building the release (about 10-15 minutes):"
 Write-Host "  https://github.com/Emre-98/Clairvoyance/actions"
-Write-Host "When it's green, the release is at https://github.com/Emre-98/Clairvoyance/releases/tag/$tag"
+Write-Host "When it's green, the release is at https://github.com/Emre-98/Clairvoyance-releases/releases/tag/$tag"
 Write-Host "and installed copies will offer the update within a few hours (or Settings > Check now)."
