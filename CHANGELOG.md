@@ -3,6 +3,11 @@
 Newest first. `scripts/release.ps1` adds a section for each release; the section becomes the
 release notes on GitHub and in the in-app "Update available" card.
 
+## [1.11.0] - 2026-10-09
+
+- making it work for deadlock
+- donme
+
 ## [Unreleased]
 
 - First step towards Deadlock support: a developer option "Deadlock: log match signals" (Settings > General > Developer tools) that writes what Deadlock and Steam put on disk during a match to a log file, with a "Copy log path" button. Nothing of Deadlock is recorded yet
