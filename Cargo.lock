@@ -516,6 +516,7 @@ dependencies = [
  "cv-game-cs2",
  "cv-game-league",
  "cv-mock-league",
+ "cv-seal",
  "log",
  "reqwest 0.12.28",
  "serde",
@@ -761,6 +762,14 @@ name = "cv-mock-league"
 version = "1.10.0"
 dependencies = [
  "serde_json",
+]
+
+[[package]]
+name = "cv-seal"
+version = "1.10.0"
+dependencies = [
+ "memchr",
+ "ring",
 ]
 
 [[package]]

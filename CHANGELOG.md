@@ -5,6 +5,7 @@ release notes on GitHub and in the in-app "Update available" card.
 
 ## [Unreleased]
 
+- Official builds now check at start-up that they haven't been modified: a tampered or rebranded copy shows a message with the official download link and won't start. The check runs once in the background (about 60 ms) and never during a game
 - Fit for Discord now aims for 18 MB (was 19.5 MB), so shared clips stay clearly under Discord's 20 MB limit; if the graphics card's encoder overshoots, it tries again smaller and then with a stricter software encoder, and never hands you a file that's too big
 - Clairvoyance no longer records your desktop: it only ever captures the game window (before, it switched to the whole screen when the game window was slow to appear or showed no picture)
 - Simpler settings: technical options (encoder, codec, bitrate mode, screen capture, ffmpeg path), the recorder test, the CPU/RAM stat, Performance test and Advanced are now behind Settings > General > Developer tools

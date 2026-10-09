@@ -55,7 +55,7 @@ function Edit-File($path, [scriptblock]$change) {
 Edit-File "Cargo.toml" { param($t) ([regex]'(?m)^version = "[^"]+"').Replace($t, "version = `"$Version`"", 1) }
 # Cargo.lock: our own crates.
 Edit-File "Cargo.lock" { param($t)
-  foreach ($c in "clairvoyance", "cv-core", "cv-capture", "cv-mock-league", "cv-game-league", "cv-game-cs2") {
+  foreach ($c in "clairvoyance", "cv-core", "cv-capture", "cv-mock-league", "cv-seal", "cv-game-league", "cv-game-cs2") {
     $t = [regex]::Replace($t, "(name = `"$c`"\r?\nversion = `")[^`"]+`"", "`${1}$Version`"")
   }
   $t }

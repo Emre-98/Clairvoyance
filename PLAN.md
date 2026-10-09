@@ -111,6 +111,21 @@
   exist. Its unit test (copy a temp file, read CF_HDROP back with DragQueryFileW) runs in CI's
   `windows` job. Copy failed → error toast with "Show file". Chromium: share 23/23, export 21/21.
 
+- **Copy protection without lag (2026-10-09, owner's request), not yet tried on Windows:**
+  - *Tamper seal:* `crates/cv-seal` signs the release exe after compiling (Ed25519, secret
+    `CV_SEAL_KEY`, run by `beforeBundleCommand`); `app/src/integrity.rs` checks it once at
+    start-up on its own thread and refuses to start a changed copy (message with the official
+    download page). Off in dev / test builds. Release workflow: draft first, verify the exact
+    exe, then publish. Public key, magic and download URL masked in the exe. Tested on a
+    cross-built release exe (35 MB): sealed copy passes; rebranded name, one patched byte,
+    zeroed seal fail; Tauri's bundle-type bytes and appended data (code signing) pass. Check
+    ~60 ms CPU, 35 MB RAM freed at once (Linux, `cv-seal verify`).
+  - *Cold UI only obfuscated:* Settings and first-run Setup load on demand (Settings preloaded
+    when idle) and only their chunks are obfuscated (strong settings: none of it runs per frame).
+    Library / player / timeline / overlay untouched; main chunk 270 → 218 KB. Chromium, mock
+    build, obfuscated vs plain: start-up 255 vs 258 ms, Settings open 14.2 vs 14.1 ms, first-run
+    Setup 467 vs 377 ms (once). Layout --quick 66/66 (all Settings sections).
+
 ## Performance rules (hard requirements)
 - Recording is done by GameRecorder's **built-in recorder** (see "Built-in recorder" below). No
   injection into the game: capture uses Windows Graphics Capture, which is Vanguard-safe.
@@ -228,6 +243,10 @@
 
 
 ## Next steps
+- **Owner, tamper seal (once, ~5 min, before the next release):** RELEASING.md "The tamper
+  seal": make the key, set `CV_SEAL_KEY` / `CV_SEAL_PUBKEY`. After the release: install it,
+  start it (log line "integrity: ok (N ms)"), and try a copy with one byte changed (it must
+  refuse to start).
 - **Owner, spectating caught earlier (~5 min, no Riot needed):** Settings > Advanced >
   Simulate, What = "Spectating, players unreadable": the status says "Checking whether this is
   a replay…", then "not recorded", and no folder is left. What = "A match, players unreadable":

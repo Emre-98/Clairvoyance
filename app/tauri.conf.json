@@ -8,7 +8,8 @@
     "frontendDist": "../ui/dist",
     "devUrl": "http://localhost:5173",
     "beforeDevCommand": "npm --prefix ui run dev",
-    "beforeBuildCommand": "npm --prefix ui run build"
+    "beforeBuildCommand": "npm --prefix ui run build",
+    "beforeBundleCommand": "cargo run -q --release -p cv-seal -- seal target/release/clairvoyance.exe"
   },
   "app": {
     "withGlobalTauri": false,
