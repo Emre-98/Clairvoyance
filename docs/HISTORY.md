@@ -194,12 +194,20 @@ Clairvoyance-releases".
 - Bridge: copies on <= 1.10.0 check the old repo's `latest.json`. While the source repo is
   public (`github.event.repository.private` false) the workflow mirrors each release into it
   with the same files; the mirrored `latest.json` points at the installer in the releases repo.
-  The first release with the new endpoint (1.11.0) is the bridge; wait at least 4 weeks
-  (copies check at start-up and every 4 h) before going private. Copies that missed it update
+  The first release with the new endpoint (1.11.0) is the bridge; wait about 1 week
+  (copies check at start-up and every 4 h) before going private (owner, 2026-10-09: first 4
+  weeks, shortened because the source stays clonable while public). Copies that missed it update
   by hand once.
 - SHA-256 of every release file goes into the GitHub release notes after publishing (downloaded
   back from the release, so it hashes what's actually served), not into latest.json (the
   in-app card shows the plain notes).
+- Release UI hardening (2026-10-09, owner: "keep it light"): a Tauri app ships its UI as
+  JavaScript inside the exe, so `ui/vite.config.ts` obfuscates the final chunks in `vite build`
+  (javascript-obfuscator in `generateBundle`, after minifying). Kept to what costs almost
+  nothing at run time: mangled local names, globals and properties untouched (Svelte, Tauri),
+  75 % of string literals in one rotated / shuffled array, no encoding. Left out: control-flow
+  flattening and dead code (slower), self-defending and debug protection (need eval / Function,
+  which the CSP blocks; break on reformatting). Numbers in PLAN.md "Current status".
 
 ## Decisions made
 ### Stack: Tauri 2 (Rust backend + Svelte 5/TypeScript UI in WebView2)

@@ -221,12 +221,23 @@
   bridge for copies on <= 1.10.0). PRIVACY.md, README "Why you can trust Clairvoyance", and
   docs/releases-repo/README.md (the new repo's front page). Details in docs/HISTORY.md
   "Closed source, releases repo".
+- **UI code hardened in release builds (2026-10-09, owner's request: "keep it light"):** `vite
+  build` obfuscates the final chunks lightly (javascript-obfuscator: renamed identifiers, string
+  literals in a shuffled array; no control-flow flattening, dead code, self-defending or eval, the
+  CSP forbids it); no source maps, no legal comments. `CV_NO_OBFUSCATE=1` turns it off. Main
+  chunk 270 → 371 KB (127 KB gzip), build +3.5 s. Measured in Chromium (Linux), mock build,
+  obfuscated vs plain: start-up to the library 311 vs 304 ms (median of 8), bubble draw p95
+  1.3-1.5 vs 1.1-1.3 ms with 42 bubbles (3 runs each), overlay draw p95 0.6 vs 0.4 ms. All
+  browser tests pass on the obfuscated build: bubbles 20/20, overlay 20/20, timeline chips
+  23/23, scoreboard 16/16, filters 7/7, frame stepping 27/27, fullscreen 94/94, export 11/11,
+  share 19/19, layout --quick 66/66. The `--bench-replays` / `--ui-test` chunks stay (the
+  owner's measurement tools need them in the installed app).
 
 ## Next steps
 - **Owner, move to Clairvoyance-releases (in order, RELEASING.md "Moving releases to
   Clairvoyance-releases"):** create the public repo with a README, add the `RELEASES_TOKEN`
   secret, merge this branch, release 1.11.0 (the bridge) while this repo is still public, check
-  both latest.json addresses and an update from 1.10.0, wait at least 4 weeks, then make this
+  both latest.json addresses and an update from 1.10.0, wait about 1 week, then make this
   repo private.
 - **Owner, spectating caught earlier (~5 min, no Riot needed):** Settings > Advanced >
   Simulate, What = "Spectating, players unreadable": the status says "Checking whether this is
