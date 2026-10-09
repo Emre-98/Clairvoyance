@@ -10,6 +10,7 @@
 mod autostart;
 mod bench;
 mod commands;
+mod devopts;
 mod export;
 mod ffmpeg;
 mod games;
@@ -332,6 +333,7 @@ fn main() {
             let _ = std::fs::create_dir_all(&thumbs_dir);
             let _ = app.asset_protocol_scope().allow_directory(&thumbs_dir, false);
             app.manage(st);
+            devopts::spawn(handle.state::<Arc<AppState>>().inner().clone());
 
             if bench::maintenance_off() {
                 log::info!("replay benchmark mode: no maintenance, no update checks");
