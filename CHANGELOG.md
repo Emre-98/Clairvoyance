@@ -5,6 +5,7 @@ release notes on GitHub and in the in-app "Update available" card.
 
 ## [Unreleased]
 
+- Updates now come from the new releases page, github.com/Emre-98/Clairvoyance-releases. This version moves your copy over; nothing to do on your side. Each release's notes there list the SHA-256 checksum of every file
 - Official builds now check at start-up that they haven't been modified: a tampered or rebranded copy shows a message with the official download link and won't start. The check runs once in the background (about 60 ms) and never during a game
 
 ## [1.13.0] - 2026-10-09

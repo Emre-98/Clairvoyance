@@ -21,7 +21,7 @@ the design decisions, measurements and tests behind each part.
 ## Install (you or a friend)
 
 1. Download `Clairvoyance_<version>_x64-setup.exe` from the
-   [latest release](https://github.com/Emre-98/Clairvoyance/releases/latest) and run it
+   [latest release](https://github.com/Emre-98/Clairvoyance-releases/releases/latest) and run it
    (no admin rights needed). It installs for your Windows user and adds a Start menu entry.
 2. Clairvoyance keeps itself up to date: it checks GitHub for a new version when it starts and
    every few hours (never while you're in a game) and asks before installing.

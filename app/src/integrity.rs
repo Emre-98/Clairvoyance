@@ -13,7 +13,7 @@ include!(concat!(env!("OUT_DIR"), "/seal_config.rs"));
 static SEAL_REGION: [u8; cv_seal::REGION_LEN] = cv_seal::REGION_INIT;
 
 /// The official download page, masked like the key.
-const OFFICIAL: [u8; 55] = cv_seal::mask(*b"https://github.com/Emre-98/Clairvoyance/releases/latest");
+const OFFICIAL: [u8; 64] = cv_seal::mask(*b"https://github.com/Emre-98/Clairvoyance-releases/releases/latest");
 
 pub fn spawn_check() {
     // Keeps the region in the executable even when the check is off.

@@ -491,6 +491,11 @@ Key presses on the timeline (`games/deadlock/src/binds.rs`, `keys.rs`; 2026-10-0
 Next: the replay file (milestone 46; needs the owner's replay run first), then the fallback buffer and the modes (milestones 43-44).
 
 ## Next steps
+- **Owner, move releases to Clairvoyance-releases (2026-10-09; RELEASING.md "Moving releases to
+  Clairvoyance-releases"):** create the public repo with a README, the seal key + `RELEASES_TOKEN`,
+  then release 1.14.0 (the bridge) while this repo is public, check both latest.json addresses,
+  wait about a week, make this repo private. Code side done: updater endpoint, Release workflow
+  (publishes there, SHA-256 table, mirrors here while public).
 - **Owner, tamper seal (once, ~5 min, before the next release):** RELEASING.md "The tamper
   seal": make the key, set `CV_SEAL_KEY` / `CV_SEAL_PUBKEY`. After the release: install it,
   start it (log line "integrity: ok (N ms)"), and try a copy with one byte changed (it must
