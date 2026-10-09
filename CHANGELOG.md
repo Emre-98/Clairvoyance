@@ -3,14 +3,15 @@
 Newest first. `scripts/release.ps1` adds a section for each release; the section becomes the
 release notes on GitHub and in the in-app "Update available" card.
 
+## [Unreleased]
+
+- New game: Deadlock. Every match is recorded on its own, from the moment it is found to just after the end screen; the Hideout, the sandbox and spectating are never recorded. Nothing to set up (matches are detected from Steam's own log). No event timeline yet
+
 ## [1.11.0] - 2026-10-09
 
 - making it work for deadlock
 - donme
-
-## [Unreleased]
-
-- First step towards Deadlock support: a developer option "Deadlock: log match signals" (Settings > General > Developer tools) that writes what Deadlock and Steam put on disk during a match to a log file, with a "Copy log path" button. Nothing of Deadlock is recorded yet
+- Developer option "Deadlock: log match signals" (Settings > General > Developer tools) with a "Copy log path" button, used to work out how Deadlock announces its matches
 - Fit for Discord now aims for 18 MB (was 19.5 MB), so shared clips stay clearly under Discord's 20 MB limit; if the graphics card's encoder overshoots, it tries again smaller and then with a stricter software encoder, and never hands you a file that's too big
 - Clairvoyance no longer records your desktop: it only ever captures the game window (before, it switched to the whole screen when the game window was slow to appear or showed no picture)
 - Simpler settings: technical options (encoder, codec, bitrate mode, screen capture, ffmpeg path), the recorder test, the CPU/RAM stat, Performance test and Advanced are now behind Settings > General > Developer tools

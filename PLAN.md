@@ -39,6 +39,14 @@
   gives every stage to the second; the normal path is built on the first, refined by the
   second, so users don't need `-condebug`. Not a game integration yet: nothing of Deadlock is
   recorded. Details and the decision: "Deadlock" below.
+- **Deadlock, milestone 1 normal path (2026-10-09), not yet tried in a real game:** Deadlock is
+  now a game (`DeadlockIntegration`, Settings > Games): one recording per match, started when
+  Steam's log says a match was found (before the loading screen) and stopped after the end
+  screen; nothing in the Hideout, the sandbox or while spectating. No setup; `-condebug`
+  only tightens the end. Replaying the owner's real log lines gives exactly two recordings
+  (09:28:20-10:09:17 and 10:15:44-10:17:12 with the console log; 09:28:21-10:09:07 and
+  10:15:44-10:17:12 from Steam's log alone). Written without a local compiler: checked by CI
+  only. No timeline yet, no fallback buffer, no mode rules: see "Deadlock".
 - **Engineering upkeep (2026-10-07, after a full review of the code):** the architecture is
   sound and the project continues as is (no rewrite). Done: CI compiles and lints the Windows
   code (`windows` job) and checks rustfmt + clippy (Rust pinned to 1.99); engine session states
@@ -146,7 +154,7 @@
 - [x] 40. Deadlock M1 step 1: match-signal diagnostic ("Deadlock: log match signals" + "Copy log path")
 - [x] Owner: bot match + sandbox + left-early match + spectating with the diagnostic on (2026-10-09)
 - [x] 41. Deadlock M1 step 2: signals chosen from the owner's logs (Steam's content log without -condebug, the console log with it), written under "Deadlock"
-- [ ] 42. Deadlock M1 normal path: live start / stop (`match_only`), pre-roll only if the start signal is late, exact trim, `-condebug` notice
+- [x] 42. Deadlock M1 normal path: live start / stop (`match_only`) on Steam's log, refined by the console log; no pre-roll, trim or `-condebug` notice needed (not yet tried in a real game)
 - [ ] 43. Deadlock M1 fallback: capped rolling buffer on disk, health rules, matches cut out of it, game-neutral in the core
 - [ ] 44. Deadlock M1 modes + spectating / replays never saved
 - [ ] Owner: second bot match on the normal path = exactly one recording; one more without `-condebug` saved through the fallback
@@ -378,9 +386,58 @@ no "add -condebug" notice is shown. The safety buffer stays the net for when nei
 Risks to check in the next owner test: only two matches seen so far (both bot matches on
 Valve servers); the Steam client must be running normally (it is whenever Deadlock runs).
 
-Next: milestones 42-44 (normal path, fallback, modes), then milestone 2+.
+Milestone 1, the normal path as built (`games/deadlock/src/signals.rs`, `lib.rs`):
+- `match_only() = true`. Each poll (1 s) reads what was appended to Steam's
+  `logs\content_log.txt` and, if it exists, `game\citadel\console.log` (two small reads, files
+  opened for a moment with full sharing), and feeds the lines' signals, by their own
+  timestamps, to a `Detector`.
+- A match begins at "updates disabled" or at a lobby of your own being created, whichever line
+  comes first (they are the same match). Phase `Loading` until the console says
+  `GameInProgress (7)`; without the console log, `InProgress` 40 s after the match was found
+  (only the status text depends on it). The match clock (`game_time`) is seconds since found.
+- It ends (`Ended`, then the engine's tail): with the console log at `End (11)` / `CL:
+  disconnect` / the Hideout's map, i.e. when the end screen is left or the match is (tail
+  2 s), at most 45 s after `PostGame (8)`; without it at "updates now enabled" = the end
+  banner or the moment you leave (tail 8 s, which covers a little of the end screen; after
+  leaving early it is 8 s of the way back to the Hideout: the known cost of having no console
+  log).
+- Game-state lines only count inside a match of your own, so the Hideout, the sandbox and
+  spectating never start anything. Spectating can't be recorded yet ("Record games you
+  spectate" is not offered for Deadlock).
+- Safety rules: no renewal from Steam for 420 s → over (leftover lines of a crashed run);
+  Steam says the game closed, or the console shows a new launch (`Source2Init OK`; the game
+  appends to its log across launches) → over; the console goes quiet for 30 s after Steam
+  enabled updates → over; nothing lasts longer than 3 h.
+- When the game process appears, and again when a recording starts, the logs' recent past
+  (64 KB / 256 KB) is replayed, so starting the app in the middle of a match works and a match
+  that already ended is ignored.
+- **No pre-roll and no trim were needed:** the start signal comes before the loading screen
+  and is seen within a second, so the recording itself begins at the match start and ends
+  after the end screen; the file is made playable in place like League's.
+- Not built yet: the capped fallback buffer (for when Steam's log says nothing), mode rules
+  (bot match / Street Brawl rows), the "left early" tag in the library, anything from the
+  replay file. Whether window capture of Deadlock (`SDL_app`, 3840x2160) gives a picture is
+  unknown until the owner's test: if the video is black, switch on Developer tools > "Capture
+  the whole screen" and report it.
+- Tests (`cargo test -p cv-game-deadlock`): the real lines of both runs replayed (one
+  recording per match with exact times, with and without each log; nothing outside the
+  matches although the Hideout / sandbox / spectating print "GameInProgress" 8 times), line
+  parsing, the time rules, the log follower, and the module against real files through
+  `start` / `poll` / `stop` as the engine calls them.
+
+Next: the owner's bot match on this build, then the fallback buffer and the modes (milestones 43-44), then milestone 2+.
 
 ## Next steps
+- **Owner, Deadlock's first recorded match (~45 min, after the next release):** leave the
+  launch options as they are for the first match (with or without `-condebug`, both should
+  work). Start Deadlock, wait a minute in the Hideout, play one bot match to the end, stay
+  10 s on the end screen, go back to the Hideout, open the sandbox for a moment, close the
+  game. Expected: Games shows exactly one Deadlock entry; its video starts at "match found" /
+  the loading screen and ends just after the end screen (or ~8 s after the end banner without
+  `-condebug`); nothing from the Hideout or the sandbox. Check that the video isn't black and
+  has the game's sound. Performance: the sidebar's CPU stat (Developer tools) while in the
+  Hideout should stay near 0 % (two tiny file reads per second), and in the match like League.
+  Then tell Claude; the log lines "Deadlock: …" in `clairvoyance.log` say what was detected.
 - **Owner, Deadlock (done 2026-10-09):** the two diagnostic runs. Switch "Deadlock: log match
   signals" off again (Settings > General). Still useful when you have a minute, with the option
   on: download one replay (match history > "Download Replay"), watch it for 30 s, close the

@@ -744,8 +744,13 @@ dependencies = [
 name = "cv-game-deadlock"
 version = "1.11.0"
 dependencies = [
+ "anyhow",
+ "async-trait",
  "chrono",
+ "cv-core",
  "log",
+ "serde_json",
+ "tokio",
  "windows 0.61.3",
 ]
 
