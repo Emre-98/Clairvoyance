@@ -3,6 +3,10 @@
 Newest first. `scripts/release.ps1` adds a section for each release; the section becomes the
 release notes on GitHub and in the in-app "Update available" card.
 
+## [1.13.0] - 2026-10-09
+
+- Deadlock: your key presses are on the timeline: abilities 1-3, the ultimate, item slots 1-4, melee and parry, with the keys you have bound in the game (read from Deadlock's own settings file). Only presses made in the game during a match count; typing in the chat, keys pressed with the shop open and Alt+1-4 (ability upgrades) don't. Click the Ult, Abilities, Item keys and Melee & parry chips under the timeline to show them. A marker is a key press, not a confirmed cast
+
 ## [1.12.0] - 2026-10-09
 
 - New game: Deadlock. Every match is recorded on its own, from the moment it is found to just after the end screen; the Hideout, the sandbox and spectating are never recorded. Nothing to set up (matches are detected from Steam's own log). No event timeline yet
