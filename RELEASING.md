@@ -129,12 +129,10 @@ address, update to it, and from then on check the new one. Do these steps in thi
      v1.11.0, **Update now** installs it, and after the restart **Check now** says it's up to
      date (that check already used the new address; an error there means the new address is
      wrong).
-5. **Wait about 1 week** so the copies out there update. Running copies check at start-up and
-   every 4 hours, so anyone who opens Clairvoyance during that week gets the bridge. Keep it
-   short: while you wait, the full source can still be cloned. A longer wait only helps people
-   who don't open the app for weeks, and they can still update by hand once (below). Any further
-   releases during the wait are fine: the workflow keeps mirroring them into this repository
-   while it's public.
+5. **Wait** so the copies out there update. Running copies check at start-up and every 4 hours,
+   so anyone who opens Clairvoyance during the wait gets the bridge. Wait **at least 4 weeks**
+   (longer is safer; nothing breaks while you wait). Any further releases during the wait are
+   fine: the workflow keeps mirroring them into this repository while it's public.
 6. **Make this source repository private**: Settings > General > Danger Zone > Change repository
    visibility > Make private. From then on the mirror step skips itself and nothing else changes
    for you: `scripts/release.ps1` works the same.
