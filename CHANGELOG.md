@@ -5,6 +5,9 @@ release notes on GitHub and in the in-app "Update available" card.
 
 ## [Unreleased]
 
+- Fit for Discord now aims for 18 MB (was 19.5 MB), so shared clips stay clearly under Discord's 20 MB limit; if the graphics card's encoder overshoots, it tries again smaller and then with a stricter software encoder, and never hands you a file that's too big
+- Clairvoyance no longer records your desktop: it only ever captures the game window (before, it switched to the whole screen when the game window was slow to appear or showed no picture)
+- Simpler settings: technical options (encoder, codec, bitrate mode, screen capture, ffmpeg path), the recorder test, the CPU/RAM stat, Performance test and Advanced are now behind Settings > General > Developer tools
 - Clip editor: a "Share: fit for Discord" tick next to the other options. It's the same setting as the tick on the Clips page (changing one changes the other) and only affects the Share button; your saved clip stays full quality
 - Clip editor: "Exact cut" is now "Start exactly at the handle", with a clearer explanation
 - "Create clip" scrolls the clip editor into view when it's below the window

@@ -6,7 +6,7 @@
 
   let {
     label = "Fit for Discord",
-    title = "Share makes a copy under 19.5 MB so it fits Discord's free upload limit. Off: the original clip is shared.",
+    title = "Share makes a copy under 18 MB so it fits Discord's free upload limit. Off: the original clip is shared.",
     variant = "head",
   }: { label?: string; title?: string; /** "head": next to a heading; "chk": like the clip editor's options. */ variant?: "head" | "chk" } = $props();
 

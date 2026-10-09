@@ -1,5 +1,5 @@
 // Share (2026-10-08): the Share button on clips puts the clip on the clipboard (a copy under
-// 19.5 MB with "Fit for Discord" on), the tick is on by default and is the same saved setting as
+// 18 MB with "Fit for Discord" on), the tick is on by default and is the same saved setting as
 // in Settings, and the button fits on the clip cards at the smallest window size.
 // Chromium against the mock backend (`VITE_MOCK=1 npx vite`).
 //
@@ -42,8 +42,8 @@ const busy = await page.locator(".card.clip .sharebtn").first().textContent();
 check("the button says it's preparing while it works", busy.includes("Preparing"), busy.trim());
 let t = await lastToast();
 check("sharing says it's copied and how to paste it", t.startsWith("Copied! Paste it in Discord with Ctrl+V"), t);
-check("the toast gives the copy's size", t.includes("17.2 MB"), t);
-check("the copy fits Discord (under 19.5 MB, 30 fps)", /1[0-9](\.\d)? MB/.test(t) && t.includes("30 fps"), t);
+check("the toast gives the copy's size", t.includes("16.8 MB"), t);
+check("the copy fits Discord (under 18 MB, 30 fps)", /1[0-9](\.\d)? MB/.test(t) && t.includes("30 fps"), t);
 await page.screenshot({ path: `${OUT}/shared.png` });
 
 // Untick: the original clip, and Settings shows the same setting off.

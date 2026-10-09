@@ -196,6 +196,7 @@ const settings: Settings = {
   start_with_windows: true,
   start_minimized: true,
   show_perf: true,
+  dev_tools: true, // the e2e layout test visits Performance test and Advanced
   theme: (localStorage.getItem("cv-theme") as any) ?? "system",
   auto_update_check: true,
   video: { encoder: "auto", quality: "standard", fps: 60, height: 1080, replay_buffer_secs: 30, record_mic: false, display_capture: false, codec: "h264", rate_control: "bitrate", playable_codecs: [] },
@@ -503,9 +504,9 @@ export async function invoke(cmd: string, args: any = {}): Promise<any> {
       if (!c) throw "That clip's file is missing.";
       await new Promise((r) => setTimeout(r, 400));
       const fit = settings.share_fit_discord;
-      const small = c.size_bytes <= 19_500_000;
+      const small = c.size_bytes <= 18_000_000;
       // `?clipboard=busy`: the clipboard can't be opened (UI tests check the "Show file" fallback).
-      return { path: c.path, bytes: fit && !small ? 18_035_507 : c.size_bytes, width: 1920, height: 1080, fps: fit && !small ? 30 : 60, fitted: fit && !small, copied: q.get("clipboard") !== "busy" };
+      return { path: c.path, bytes: fit && !small ? 17_616_077 : c.size_bytes, width: 1920, height: 1080, fps: fit && !small ? 30 : 60, fitted: fit && !small, copied: q.get("clipboard") !== "busy" };
     }
     case "export_clip":
       // UI tests read how clips were cut (e.g. `precise`).
