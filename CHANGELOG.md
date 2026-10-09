@@ -3,10 +3,6 @@
 Newest first. `scripts/release.ps1` adds a section for each release; the section becomes the
 release notes on GitHub and in the in-app "Update available" card.
 
-## [Unreleased]
-
-- New game: Deadlock. Every match is recorded on its own, from the moment it is found to just after the end screen; the Hideout, the sandbox and spectating are never recorded. Nothing to set up (matches are detected from Steam's own log). No event timeline yet
-
 ## [1.11.0] - 2026-10-09
 
 - making it work for deadlock
