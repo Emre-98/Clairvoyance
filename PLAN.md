@@ -63,6 +63,13 @@
     overlay 20/20, bubbles 20/20, frame stepping 27/27. Details in docs/HISTORY.md: "Richer timeline",
     "Time-synced scoreboard", "Smaller files (v1.8 part 3)".
 
+- **Share size, no desktop, Developer tools (2026-10-08, owner's request), not yet tried on
+  Windows:** Discord copies target 18 MB with 10 % headroom, peak 1.25× average, up to 3 tries
+  (GPU, GPU, then libx264), never a file over the limit; clips up to ~3 min. Recording never falls
+  back to the screen any more (window not found in 30 s → error; no frames → only a log line);
+  "Capture the whole screen" is a dev option and settings v5 turns it off once. New
+  `dev_tools` setting (off) hides the technical options, recorder test, CPU/RAM stat,
+  Performance test and Advanced.
 - **v1.8 sharing (2026-10-08, owner's request), not yet tried on Windows:** a Share button on
   every clip puts it on the clipboard as a file (Ctrl+V in Discord). "Fit for Discord" (saved
   setting, on by default, a tick on the Clips / game page and in Settings) makes an H.264 copy
@@ -94,6 +101,15 @@
   (Strive's buttons): Q orange (Dust), W green (Slash), E blue (Kick), R red (Heavy Slash), D
   violet, F yellow, ward teal, items slate. Sizes by importance: Q W E R 1.18, D F 1.0, ward 0.88,
   items 0.76. Bubble pixel test 20/20; draw with 40+ bubbles p95 1.2 ms (Chromium, Linux).
+- **Clip editor + Share polish (2026-10-08, owner's request), Ctrl+V into Discord not yet tried
+  on Windows:** the clip editor has the "Share: fit for Discord" tick (ShareFitToggle, same saved
+  setting as the clips-list tick, in sync), "Exact cut" renamed "Start exactly at the handle",
+  "Create clip" scrolls the editor into view (block "nearest"; instant with reduced motion).
+  Share's clipboard code moved to `cv_capture::win::clipboard`: CF_HDROP (UTF-16, double NUL) +
+  "Preferred DropEffect" = copy like Explorer, a message-only window owns the clipboard (a NULL
+  owner can make SetClipboardData fail), 5 × 50 ms retries, absolute path of a file checked to
+  exist. Its unit test (copy a temp file, read CF_HDROP back with DragQueryFileW) runs in CI's
+  `windows` job. Copy failed → error toast with "Show file". Chromium: share 23/23, export 21/21.
 
 ## Performance rules (hard requirements)
 - Recording is done by GameRecorder's **built-in recorder** (see "Built-in recorder" below). No

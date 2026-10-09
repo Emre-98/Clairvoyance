@@ -14,7 +14,7 @@
 
   let perf = $state<{ cpu: number; ram_mb: number } | null>(null);
   $effect(() => {
-    if (!app.settings?.show_perf) return;
+    if (!app.settings?.show_perf || !app.settings?.dev_tools) return;
     let alive = true;
     const tick = async () => {
       if (!alive || document.hidden) return;
@@ -74,7 +74,7 @@
     </div>
   {/if}
 
-  {#if app.settings?.show_perf && perf}
+  {#if app.settings?.show_perf && app.settings?.dev_tools && perf}
     <div class="perf" title="CPU and memory used by Clairvoyance itself (this window adds a little while it's open)">
       <Icon name="cpu" size={14} />
       <span>{perf.cpu.toFixed(1)}% CPU</span>

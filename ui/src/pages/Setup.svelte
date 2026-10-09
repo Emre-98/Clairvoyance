@@ -89,7 +89,7 @@
           <div><kbd>{app.settings?.hotkey_clip}</kbd><span>Save the last {app.settings?.video.replay_buffer_secs} seconds as a clip</span></div>
           <div><kbd>{app.settings?.hotkey_marker}</kbd><span>Add a marker to find a moment later</span></div>
         </div>
-        <p class="muted small">Closing the window keeps Clairvoyance running in the tray. Want to see it work first? Settings > Advanced > Simulate a League game.</p>
+        <p class="muted small">Closing the window keeps Clairvoyance running in the tray.</p>
       </div>
       <div class="foot"><div class="spacer"></div><button class="btn primary" onclick={finish}>Open Clairvoyance</button></div>
     {/if}

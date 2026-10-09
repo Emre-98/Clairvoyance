@@ -15,6 +15,8 @@ export interface Toast {
   id: number;
   text: string;
   level: "info" | "ok" | "warn" | "error";
+  /** A button in the toast (e.g. "Show file"). */
+  action?: { label: string; run: () => void };
 }
 
 export const app = $state({
@@ -63,9 +65,9 @@ export function prefetchSession(id: string) {
 }
 
 let toastId = 0;
-export function toast(text: string, level: Toast["level"] = "info", ms = 4500) {
+export function toast(text: string, level: Toast["level"] = "info", ms = 4500, action?: Toast["action"]) {
   const id = ++toastId;
-  app.toasts.push({ id, text, level });
+  app.toasts.push({ id, text, level, action });
   setTimeout(() => {
     app.toasts = app.toasts.filter((t) => t.id !== id);
   }, ms);

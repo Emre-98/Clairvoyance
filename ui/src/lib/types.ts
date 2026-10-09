@@ -333,6 +333,7 @@ export interface Settings {
   start_with_windows: boolean;
   start_minimized: boolean;
   show_perf: boolean;
+  dev_tools: boolean;
   theme: "system" | "dark" | "light";
   auto_update_check: boolean;
   video: VideoSettings;

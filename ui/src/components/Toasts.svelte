@@ -6,7 +6,7 @@
 
 <div class="toasts" aria-live="polite">
   {#each app.toasts as t (t.id)}
-    <div class="toast {t.level} fade-in"><Icon name={icon[t.level]} size={16} /><span>{t.text}</span></div>
+    <div class="toast {t.level} fade-in"><Icon name={icon[t.level]} size={16} /><span>{t.text}</span>{#if t.action}<button class="btn small tact" onclick={t.action.run}>{t.action.label}</button>{/if}</div>
   {/each}
 </div>
 
@@ -33,6 +33,10 @@
     font-size: 13px;
     line-height: 1.4;
     user-select: text;
+  }
+  .tact {
+    flex: none;
+    margin: -3px 0 -3px 4px;
   }
   .toast :global(svg) {
     flex: none;

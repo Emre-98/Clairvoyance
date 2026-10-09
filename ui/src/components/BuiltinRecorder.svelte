@@ -3,6 +3,7 @@
   import { bytes } from "../lib/format";
   import type { SelfTestResult } from "../lib/types";
   import Icon from "./Icon.svelte";
+  import { app } from "../lib/store.svelte";
 
   let enc = $state<{ gpu: string; encoders: string[] } | null>(null);
   let encErr = $state<string | null>(null);
@@ -51,6 +52,7 @@
   {:else if encErr}
     <div class="warn">{encErr}</div>
   {/if}
+  {#if app.settings?.dev_tools}
   <div class="row test">
     <button class="btn" onclick={test} disabled={testing}>{testing ? "Recording 5 s of your screen…" : "Test the recorder"}</button>
     {#if result}
@@ -61,6 +63,7 @@
     {/if}
     {#if testErr}<span class="warn">{testErr}</span>{/if}
   </div>
+  {/if}
 </div>
 
 <style>

@@ -100,8 +100,12 @@ pub struct Settings {
     pub settings_version: u32,
     pub start_with_windows: bool,
     pub start_minimized: bool,
-    /// Show the CPU/RAM debug stat in the UI.
+    /// Show the CPU/RAM debug stat in the UI (only with `dev_tools` on).
     pub show_perf: bool,
+    /// Developer tools: shows the technical options (codec, rate control, screen capture,
+    /// encoder), the recorder test, the CPU/RAM stat, Performance test and Advanced. Off by
+    /// default so the app stays simple.
+    pub dev_tools: bool,
     /// "system" (follow Windows, the default), "dark" or "light".
     pub theme: String,
     /// Look for new versions on GitHub at start-up and every few hours (never during a game).
@@ -138,6 +142,7 @@ impl Default for Settings {
             start_with_windows: false,
             start_minimized: false,
             show_perf: true,
+            dev_tools: false,
             theme: "system".into(),
             auto_update_check: true,
             video: VideoSettings::default(),
@@ -151,7 +156,7 @@ impl Default for Settings {
     }
 }
 
-pub const SETTINGS_VERSION: u32 = 4;
+pub const SETTINGS_VERSION: u32 = 5;
 
 impl Settings {
     /// The theme setting, normalized to "system", "dark" or "light".
@@ -212,6 +217,11 @@ impl Settings {
             // v3: storage limit with automatic clean-up, 100 GB by default (was "no limit").
             self.max_disk_gb = 100;
             self.auto_cleanup = true;
+        }
+        if self.settings_version < 5 {
+            // v5: screen capture is a developer option now (it recorded the desktop); everyone
+            // goes back to capturing only the game window.
+            self.video.display_capture = false;
         }
         self.settings_version = SETTINGS_VERSION;
     }
@@ -357,6 +367,16 @@ mod tests {
         let mut chosen: Settings = serde_json::from_str(r#"{"close_ui_in_game":true,"keep_ui_loaded":false,"settings_version":3}"#).unwrap();
         chosen.migrate();
         assert!(chosen.close_ui_in_game && !chosen.keep_ui_loaded);
+    }
+
+    #[test]
+    fn screen_capture_is_switched_off_once_and_dev_tools_start_off() {
+        let mut old: Settings = serde_json::from_str(r#"{"video":{"display_capture":true},"settings_version":4}"#).unwrap();
+        old.migrate();
+        assert!(!old.video.display_capture && !old.dev_tools);
+        old.video.display_capture = true;
+        old.migrate();
+        assert!(old.video.display_capture, "a developer's later choice sticks");
     }
 
     #[test]
