@@ -31,13 +31,14 @@
   docs/HISTORY.md ("Owner test scripts (not run)") in case they become possible.
 - **Focus: League of Legends and Deadlock** (owner; League only since 2026-10-07, lifted for
   Deadlock on 2026-10-09). No CS2 or Dota 2 work for now; the CS2 module stays as it is.
-- **Deadlock, milestone 1 step 1 (2026-10-09): the match-signal diagnostic is built; waiting for
-  the owner's log.** New crate `games/deadlock` (`cv-game-deadlock`) with the developer option
-  "Deadlock: log match signals" (Settings > General > Developer tools) and "Copy log path". It is
-  not a game integration yet: nothing of Deadlock is recorded, and Deadlock isn't listed in
-  Settings > Games. Written on the owner's PC, which has no Rust / Node: compiled, linted and
-  unit-tested only by CI, **not yet run on Windows**. What it watches, what the owner should do
-  and what comes next: "Deadlock" below and "Next steps".
+- **Deadlock, milestone 1 steps 1-2 (2026-10-09): signals found, from the owner's two real
+  runs.** Crate `games/deadlock` (`cv-game-deadlock`) with the developer option "Deadlock: log
+  match signals" (v1.11.0; ran on the owner's PC for a full bot match, the sandbox, a match left
+  early and spectating). Result: **Steam's own `content_log.txt` marks a match's start and end
+  live with no launch option** (updates disabled / enabled), and the `-condebug` console log
+  gives every stage to the second; the normal path is built on the first, refined by the
+  second, so users don't need `-condebug`. Not a game integration yet: nothing of Deadlock is
+  recorded. Details and the decision: "Deadlock" below.
 - **Engineering upkeep (2026-10-07, after a full review of the code):** the architecture is
   sound and the project continues as is (no rewrite). Done: CI compiles and lints the Windows
   code (`windows` job) and checks rustfmt + clippy (Rust pinned to 1.99); engine session states
@@ -143,8 +144,8 @@
 - [x] 38. Share: one click to the clipboard, "Fit for Discord" copy under 19.5 MB (on by default), copies cleared after 24 h
 - [x] 39. Spectating caught before recording also when the client can't tell (the in-game API decides; safety net records anyway)
 - [x] 40. Deadlock M1 step 1: match-signal diagnostic ("Deadlock: log match signals" + "Copy log path")
-- [ ] Owner: one bot match with the diagnostic on, log sent (see "Next steps")
-- [ ] 41. Deadlock M1 step 2: signals chosen from the owner's log, their lateness measured, written under "Deadlock"
+- [x] Owner: bot match + sandbox + left-early match + spectating with the diagnostic on (2026-10-09)
+- [x] 41. Deadlock M1 step 2: signals chosen from the owner's logs (Steam's content log without -condebug, the console log with it), written under "Deadlock"
 - [ ] 42. Deadlock M1 normal path: live start / stop (`match_only`), pre-roll only if the start signal is late, exact trim, `-condebug` notice
 - [ ] 43. Deadlock M1 fallback: capped rolling buffer on disk, health rules, matches cut out of it, game-neutral in the core
 - [ ] 44. Deadlock M1 modes + spectating / replays never saved
@@ -311,37 +312,73 @@ Milestone 1 step 1, the diagnostic (`games/deadlock/src/diag.rs`, `app/src/devop
   log follower: appearing / half-written lines / started over / gone, folder watching by name
   only, content copies, log rows, pruning).
 
-Next (after the owner's log): choose the signals for match loading / started, ended (win /
-loss), left early, back in the Hideout, sandbox / replay / spectating; measure how late each
-arrives; note which sources still tell a match afterwards without `-condebug`. Then the normal
-path, the fallback and the modes (milestones 42-44), then milestone 2+.
+Milestone 1 step 2, the signals (owner's two runs, 2026-10-09, game build 10931; the real lines
+are the test fixtures in `games/deadlock/tests/fixtures/`):
+- Run 1: Hideout → bot match 113291198 played to the end → Hideout → quit. Run 2: Hideout →
+  sandbox → bot match 113300990 left after ~1 min → Hideout → spectating a live match → quit.
+  Owner's notes: match 1 started 9:28, finished 10:09 (matches the log to the minute; no finer
+  notes were taken, so lateness is measured against the lines' own timestamps).
+- **Without `-condebug`: Steam's own `Steam\logs\content_log.txt`** (always written). Deadlock
+  asks Steam not to update it while a match is on:
+  - `App 1422450 updates disabled for 300 seconds` (+ `state changed : …,Updated Disabled by
+    app,`) at 09:28:21 and 10:15:44 = the second the match was found (console: lobby created
+    09:28:20 / 10:15:44), i.e. **before the loading screen**; renewed every 6 minutes during
+    the match (a heartbeat);
+  - `App 1422450 updates now enabled` at 10:09:07 (= `PostGame`, the end banner) and 10:17:12
+    (= the moment the owner left the second match);
+  - nothing for the Hideout, the sandbox or spectating. Seen by the logger 0.2-1.2 s after
+    the line's own (whole-second) timestamp, at a 1 s look interval.
+  - It doesn't say: when the match is really in progress, played to the end vs left early, the
+    end of the end screen, the mode, win / loss. Private lobbies / Street Brawl: unseen.
+- **With `-condebug`: `game\citadel\console.log`** (lines `MM/DD HH:MM:SS text`, whole seconds,
+  local time; seen by the logger in the same second; **the game appends to the file across
+  launches**, it never clears it). Per match:
+  | moment | line | run 1 | run 2 |
+  |---|---|---|---|
+  | match found | `Lobby <id> for Match <match id> created`, then `[Citadel Play Controller] CCitadel_PlayController::OnMatchFormed` | 09:28:20 | 10:15:44 |
+  | connecting | `[Client] Map: "start"`, `Host activate: Remote Connect (…)` | 09:28:21-25 | 10:15:45-49 |
+  | loading / intro | `OnGameStateChanged: MatchIntro (4)`, `WaitForMapToLoad (5)`, `PreGameWait (6)` | 09:28:26 / :31 / :32 | 10:15:50 / :55 / :56 |
+  | match running | `OnGameStateChanged: GameInProgress (7)` | 09:29:01 | 10:16:25 |
+  | match over | `OnGameStateChanged: PostGame (8)`, `Lobby … for Match … destroyed` | 10:09:07 / :08 | - |
+  | end screen left | `OnGameStateChanged: End (11)`, `[Client] CL:  disconnect` | 10:09:17 | - |
+  | left early | `[Client] CL:  disconnect` + `Send msg 9015 (k_EMsgClientToGCLeaveLobby)` with no `PostGame` before it, then `Lobby … destroyed` | - | 10:17:12 |
+  | back in the Hideout | `[Client] Map: "dl_hideout"`, `[Hideout] Hideout Lobby Connection State: NoLobby (0)` | 10:09:20 | 10:17:15 |
+  - The match id is in the lobby line (it names the replay / match history entry).
+  - **Traps:** the Hideout and the sandbox are local games that also print `ChangeGameState: …
+    GameInProgress (7)` and `OnGameStateChanged: GameInProgress (7)`. A match is only: a lobby
+    created → `Remote Connect`. Sandbox = `Spawn Server: new_player_basics` / `Map:
+    "new_player_basics"` (10:14:13-10:15:13), never a lobby.
+  - Spectating a live match: `Send msg 9109 (k_EMsgClientToGCSpectateLobby)`, `Host activate:
+    Playing Broadcast (http://…steamcontent.com/tv/…)`, `[HLTV Broadcast] …` lines, then
+    `OnGameStateChanged: GameInProgress (7)` / `PostGame (8)` of the watched match, and
+    `[HLTV Broadcast] OnDemoStreamStop()`; no lobby of your own, and Steam's updates stay enabled.
+  - No win / loss line was found in the console log (it comes from the replay later).
+- Sources that showed nothing about the match: the window title ("Deadlock", class `SDL_app`,
+  always), `rpt` / `save` / `cfg`, the Steam cloud folder (written only at start and exit),
+  Steam's timeline folder (empty: Steam recording off), `gameprocess_log.txt` (`SSGL: Game
+  server change` on every map change, Hideout included). Steam's HTTP cache changed only while
+  browsing the match list in run 2. **No replay was downloaded** (no `replays` folder), and
+  playing back a downloaded replay is unseen: both still to capture.
+- The diagnostic's own cost: 62.65 s of looking over 2,337 s (2.7 %) in run 1, 16.99 s over
+  526 s (3.2 %) in run 2: above the 1 % target (it lists folders every second and follows ~45
+  Steam logs). Fine for a one-off diagnostic; the integration will follow two files only.
+
+Decision (owner's preference: no launch option for normal users): the **normal path is built
+on Steam's content log**, which needs nothing from the user: recording starts when updates are
+disabled (the match was found: on time, so **no pre-roll**), and ends a fixed tail after they
+are enabled again. The console log, when the user has `-condebug`, refines it (exact
+in-progress / end-screen moments, left early, match id, spectating) but is never required, and
+no "add -condebug" notice is shown. The safety buffer stays the net for when neither works.
+Risks to check in the next owner test: only two matches seen so far (both bot matches on
+Valve servers); the Steam client must be running normally (it is whenever Deadlock runs).
+
+Next: milestones 42-44 (normal path, fallback, modes), then milestone 2+.
 
 ## Next steps
-- **Owner, Deadlock match signals (~40 min, one bot match). This is what the Deadlock work is
-  waiting for.**
-  1. Get the build: merge the `deadlock` pull request once its checks are green, release it
-     (`scripts\release.ps1 <version>`), and let Clairvoyance update itself.
-  2. Steam > Library > right-click Deadlock > Properties > General > Launch options: add
-     `-condebug`. Deadlock must be closed while you do this, and started again afterwards.
-  3. Clairvoyance: Settings > General: tick "Developer tools", tick "Deadlock: log match
-     signals", "Save changes". Leave Clairvoyance running (the tray is enough).
-  4. Play, and note the clock time (to the second if you can, e.g. from the Windows clock) of
-     every step:
-     - start Deadlock, wait in the Hideout about 1 minute;
-     - start one bot match and note: when you click to start / the match is found, when the
-       loading screen appears, when you can move (the match really starts);
-     - play it to the end and note when the Patron dies / the Victory or Defeat banner shows;
-     - stay on the end screen about 30 seconds, then go back to the Hideout (note when);
-     - open the sandbox / practice range for a moment and leave it again (note both);
-     - close the game, and leave Clairvoyance running one more minute.
-  5. Settings > General > "Copy log path", then send that file with your notes (privately: it
-     can contain player names and Steam ids). If no file exists, send
-     `%LOCALAPPDATA%\Clairvoyance\logs\clairvoyance.log` instead.
-  Optional, each adds a source: turn on Steam's own game recording for that session (Steam >
-  Settings > Game Recording); and before you close the game, download the match's replay
-  (match history > "Download Replay") and wait until it has finished.
-  Performance check: the log's last line ("Looking took … s in total over … s") is the
-  diagnostic's cost; it should be well under 1 % of the session. Switch the option off afterwards.
+- **Owner, Deadlock (done 2026-10-09):** the two diagnostic runs. Switch "Deadlock: log match
+  signals" off again (Settings > General). Still useful when you have a minute, with the option
+  on: download one replay (match history > "Download Replay"), watch it for 30 s, close the
+  game: it shows where the file lands and what replay playback looks like in the logs.
 - **Owner, spectating caught earlier (~5 min, no Riot needed):** Settings > Advanced >
   Simulate, What = "Spectating, players unreadable": the status says "Checking whether this is
   a replay…", then "not recorded", and no folder is left. What = "A match, players unreadable":
