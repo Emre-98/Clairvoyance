@@ -1,8 +1,8 @@
 use super::*;
 
 // The owner's real log lines of 2026-10-09 (see the files' first lines for what was played).
-const RUN1: &str = include_str!("../../tests/fixtures/console-run1.log");
-const RUN2: &str = include_str!("../../tests/fixtures/console-run2.log");
+const RUN1: &str = include_str!("../../tests/fixtures/console-run1.txt");
+const RUN2: &str = include_str!("../../tests/fixtures/console-run2.txt");
 const STEAM: &str = include_str!("../../tests/fixtures/steam-content-log.txt");
 
 fn at(hms: &str) -> NaiveDateTime {
