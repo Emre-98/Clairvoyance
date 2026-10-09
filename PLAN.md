@@ -259,6 +259,10 @@ Hard rules (owner, 2026-10-09):
   games you spectate" is on).
 - Normal path first; the on-disk fallback buffer is only a safety net, never above its cap
   (default 75 min), and a long session is never stored in full.
+- **Normal users shouldn't have to add `-condebug`** (owner's preference, 2026-10-09). It is
+  needed for the diagnostic run only (to see everything once). When choosing the signals, prefer
+  any source that works without it; require it for users only if nothing else can tell a match's
+  start and end, and say so to the owner before building on it.
 
 Checked on the owner's PC (2026-10-09, read-only):
 - Steam `C:\Program Files (x86)\Steam`, Deadlock in the library `E:\SteamLibrary`
