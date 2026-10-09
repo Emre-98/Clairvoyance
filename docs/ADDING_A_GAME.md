@@ -61,7 +61,12 @@ Rules that keep the rest of the app working:
   uses it to compute the video offset (`video position = game time + offset`). If the game has
   no clock, return seconds since `start()` (CS2 does this).
 - Map everything to the shared `EventKind`s (kill, death, assist, multikill, objective, round, …)
-  so the timeline colours, filters, auto-clips and callouts work without UI changes.
+  so the timeline colours, filters, auto-clips and callouts work without UI changes. For key
+  presses of a game that can't tell live whether a press was a cast there are `UltPressed`,
+  `AbilityPressed`, `ItemPressed` (the key of an active item slot), `Melee` and `Parry`; their
+  timeline groups are hidden until the user clicks the chip. A new kind needs an entry in
+  `crates/cv-core/src/events.rs` (`ALL`, `as_str`, `callout`), `ui/src/lib/types.ts` and
+  `ui/src/lib/eventmeta.ts` (label, colour, icon, group).
 - No memory reading and no injection: use official APIs only (anti-cheat safe).
 
 ## 3. Register it
@@ -99,3 +104,11 @@ it up automatically.
   markers.
 - **Dota 2**: has Game State Integration like CS2 (kills, deaths, Roshan, game clock), so a
   module would look very similar to `games/cs2`.
+- **Deadlock** (`games/deadlock`, recording and key presses done, the replay-file timeline to
+  come; `binds.rs` + `keys.rs` are an example of `on_key()` / `take_key_marks()` with binds read
+  from the game's own settings file): Valve has no Game State
+  Integration or other live API for it, and it is VAC-protected, so the module only reads
+  files. Matches are detected from Steam's own `logs\content_log.txt` ("updates disabled" while
+  a match is on: no setup) and, when the user has `-condebug`, from the game's console log
+  (`signals.rs`). A good example of a `match_only` game without any API: `poll()` follows two
+  log files. `diag.rs` is the developer diagnostic that found those signals.

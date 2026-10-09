@@ -29,8 +29,34 @@
   the ult kinds and ability bubbles or the v1.6 player benchmark. They are dropped from the
   plan; what stays unverified is under "Known issues" and the scripts are kept in
   docs/HISTORY.md ("Owner test scripts (not run)") in case they become possible.
-- **Focus: League of Legends only** (owner, 2026-10-07). No CS2 or Dota 2 work for now; the CS2
-  module stays as it is.
+- **Focus: League of Legends and Deadlock** (owner; League only since 2026-10-07, lifted for
+  Deadlock on 2026-10-09). No CS2 or Dota 2 work for now; the CS2 module stays as it is.
+- **Deadlock, milestone 1 steps 1-2 (2026-10-09): signals found, from the owner's two real
+  runs.** Crate `games/deadlock` (`cv-game-deadlock`) with the developer option "Deadlock: log
+  match signals" (v1.11.0; ran on the owner's PC for a full bot match, the sandbox, a match left
+  early and spectating). Result: **Steam's own `content_log.txt` marks a match's start and end
+  live with no launch option** (updates disabled / enabled), and the `-condebug` console log
+  gives every stage to the second; the normal path is built on the first, refined by the
+  second, so users don't need `-condebug`. Not a game integration yet: nothing of Deadlock is
+  recorded. Details and the decision: "Deadlock" below.
+- **Deadlock, milestone 1 normal path (2026-10-09), tried in a real game (v1.12.0, owner, 2026-10-09: one Street Brawl match without `-condebug` gave exactly one recording, 11:41:40-11:58:17, started the second the match was found, stopped 8 s after the end banner, picture and sound fine, 0 dropped frames, app CPU 0.5 % average; the Hideout and what came after were not recorded):** Deadlock is
+  now a game (`DeadlockIntegration`, Settings > Games): one recording per match, started when
+  Steam's log says a match was found (before the loading screen) and stopped after the end
+  screen; nothing in the Hideout, the sandbox or while spectating. No setup; `-condebug`
+  only tightens the end. Replaying the owner's real log lines gives exactly two recordings
+  (09:28:20-10:09:17 and 10:15:44-10:17:12 with the console log; 09:28:21-10:09:07 and
+  10:15:44-10:17:12 from Steam's log alone). Written without a local compiler: checked by CI
+  only. No timeline yet, no fallback buffer, no mode rules: see "Deadlock".
+- **Deadlock, key presses on the timeline (2026-10-09), not yet tried in a real game:** your
+  presses of abilities 1-3, the ultimate (ability 4), item slots 1-4, melee and parry become
+  timeline markers ("Ability 1", "Ultimate", "Item 2", "Melee", "Parry"), only while Deadlock
+  has the focus and the match is in progress. The binds are read from the game's own
+  `citadelkeys_personal.lst` at each match start (the `.vcfg` files turned out to hold console
+  binds only). Not counted: Alt+1-4 (ability upgrade), typing in the chat, keys while the shop
+  is open, the same key again within 1 s (melee 0.4 s). Every press is also kept as a key mark
+  for the replay check to come. New groups "Abilities", "Item keys", "Melee & parry" (hidden
+  until their chip is clicked, like the ult). Written without a local compiler: CI only. Details:
+  "Deadlock" > "Key presses on the timeline".
 - **Engineering upkeep (2026-10-07, after a full review of the code):** the architecture is
   sound and the project continues as is (no rewrite). Done: CI compiles and lints the Windows
   code (`windows` job) and checks rustfmt + clippy (Rust pinned to 1.99); engine session states
@@ -150,6 +176,16 @@
 - [x] 37. Smaller files: measured (software stand-ins + PC script), HEVC / AV1 recording and quality-based rate control as options with H.264 fallback; defaults unchanged until the GPU numbers (v1.8 part 3)
 - [x] 38. Share: one click to the clipboard, "Fit for Discord" copy under 19.5 MB (on by default), copies cleared after 24 h
 - [x] 39. Spectating caught before recording also when the client can't tell (the in-game API decides; safety net records anyway)
+- [x] 40. Deadlock M1 step 1: match-signal diagnostic ("Deadlock: log match signals" + "Copy log path")
+- [x] Owner: bot match + sandbox + left-early match + spectating with the diagnostic on (2026-10-09)
+- [x] 41. Deadlock M1 step 2: signals chosen from the owner's logs (Steam's content log without -condebug, the console log with it), written under "Deadlock"
+- [x] 42. Deadlock M1 normal path: live start / stop (`match_only`) on Steam's log, refined by the console log; no pre-roll, trim or `-condebug` notice needed (owner's first match on v1.12.0 worked)
+- [ ] 43. Deadlock M1 fallback: capped rolling buffer on disk, health rules, matches cut out of it, game-neutral in the core
+- [ ] 44. Deadlock M1 modes + spectating / replays never saved
+- [ ] Owner: second bot match on the normal path = exactly one recording; one more without `-condebug` saved through the fallback
+- [x] 45. Deadlock M2 part 1: key presses on the timeline (abilities, ultimate, item slots, melee, parry) with the game's own binds
+- [ ] Owner: one match with the key presses, then compare the markers with the video
+- [ ] 46. Deadlock M2 part 2: kills, objectives, items, souls, scoreboard, ult confirmation and auto clips from the replay file
 - [ ] Owner's real-game check of v1.8 (see "Next steps")
 - [ ] Owner's `scripts/encoder-compare.ps1` run, then switch the defaults where the numbers allow
 
@@ -242,11 +278,233 @@
   factors (0.75 / 0.6 of H.264) are starting points, not measured on a GPU yet.
 
 
+## Deadlock (in progress)
+Goal: Deadlock support that feels built for Deadlock, with League's integration as the quality
+bar. Crate `games/deadlock` (`cv-game-deadlock`); no Deadlock code in `cv-core` / `cv-capture`
+(what the core needs is added game-neutrally and documented in docs/ADDING_A_GAME.md).
+
+Hard rules (owner, 2026-10-09):
+- VAC-safe: no memory reading, no injection, no in-game overlay (so no deadlock-rs, no
+  Overwolf event provider). Allowed: files the game or Steam writes, Valve's own replay files,
+  local key presses. The performance rules above apply.
+- No dependence on unofficial web services (deadlock-api.com ...); ask the owner first if one
+  would add a lot. Downloading replays ourselves: ask first; by default only replays the user
+  downloaded are used.
+- Only real matches are saved, one per game entry, from the loading screen to just after the
+  end screen. Nothing from the Hideout, menus, sandbox, replays or spectating (unless "Record
+  games you spectate" is on).
+- Normal path first; the on-disk fallback buffer is only a safety net, never above its cap
+  (default 75 min), and a long session is never stored in full.
+- **Normal users shouldn't have to add `-condebug`** (owner's preference, 2026-10-09). It is
+  needed for the diagnostic run only (to see everything once). When choosing the signals, prefer
+  any source that works without it; require it for users only if nothing else can tell a match's
+  start and end, and say so to the owner before building on it.
+
+Checked on the owner's PC (2026-10-09, read-only):
+- Steam `C:\Program Files (x86)\Steam`, Deadlock in the library `E:\SteamLibrary`
+  (`steamapps\common\Deadlock`, app id 1422450, `appmanifest_1422450.acf` → `installdir`).
+- The exe is `game\bin\win64\deadlock.exe`; its window title in the Hideout / menu is "Deadlock".
+- `game\citadel` has `cfg`, `rpt`, `save`; **no `console.log`** (no `-condebug` yet) and no
+  `replays` folder yet (no replay downloaded so far).
+- Key binds: the gameplay binds are in `userdata\<id>\1422450\remote\cfg\citadelkeys_personal.lst`
+  (every action with its key, see "Key presses on the timeline"). `local\cfg\user_keys_0_slot0.vcfg`
+  and `game\citadel\cfg\user_keys_default.vcfg` are the engine's console binds only (the owner's
+  has just F7 = console; the default one has no ability in it).
+- Steam's recording folder is `userdata\<id>\gamerecordings` (`timelines\` empty: Steam's game
+  recording is off or was never used). Launch options live in
+  `userdata\<id>\config\localconfig.vdf` (`"LaunchOptions"` in the app's block; Steam writes
+  that file late), so the app can tell whether `-condebug` is set without touching Steam's files.
+- Unverified still: the console log's line format and flush delay, the replays folder, the
+  timeline file format, whether Steam saves a chosen recording folder as `BackgroundRecordPath`.
+
+Milestone 1 step 1, the diagnostic (`games/deadlock/src/diag.rs`, `app/src/devopts.rs`):
+- Switch: Settings > General > Developer tools > "Deadlock: log match signals" (stored as
+  `settings.games.deadlock.log_match_signals`; needs "Save changes"). A thread
+  ("deadlock-signals") idles until it's on; then it checks the process list every 2 s, and while
+  `deadlock.exe` (or `project8.exe`) runs it writes
+  `%LOCALAPPDATA%\Clairvoyance\logs\deadlock-signals-<date>-<time>.log`, one file per game run
+  (the 8 newest are kept, 256 MB cap each). "Copy log path" copies the newest one's path.
+- Each line: wall-clock time (ms), seconds since the log began, source, text. Sources:
+  - `console.log` (and any other `.log` in `game\citadel`, `game`, `game\bin\win64`): every new
+    line as written, so the game's own timestamp stays next to ours; looked at every 100 ms.
+    Lines that were in the file before watching began are marked `console.log*`.
+  - `window`: titles, classes and sizes of the game's visible windows + whether it has the
+    focus (every 300 ms, logged on change); `process`: running / exited.
+  - `replays` (`citadel\replays`, `citadel\addons\replays`), `game-folder`, `game-cfg`,
+    `game-rpt`, `game-save`: files added / changed / removed, with size and time (every 1 s).
+  - `steam-timeline` (`gamerecordings\timelines`, content of changed `.json` files copied in),
+    `steam-recording`, `steam-userdata` (`userdata\<id>\1422450`, small text files copied in
+    when they change, e.g. `pending_replay_requests.lst`).
+  - `steam-httpcache` (`appcache\httpcache`): file names, sizes and times only (every 3 s).
+  - Steam's own logs (`Steam\logs\*.txt` except the web helper's and the connection logs): new
+    lines only.
+- Read-only and without locks: files are opened for a moment with full sharing, folders are
+  only listed, window titles come from the window manager. Nothing in the game process.
+  Watching continues 60 s after the game closes (Steam writes its timeline file then). The last
+  line says how long the looking itself took (its CPU cost).
+- The log can contain player names, chat lines and Steam ids (it's the game's console output):
+  send it privately, don't attach it to a public issue.
+- Tests: `cargo test -p cv-game-deadlock` (Valve file parsing on the owner's file shapes, the
+  log follower: appearing / half-written lines / started over / gone, folder watching by name
+  only, content copies, log rows, pruning).
+
+Milestone 1 step 2, the signals (owner's two runs, 2026-10-09, game build 10931; the real lines
+are the test fixtures in `games/deadlock/tests/fixtures/`):
+- Run 1: Hideout → bot match 113291198 played to the end → Hideout → quit. Run 2: Hideout →
+  sandbox → bot match 113300990 left after ~1 min → Hideout → spectating a live match → quit.
+  Owner's notes: match 1 started 9:28, finished 10:09 (matches the log to the minute; no finer
+  notes were taken, so lateness is measured against the lines' own timestamps).
+- **Without `-condebug`: Steam's own `Steam\logs\content_log.txt`** (always written). Deadlock
+  asks Steam not to update it while a match is on:
+  - `App 1422450 updates disabled for 300 seconds` (+ `state changed : …,Updated Disabled by
+    app,`) at 09:28:21 and 10:15:44 = the second the match was found (console: lobby created
+    09:28:20 / 10:15:44), i.e. **before the loading screen**; renewed every 6 minutes during
+    the match (a heartbeat);
+  - `App 1422450 updates now enabled` at 10:09:07 (= `PostGame`, the end banner) and 10:17:12
+    (= the moment the owner left the second match);
+  - nothing for the Hideout, the sandbox or spectating. Seen by the logger 0.2-1.2 s after
+    the line's own (whole-second) timestamp, at a 1 s look interval.
+  - It doesn't say: when the match is really in progress, played to the end vs left early, the
+    end of the end screen, the mode, win / loss. Street Brawl gives the same lines (owner, 2026-10-09). Private lobbies: unseen.
+- **With `-condebug`: `game\citadel\console.log`** (lines `MM/DD HH:MM:SS text`, whole seconds,
+  local time; seen by the logger in the same second; **the game appends to the file across
+  launches**, it never clears it). Per match:
+  | moment | line | run 1 | run 2 |
+  |---|---|---|---|
+  | match found | `Lobby <id> for Match <match id> created`, then `[Citadel Play Controller] CCitadel_PlayController::OnMatchFormed` | 09:28:20 | 10:15:44 |
+  | connecting | `[Client] Map: "start"`, `Host activate: Remote Connect (…)` | 09:28:21-25 | 10:15:45-49 |
+  | loading / intro | `OnGameStateChanged: MatchIntro (4)`, `WaitForMapToLoad (5)`, `PreGameWait (6)` | 09:28:26 / :31 / :32 | 10:15:50 / :55 / :56 |
+  | match running | `OnGameStateChanged: GameInProgress (7)` | 09:29:01 | 10:16:25 |
+  | match over | `OnGameStateChanged: PostGame (8)`, `Lobby … for Match … destroyed` | 10:09:07 / :08 | - |
+  | end screen left | `OnGameStateChanged: End (11)`, `[Client] CL:  disconnect` | 10:09:17 | - |
+  | left early | `[Client] CL:  disconnect` + `Send msg 9015 (k_EMsgClientToGCLeaveLobby)` with no `PostGame` before it, then `Lobby … destroyed` | - | 10:17:12 |
+  | back in the Hideout | `[Client] Map: "dl_hideout"`, `[Hideout] Hideout Lobby Connection State: NoLobby (0)` | 10:09:20 | 10:17:15 |
+  - The match id is in the lobby line (it names the replay / match history entry).
+  - **Traps:** the Hideout and the sandbox are local games that also print `ChangeGameState: …
+    GameInProgress (7)` and `OnGameStateChanged: GameInProgress (7)`. A match is only: a lobby
+    created → `Remote Connect`. Sandbox = `Spawn Server: new_player_basics` / `Map:
+    "new_player_basics"` (10:14:13-10:15:13), never a lobby.
+  - Spectating a live match: `Send msg 9109 (k_EMsgClientToGCSpectateLobby)`, `Host activate:
+    Playing Broadcast (http://…steamcontent.com/tv/…)`, `[HLTV Broadcast] …` lines, then
+    `OnGameStateChanged: GameInProgress (7)` / `PostGame (8)` of the watched match, and
+    `[HLTV Broadcast] OnDemoStreamStop()`; no lobby of your own, and Steam's updates stay enabled.
+  - No win / loss line was found in the console log (it comes from the replay later).
+- Sources that showed nothing about the match: the window title ("Deadlock", class `SDL_app`,
+  always), `rpt` / `save` / `cfg`, the Steam cloud folder (written only at start and exit),
+  Steam's timeline folder (empty: Steam recording off), `gameprocess_log.txt` (`SSGL: Game
+  server change` on every map change, Hideout included). Steam's HTTP cache changed only while
+  browsing the match list in run 2. **No replay was downloaded** (no `replays` folder), and
+  playing back a downloaded replay is unseen: both still to capture.
+- The diagnostic's own cost: 62.65 s of looking over 2,337 s (2.7 %) in run 1, 16.99 s over
+  526 s (3.2 %) in run 2: above the 1 % target (it lists folders every second and follows ~45
+  Steam logs). Fine for a one-off diagnostic; the integration will follow two files only.
+- **Switching the console log on automatically: tried, doesn't work** (owner's test,
+  2026-10-09 10:32-10:37, launch options empty, command line `-steam -console`): an
+  `autoexec.cfg` in `game\citadel\cfg` with `con_logfile "console_cv.log"` produced no log file
+  and `console.log` didn't grow. Editing Steam's `localconfig.vdf` (Steam overwrites it on exit)
+  and launching through `steam://run` (confirmation prompt, only from our app) are ruled out.
+  So the console log stays an opt-in extra for users who add `-condebug` themselves.
+
+Decision (owner's preference: no launch option for normal users): the **normal path is built
+on Steam's content log**, which needs nothing from the user: recording starts when updates are
+disabled (the match was found: on time, so **no pre-roll**), and ends a fixed tail after they
+are enabled again. The console log, when the user has `-condebug`, refines it (exact
+in-progress / end-screen moments, left early, match id, spectating) but is never required, and
+no "add -condebug" notice is shown. The safety buffer stays the net for when neither works.
+Risks to check in the next owner test: only two matches seen so far (both bot matches on
+Valve servers); the Steam client must be running normally (it is whenever Deadlock runs).
+
+Milestone 1, the normal path as built (`games/deadlock/src/signals.rs`, `lib.rs`):
+- `match_only() = true`. Each poll (1 s) reads what was appended to Steam's
+  `logs\content_log.txt` and, if it exists, `game\citadel\console.log` (two small reads, files
+  opened for a moment with full sharing), and feeds the lines' signals, by their own
+  timestamps, to a `Detector`.
+- A match begins at "updates disabled" or at a lobby of your own being created, whichever line
+  comes first (they are the same match). Phase `Loading` until the console says
+  `GameInProgress (7)`; without the console log, `InProgress` 40 s after the match was found
+  (only the status text depends on it). The match clock (`game_time`) is seconds since found.
+- It ends (`Ended`, then the engine's tail): with the console log at `End (11)` / `CL:
+  disconnect` / the Hideout's map, i.e. when the end screen is left or the match is (tail
+  2 s), at most 45 s after `PostGame (8)`; without it at "updates now enabled" = the end
+  banner or the moment you leave (tail 8 s, which covers a little of the end screen; after
+  leaving early it is 8 s of the way back to the Hideout: the known cost of having no console
+  log).
+- Game-state lines only count inside a match of your own, so the Hideout, the sandbox and
+  spectating never start anything. Spectating can't be recorded yet ("Record games you
+  spectate" is not offered for Deadlock).
+- Safety rules: no renewal from Steam for 420 s → over (leftover lines of a crashed run);
+  Steam says the game closed, or the console shows a new launch (`Source2Init OK`; the game
+  appends to its log across launches) → over; the console goes quiet for 30 s after Steam
+  enabled updates → over; nothing lasts longer than 3 h.
+- When the game process appears, and again when a recording starts, the logs' recent past
+  (64 KB / 256 KB) is replayed, so starting the app in the middle of a match works and a match
+  that already ended is ignored.
+- **No pre-roll and no trim were needed:** the start signal comes before the loading screen
+  and is seen within a second, so the recording itself begins at the match start and ends
+  after the end screen; the file is made playable in place like League's.
+- Not built yet: the capped fallback buffer (for when Steam's log says nothing), mode rules
+  (bot match / Street Brawl rows), the "left early" tag in the library, anything from the
+  replay file. Whether window capture of Deadlock (`SDL_app`, 3840x2160) gives a picture is
+  unknown until the owner's test: if the video is black, switch on Developer tools > "Capture
+  the whole screen" and report it.
+- Tests (`cargo test -p cv-game-deadlock`): the real lines of both runs replayed (one
+  recording per match with exact times, with and without each log; nothing outside the
+  matches although the Hideout / sandbox / spectating print "GameInProgress" 8 times), line
+  parsing, the time rules, the log follower, and the module against real files through
+  `start` / `poll` / `stop` as the engine calls them.
+
+Key presses on the timeline (`games/deadlock/src/binds.rs`, `keys.rs`; 2026-10-09, game build 6766):
+- **Where the binds are (read on the owner's PC):** `citadelkeys_personal.lst` is a Valve
+  KeyValues text: `"KeyBindings" { "Name" "DEFAULT" … "Keys" { "Ability1" { "Key" "1" } … } }`,
+  about 150 actions, each with `"Key"`, sometimes `"Modifier"` (`"ALT"`, `"SHIFT"`) and, for
+  newer actions, `"Key2"` (`"NONE"` = empty). The owner's values: `AbilityMelee` Q, `Ability1-4`
+  1 2 3 4, `Item1-4` Z X C V, `HeldItem` F (the game's settings call it "Melee parry / throw
+  held item"), `OpenHeroSheet` B ("Open shop"), `ChatTeam` Enter, `Chat` Shift+Enter,
+  `AbilityUpgrade1-4` Alt+1-4. The file is the test fixture
+  `games/deadlock/tests/fixtures/citadelkeys-personal.txt`.
+- The file of the Steam account that played last is read at every match start (6.7 KB, opened
+  for a moment, never written). Actions it doesn't list, or no file at all, use those defaults.
+  The log says once which binds are in effect ("Deadlock: key binds (the game's file): abilities
+  1 2 3 4, items Z X C V, melee Q, parry F").
+- A plain bind also counts with Shift / Ctrl / Alt held (casting while dashing or crouching),
+  unless that chord is bound to something itself (Alt+1 = upgrade ability 1: no marker).
+- Live gates (the engine already requires focus + match in progress): chat open (from the chat
+  binds until Enter / Escape, or 15 s without any key), shop open (from its bind until the bind
+  again / Escape, at most 90 s: there the number keys switch tabs and letters go to the search),
+  contact bounce (80 ms), the same action again within 1 s (melee 0.4 s). Filtered presses stay
+  in the session as key marks with the reason (`chat`, `shop`, `repeat`).
+- Timeline: `UltPressed` for ability 4; new game-neutral kinds `AbilityPressed`, `ItemPressed`,
+  `Melee`, `Parry` (core `events.rs`; UI groups "Abilities", "Item keys", "Melee & parry" with
+  their own icons). Titles are the game's own bind names; the hero's ability names come with
+  the replay file.
+- **Limits:** a press isn't a cast (cooldown, silenced, dead, empty item slot: unknown until
+  the replay check). Only keyboard keys are seen: an action bound to a mouse button, the wheel
+  or to Shift / Ctrl / Alt alone can't be followed (the log names them). Hero-specific binds
+  (`citadel_hero_settings.lst` > `heroes`, empty on the owner's PC: format unseen) aren't read.
+  `"Modifier2"` for a second key is assumed, not seen. Whether the shop really keeps the keys
+  the whole time it is open, and whether it closes by itself (death, damage), is unverified:
+  that is what the 90 s cap is for.
+- Tests (`cargo test -p cv-game-deadlock`): the owner's file parsed (every followed action, the
+  chords), changed / unbound / mouse binds, half-written files, Valve key names, every key's
+  event, mashing, modifiers, chat, shop, and the module's `on_key` / `take_key_marks`.
+
+Next: the replay file (milestone 46; needs the owner's replay run first), then the fallback buffer and the modes (milestones 43-44).
+
 ## Next steps
 - **Owner, tamper seal (once, ~5 min, before the next release):** RELEASING.md "The tamper
   seal": make the key, set `CV_SEAL_KEY` / `CV_SEAL_PUBKEY`. After the release: install it,
   start it (log line "integrity: ok (N ms)"), and try a copy with one byte changed (it must
   refuse to start).
+- **Owner, Deadlock key presses (one match, any mode):** play normally and use every ability,
+  the ultimate, an active item, melee and parry at least once; type one chat line and open the
+  shop once. Afterwards open the match in Games and click the greyed chips "Ult", "Abilities",
+  "Item keys", "Melee & parry": each marker should sit on the moment you pressed the key in the
+  video. Nothing to send: the log and the session file are read afterwards.
+- **Owner, Deadlock's first recorded match (done 2026-10-09, v1.12.0):** worked, see "Current status".
+- **Owner, Deadlock (done 2026-10-09):** the two diagnostic runs. Switch "Deadlock: log match
+  signals" off again (Settings > General). Still useful when you have a minute, with the option
+  on: download one replay (match history > "Download Replay"), watch it for 30 s, close the
+  game: it shows where the file lands and what replay playback looks like in the logs.
 - **Owner, spectating caught earlier (~5 min, no Riot needed):** Settings > Advanced >
   Simulate, What = "Spectating, players unreadable": the status says "Checking whether this is
   a replay…", then "not recorded", and no folder is left. What = "A match, players unreadable":
@@ -278,7 +536,7 @@
   timeline and watch levels / items / KDA change with it (compare a moment with the in-game
   Tab screen you remember, e.g. right after a purchase); press O over the video, and hold Tab
   in fullscreen. Then Settings > Advanced > Save test report.
-- League only for now (no CS2 / Dota 2 work). Nice-to-haves: code-signing certificate for the installer;
+- League and Deadlock only for now (no CS2 / Dota 2 work). Nice-to-haves: code-signing certificate for the installer;
   optional WebP thumbnails if a WebP encoder is added.
 
 After each milestone: explain how to test it and how to measure its performance impact.

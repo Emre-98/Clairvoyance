@@ -67,6 +67,9 @@
   --ev-neutral: light-dark(#7a8297, #8a91a8);
   --ev-item: light-dark(#8a6d3b, #d6b37a);
   --ev-summoner: light-dark(#c2337f, #ff6fb5);
+  --ev-ability: light-dark(#4f5bd5, #8c9bff);
+  --ev-itemkey: light-dark(#5f8a1f, #b5d94c);
+  --ev-melee: light-dark(#52708f, #9db8d6);
   --apm: light-dark(#2f7fe0, #4da3ff);
   --on-ev: light-dark(#ffffff, #0b0d14);
 

@@ -43,6 +43,8 @@ pub struct AppInfo {
     save_dir: String,
     gpu: Option<GpuInfo>,
     games: Vec<crate::games::GameMeta>,
+    /// Per-game developer options (shown with Developer tools on).
+    dev_options: Vec<crate::devopts::DevOption>,
     /// The old app (GameRecorder, before the rename) is still installed.
     legacy_install: bool,
 }
@@ -57,6 +59,7 @@ pub fn app_info(st: St) -> AppInfo {
         save_dir: st.save_dir().to_string_lossy().into(),
         gpu: st.gpu.clone(),
         games: crate::games::meta(),
+        dev_options: crate::devopts::all(),
         legacy_install: crate::migrate::legacy_uninstaller().is_some(),
     }
 }
@@ -1008,5 +1011,6 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static 
         crate::bench::bench_finish,
         crate::bench::bench_log,
         crate::bench::bench_save_dir,
+        crate::devopts::dev_option_log_path,
     ]
 }

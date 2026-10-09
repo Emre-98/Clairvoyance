@@ -20,6 +20,10 @@ export type EventKind =
   | "objective"
   | "item_completed"
   | "summoner_spell"
+  | "ability_pressed"
+  | "item_pressed"
+  | "melee"
+  | "parry"
   | "round"
   | "manual_marker"
   | "clip"
@@ -384,6 +388,14 @@ export interface GpuInfo {
   encoder: string;
 }
 
+/** A developer option of one game: a checkbox stored as `settings.games[game][key]`, with its own log file. */
+export interface DevOption {
+  game: string;
+  key: string;
+  label: string;
+  help: string;
+}
+
 export interface AppInfo {
   version: string;
   log_file: string;
@@ -392,6 +404,8 @@ export interface AppInfo {
   save_dir: string;
   gpu?: GpuInfo | null;
   games: GameMeta[];
+  /** Per-game developer options (Settings > General, with Developer tools on). */
+  dev_options?: DevOption[];
   /** The old app (GameRecorder, before the rename) is still installed. */
   legacy_install: boolean;
 }

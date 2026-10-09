@@ -388,6 +388,7 @@ export async function invoke(cmd: string, args: any = {}): Promise<any> {
             ],
           },
         ],
+        dev_options: [{ game: "deadlock", key: "log_match_signals", label: "Deadlock: log match signals", help: "while Deadlock runs, every change of its console log, window title, replay folders and Steam's files is written to a log file with its time" }],
       };
     case "ui_ready":
       return { since_launch_ms: args.pageMs + 400 };
@@ -512,6 +513,8 @@ export async function invoke(cmd: string, args: any = {}): Promise<any> {
       // UI tests read how clips were cut (e.g. `precise`).
       ((window as any).__cvClipExports ??= []).push(args);
       return;
+    case "dev_option_log_path":
+      return "C:\\Users\\you\\AppData\\Local\\Clairvoyance\\logs\\deadlock-signals-20261009-140322.log";
     case "reveal_path": {
       // UI tests read which files were shown in their folder.
       ((window as any).__cvRevealed ??= []).push(args.path);

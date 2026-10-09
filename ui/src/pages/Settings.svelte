@@ -2,6 +2,7 @@
   import { app, saveSettings, toast } from "../lib/store.svelte";
   import { api, on, pickFolder } from "../lib/api";
   import { bytes, relativeDate } from "../lib/format";
+  import { copyText } from "../lib/clipboard";
   import { KIND, USER_KINDS } from "../lib/eventmeta";
   import type { EventKind, Settings, StorageInfo } from "../lib/types";
   import { setTheme, type Theme } from "../lib/theme";
@@ -64,6 +65,20 @@
     const i = list.indexOf(k);
     if (i >= 0) list.splice(i, 1);
     else list.push(k);
+  }
+
+  // Per-game developer options (General > Developer tools): a checkbox in that game's settings.
+  function setDevOption(game: string, key: string, on: boolean) {
+    draft.games[game] = { ...(draft.games[game] ?? {}), [key]: on };
+  }
+  async function copyDevLogPath(game: string, key: string) {
+    try {
+      const path = await api.devOptionLogPath(game, key);
+      await copyText(path);
+      toast(`Copied: ${path}`, "ok", 8000, { label: "Show file", run: () => api.reveal(path).catch((e) => toast(String(e), "error")) });
+    } catch (e) {
+      toast(`Couldn't copy the log path: ${e}`, "error");
+    }
   }
 
   // Theme changes apply and save at once (no "Save changes" needed).
@@ -440,6 +455,10 @@
         <label class="check wide"><input type="checkbox" bind:checked={draft.dev_tools} data-testid="dev-tools" />Developer tools <small>(technical recording options, recorder and performance tests, Advanced)</small></label>
         {#if draft.dev_tools}
           <label class="check wide"><input type="checkbox" bind:checked={draft.show_perf} />Show Clairvoyance's CPU/RAM use in the sidebar</label>
+          {#each app.info?.dev_options ?? [] as o}
+            <label class="check wide"><input type="checkbox" checked={draft.games[o.game]?.[o.key] === true} onchange={(e) => setDevOption(o.game, o.key, (e.currentTarget as HTMLInputElement).checked)} data-testid="dev-option-{o.game}-{o.key}" />{o.label} <small>({o.help})</small></label>
+            <div class="row" style="grid-column: 1 / -1"><button class="btn small" onclick={() => copyDevLogPath(o.game, o.key)}>Copy log path</button><small>The newest log of "{o.label}" (the logs folder until there is one). Save changes first for the option to take effect.</small></div>
+          {/each}
         {/if}
       </div>
       <p class="muted small">Closing the window keeps Clairvoyance in the tray (bottom-right, next to the clock). Use Quit there to exit.</p>

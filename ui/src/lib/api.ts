@@ -102,6 +102,8 @@ export const api = {
   addMarkerNow: () => call<void>("add_marker_now"),
   stopSession: () => call<void>("stop_session"),
   reveal: (path: string) => call<void>("reveal_path", { path }),
+  /** A developer option's newest log file (the logs folder while there is none). */
+  devOptionLogPath: (game: string, key: string) => call<string>("dev_option_log_path", { game, key }),
   openPath: (path: string) => call<void>("open_path", { path }),
   openUrl: (url: string) => call<void>("open_url", { url }),
   recorderStatus: () => call<RecorderStatus>("recorder_status"),
